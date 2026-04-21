@@ -109,6 +109,50 @@ def test_seed_merges_new_permissions_into_existing_user_role(db):
         session.close()
 
 
+def test_seed_merge_preserves_orphan_permission_keys():
+    """Characterization-Test: der `set | set`-Merge in `_seed_default_roles`
+    ist rein additiv — Keys, die NICHT (mehr) in PERMISSION_KEYS stehen,
+    bleiben in `role.permissions` erhalten.
+
+    Aktuell bewusst akzeptiert (siehe `output/implementation-artifacts/
+    deferred-work.md` > "Waise-Permission-Keys"). Wenn spaeter eine
+    Intersection gegen PERMISSION_KEYS eingezogen wird, muss dieser Test
+    entsprechend gespiegelt werden.
+    """
+    orphan_key = "retired:permission_keep_me_out"
+    assert orphan_key not in PERMISSION_KEYS
+
+    session = _TestSessionLocal()
+    try:
+        session.add(
+            Role(
+                id=uuid.uuid4(),
+                key="user",
+                name="Standard-User",
+                description="Legacy role with stale key",
+                permissions=["documents:upload", orphan_key],
+                is_system_role=False,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    _seed_default_roles()
+
+    session = _TestSessionLocal()
+    try:
+        role = session.query(Role).filter(Role.key == "user").one()
+        perms = set(role.permissions or [])
+        # Waise bleibt erhalten — kein Cleanup gegen PERMISSION_KEYS.
+        assert orphan_key in perms
+        # Default-Merge laeuft trotzdem durch.
+        assert USER_SUBSET_KEYS <= perms
+        assert "documents:upload" in perms
+    finally:
+        session.close()
+
+
 def test_known_audit_actions_includes_new_and_existing():
     known = set(KNOWN_AUDIT_ACTIONS)
     # Bestehende (Spot-Check)

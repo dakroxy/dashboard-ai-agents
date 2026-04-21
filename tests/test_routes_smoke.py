@@ -130,3 +130,11 @@ class TestXRobotsTagHeader:
         resp = auth_client.get("/admin/logs")
         assert resp.status_code == 403
         assert resp.headers.get("X-Robots-Tag") == "noindex, nofollow"
+
+    def test_set_on_htmx_request(self, auth_client):
+        # HTMX-Fragment-Response: Middleware darf nicht auf Full-Page-Rendern
+        # beschraenkt sein. 1-1-test-summary "Naechste Schritte" hatte das
+        # als nur implizit abgedeckt markiert; hier explizit.
+        resp = auth_client.get("/workflows/", headers={"HX-Request": "true"})
+        assert resp.status_code == 200
+        assert resp.headers.get("X-Robots-Tag") == "noindex, nofollow"

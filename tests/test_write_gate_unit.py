@@ -587,3 +587,114 @@ def test_encrypted_field_audit_details_has_no_plaintext(
     blob = json.dumps(audit.details_json)
     assert "secret-old" not in blob
     assert "secret-new" not in blob
+
+
+# ---------------------------------------------------------------------------
+# Integrative Lifecycle-Kette (Story 1.2, AC4–AC7 zusammen)
+# ---------------------------------------------------------------------------
+
+def test_full_lifecycle_user_edit_then_ai_proposal_then_approve(
+    db, test_object, admin_user
+):
+    """Chain: User schreibt Feld -> KI schlaegt Korrektur vor -> Admin
+    approved. Am Ende zwei Provenance-Rows (user_edit + ai_suggestion),
+    Entry auf approved, Audit-Chain komplett.
+
+    Deckt die Komposition aus write_field_human + write_field_ai_proposal +
+    approve_review_entry in einer Transaktion ab — die bestehenden Unit-
+    Tests pruefen jede Funktion einzeln, nicht den Zusammenlauf.
+    """
+    write_field_human(
+        db, entity=test_object, field="year_roof", value=1995,
+        source="user_edit", user=admin_user,
+    )
+    db.commit()
+
+    entry = write_field_ai_proposal(
+        db,
+        target_entity_type="object",
+        target_entity_id=test_object.id,
+        field="year_roof",
+        proposed_value=2004,
+        agent_ref="te_scan_agent",
+        confidence=0.92,
+        source_doc_id=None,
+        user=admin_user,
+    )
+    db.commit()
+
+    # Proposal darf das Zielfeld nicht anfassen (NFR-S6).
+    db.expire_all()
+    obj = db.get(Object, test_object.id)
+    assert obj.year_roof == 1995
+
+    approve_review_entry(db, entry_id=entry.id, user=admin_user)
+    db.commit()
+
+    db.expire_all()
+    obj = db.get(Object, test_object.id)
+    assert obj.year_roof == 2004
+
+    provs = (
+        db.query(FieldProvenance)
+        .filter_by(entity_id=obj.id, field_name="year_roof")
+        .all()
+    )
+    assert len(provs) == 2
+    assert {p.source for p in provs} == {"user_edit", "ai_suggestion"}
+    ai_prov = next(p for p in provs if p.source == "ai_suggestion")
+    assert ai_prov.source_ref == "te_scan_agent"
+    assert ai_prov.confidence == 0.92
+    assert ai_prov.user_id == admin_user.id
+
+    reloaded = db.get(ReviewQueueEntry, entry.id)
+    assert reloaded.status == "approved"
+    assert reloaded.decided_by_user_id == admin_user.id
+
+    actions = [a.action for a in db.query(AuditLog).all()]
+    assert actions.count("object_field_updated") == 2
+    assert actions.count("review_queue_created") == 1
+    assert actions.count("review_queue_approved") == 1
+
+
+def test_approve_silently_overwrites_user_edit_made_after_proposal(
+    db, test_object, admin_user
+):
+    """Characterization-Test fuer das Stale-Proposal-Szenario (siehe
+    deferred-work.md > Story 1.2 > "Stale-Proposal-Check beim Approve"):
+    wenn der User NACH Proposal-Erstellung dasselbe Feld manuell aendert,
+    bypasst Approve diesen Edit heute stumm.
+
+    UX-Entscheidung faellt in Story 3.5/3.6 (Warnung / stale-Status /
+    Force-Flag) — dieser Test dokumentiert den aktuellen Stand als
+    Regression-Anker und muss mit der UX-Umsetzung gespiegelt werden.
+    """
+    entry = write_field_ai_proposal(
+        db,
+        target_entity_type="object",
+        target_entity_id=test_object.id,
+        field="year_roof",
+        proposed_value=2004,
+        agent_ref="te_scan_agent",
+        confidence=0.9,
+        source_doc_id=None,
+        user=admin_user,
+    )
+    db.commit()
+
+    # User editiert dasselbe Feld danach von Hand.
+    write_field_human(
+        db, entity=test_object, field="year_roof", value=2018,
+        source="user_edit", user=admin_user,
+    )
+    db.commit()
+
+    approve_review_entry(db, entry_id=entry.id, user=admin_user)
+    db.commit()
+
+    db.expire_all()
+    obj = db.get(Object, test_object.id)
+    # Aktuell: KI-Wert ueberschreibt stumm den juengeren User-Edit.
+    assert obj.year_roof == 2004
+    reloaded = db.get(ReviewQueueEntry, entry.id)
+    assert reloaded.status == "approved"
