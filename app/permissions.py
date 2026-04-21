@@ -17,6 +17,7 @@ import uuid
 from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -48,11 +49,30 @@ PERMISSIONS: list[Permission] = [
     # Workflows
     Permission("workflows:view", "Workflow-Uebersicht ansehen", "Workflows"),
     Permission("workflows:edit", "Workflows/Prompts editieren", "Workflows"),
+    # Objekte (Steckbrief)
+    Permission("objects:view", "Objekte ansehen", "Objekte"),
+    Permission("objects:edit", "Objekte bearbeiten", "Objekte"),
+    Permission("objects:approve_ki", "KI-Vorschlaege freigeben", "Objekte"),
+    Permission(
+        "objects:view_confidential",
+        "Vertrauliche Notizen lesen",
+        "Objekte",
+    ),
+    # Registries (Versicherer, Dienstleister, ...)
+    Permission("registries:view", "Registries ansehen", "Registries"),
+    Permission("registries:edit", "Registries bearbeiten", "Registries"),
+    # Due-Radar
+    Permission("due_radar:view", "Due-Radar ansehen", "Due-Radar"),
     # Admin
     Permission("users:manage", "User und Rollen verwalten", "Admin"),
     Permission("audit_log:view", "Audit-Log ansehen", "Admin"),
     Permission("audit_log:delete", "Audit-Log-Eintraege loeschen", "Admin"),
     Permission("impower:debug", "Impower-Debug-Endpoints nutzen", "Admin"),
+    Permission(
+        "sync:admin",
+        "Sync-Status + Nightly-Jobs verwalten",
+        "Admin",
+    ),
 ]
 
 PERMISSION_KEYS: frozenset[str] = frozenset(p.key for p in PERMISSIONS)
@@ -64,6 +84,7 @@ for _p in PERMISSIONS:
 
 # Resource-Types — erweitert sich pro neuem Modul.
 RESOURCE_TYPE_WORKFLOW = "workflow"
+RESOURCE_TYPE_OBJECT = "object"
 
 
 # Defaults fuers Seeding der System-Rollen.
@@ -75,6 +96,12 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
             "documents:view_all",
             "documents:approve",
             "workflows:view",
+            "objects:view",
+            "objects:edit",
+            "objects:approve_ki",
+            "registries:view",
+            "registries:edit",
+            "due_radar:view",
         ]
     ),
 }
@@ -225,3 +252,19 @@ def can_access_workflow(db: Session, user: User, workflow: Workflow) -> bool:
 
 def accessible_workflow_ids(db: Session, user: User) -> set[uuid.UUID]:
     return accessible_resource_ids(db, user, RESOURCE_TYPE_WORKFLOW)
+
+
+def accessible_object_ids(db: Session, user: User) -> set[uuid.UUID]:
+    """v1-Semantik: sobald der User `objects:view` hat, sieht er ALLE Objekte.
+    resource_access-Rows fuer resource_type="object" werden in v1 ignoriert,
+    duerfen aber ab Tag 1 geschrieben werden (siehe Story 1.1). v1.1 schaltet
+    auf `accessible_resource_ids(db, user, RESOURCE_TYPE_OBJECT)` um — dann
+    greift die ACL scharf."""
+    # Import hier, um Zirkularitaet mit app.models zu vermeiden.
+    from app.models import Object
+
+    if user.disabled_at is not None:
+        return set()
+    if not has_permission(user, "objects:view"):
+        return set()
+    return set(db.execute(select(Object.id)).scalars().all())

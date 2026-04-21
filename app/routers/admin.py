@@ -24,7 +24,7 @@ from app.permissions import (
     require_any_permission,
     require_permission,
 )
-from app.services.audit import audit
+from app.services.audit import KNOWN_AUDIT_ACTIONS, audit
 from app.templating import templates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -633,10 +633,12 @@ async def list_logs(
 
     logs = query.limit(500).all()
 
-    distinct_actions = [
+    db_distinct = {
         r[0]
-        for r in db.query(AuditLog.action).distinct().order_by(AuditLog.action).all()
-    ]
+        for r in db.query(AuditLog.action).distinct().all()
+        if r[0]
+    }
+    distinct_actions = sorted(db_distinct | set(KNOWN_AUDIT_ACTIONS))
 
     return templates.TemplateResponse(
         request,

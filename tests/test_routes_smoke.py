@@ -1,6 +1,10 @@
 """Smoke tests for all major routes — auth protection and basic responses."""
 from __future__ import annotations
 
+import pytest
+
+from app.main import app
+
 
 class TestHealthEndpoint:
     def test_returns_200(self, anon_client):
@@ -78,3 +82,51 @@ class TestWorkflowsRoutes:
     def test_authenticated_returns_200(self, auth_client):
         resp = auth_client.get("/workflows/")
         assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# X-Robots-Tag Default-Header (Story 1.1, AC3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def boom_route():
+    async def _boom():
+        raise RuntimeError("boom")
+
+    app.add_api_route("/_test/boom", _boom, methods=["GET"])
+    try:
+        yield "/_test/boom"
+    finally:
+        app.router.routes[:] = [
+            r for r in app.router.routes
+            if getattr(r, "path", None) != "/_test/boom"
+        ]
+
+
+class TestXRobotsTagHeader:
+    def test_set_on_health(self, anon_client):
+        resp = anon_client.get("/health")
+        assert resp.headers.get("X-Robots-Tag") == "noindex, nofollow"
+
+    def test_set_on_index(self, anon_client):
+        # / rendert index.html direkt (kein Redirect) — auch hier Header pruefen.
+        resp = anon_client.get("/")
+        assert resp.headers.get("X-Robots-Tag") == "noindex, nofollow"
+
+    def test_set_on_redirect(self, anon_client):
+        # Logout redirect → 302/303 — Header muss auch da drauf sein.
+        resp = anon_client.get("/auth/logout")
+        assert resp.status_code in (302, 303, 307)
+        assert resp.headers.get("X-Robots-Tag") == "noindex, nofollow"
+
+    def test_set_on_500(self, anon_client, boom_route):
+        resp = anon_client.get(boom_route)
+        assert resp.status_code == 500
+        assert resp.headers.get("X-Robots-Tag") == "noindex, nofollow"
+
+    def test_set_on_403(self, auth_client):
+        # test_user hat weder audit_log:view noch users:manage -> 403
+        resp = auth_client.get("/admin/logs")
+        assert resp.status_code == 403
+        assert resp.headers.get("X-Robots-Tag") == "noindex, nofollow"

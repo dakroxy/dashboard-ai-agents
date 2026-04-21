@@ -2,7 +2,7 @@
 
 Postgres 16 via SQLAlchemy 2.0 (typed `Mapped[...]`). UUID als Primaerschluessel ueberall. `JSONB` fuer flexible Payloads.
 
-Alembic-Migrations sind linear `0001 → 0009` (siehe unten). Die aktuelle ORM-Definition ist in `app/models/*.py`.
+Alembic-Migrations sind linear `0001 → 0011` (siehe unten). Die aktuelle ORM-Definition ist in `app/models/*.py`.
 
 ## Tabellen-Uebersicht
 
@@ -17,6 +17,23 @@ Alembic-Migrations sind linear `0001 → 0009` (siehe unten). Die aktuelle ORM-D
 | `workflows` | `app.models.workflow.Workflow` | DB-editierbare Workflow-Konfig (Prompt + Modell + Lernnotizen). |
 | `cases` | `app.models.case.Case` | Multi-Doc-Container fuer Mietverwaltungs-Anlage. |
 | `audit_log` | `app.models.audit_log.AuditLog` | Einheitlicher Event-Log, geschrieben ueber `app.services.audit.audit()`. |
+| `objects` | `app.models.object.Object` | Steckbrief-Haupt-Entity (WEG / Mietobjekt). JSONB fuer voting_rights, object_history_structured, equipment_flags, notes_owners. |
+| `units` | `app.models.object.Unit` | Nutzungseinheit eines Objekts (Wohnung, Gewerbe, TG, ...). |
+| `policen` | `app.models.police.InsurancePolicy` | Versicherungs-Police am Objekt. |
+| `wartungspflichten` | `app.models.police.Wartungspflicht` | Wartungspflicht, meist aus einer Police abgeleitet. |
+| `schadensfaelle` | `app.models.police.Schadensfall` | Schadensfall unter einer Police; optional auf Einheit. |
+| `versicherer` | `app.models.registry.Versicherer` | Registry: Versicherungs-Gesellschaft. |
+| `dienstleister` | `app.models.registry.Dienstleister` | Registry: Dienstleister (Handwerk, Wartung) mit Gewerke-Tags. |
+| `banken` | `app.models.registry.Bank` | Registry: Bank + optional BIC. |
+| `ablesefirmen` | `app.models.registry.Ablesefirma` | Registry: Ableseunternehmen (Waerme/Wasser). |
+| `eigentuemer` | `app.models.person.Eigentuemer` | Eigentuemer pro Objekt + voting_stake_json (MEA). |
+| `mieter` | `app.models.person.Mieter` | Mieter pro Objekt. |
+| `mietvertraege` | `app.models.rental.Mietvertrag` | Mietvertrag Unit ↔ Mieter. |
+| `zaehler` | `app.models.rental.Zaehler` | Zaehler pro Einheit + current_reading_snapshot. |
+| `facilioo_tickets` | `app.models.facilioo.FaciliooTicket` | Gespiegeltes Facilioo-Ticket, `facilioo_id` UNIQUE fuer idempotenten Poll. |
+| `steckbrief_photos` | `app.models.object.SteckbriefPhoto` | Foto-Metadaten (SharePoint-Link oder Local-Fallback). DB-Spalte `photo_metadata` (nicht `metadata`, reserviert). |
+| `field_provenance` | `app.models.governance.FieldProvenance` | Herkunfts-Eintrag pro Feld-Write (Write-Gate). |
+| `review_queue_entries` | `app.models.governance.ReviewQueueEntry` | Pending KI-Vorschlag; manuelle Freigabe noetig (Write-Gate / FR25). |
 
 ## Beziehungen
 
@@ -44,6 +61,29 @@ extractions ◄── chat_messages.extraction_id (Link zur durch die Chat-Antwo
 audit_log.user_id    ──► users.id (nullable)
 audit_log.document_id ──► documents.id (Legacy-FK, primaer fuer SEPA-Fälle; andere
                            Entities via entity_type/entity_id seit Migration 0007)
+
+# Steckbrief-Core (Epic 1, Migrations 0010/0011)
+objects ─┬─ units.object_id ───┬─ schadensfaelle.unit_id (nullable)
+         │                      ├─ mietvertraege.unit_id
+         │                      ├─ zaehler.unit_id
+         │                      └─ steckbrief_photos.unit_id (nullable)
+         ├─ policen.object_id ──┬─ wartungspflichten.policy_id (nullable)
+         │                      └─ schadensfaelle.policy_id
+         ├─ eigentuemer.object_id
+         ├─ mieter.object_id ───► mietvertraege.mieter_id
+         ├─ facilioo_tickets.object_id  (facilioo_id UNIQUE)
+         └─ steckbrief_photos.object_id
+
+policen.versicherer_id      ──► versicherer.id  (SET NULL)
+wartungspflichten.dienstleister_id ──► dienstleister.id  (SET NULL)
+
+# Governance / Write-Gate
+field_provenance.entity_type + entity_id  ── generisch (keine FK, entity_type-String)
+field_provenance.user_id                  ──► users.id  (SET NULL)
+review_queue_entries.target_entity_type + target_entity_id ── generisch
+review_queue_entries.source_doc_id        ──► documents.id  (SET NULL)
+review_queue_entries.assigned_to_user_id  ──► users.id  (SET NULL)
+review_queue_entries.decided_by_user_id   ──► users.id  (SET NULL)
 ```
 
 ## `users`
@@ -292,6 +332,84 @@ Constraint **im Code, nicht in der DB**: genau eines von `document_id`/`case_id`
 
 Alle Writes laufen ueber `app.services.audit.audit(db, user, action, ...)`. Commit durch den Caller, damit Audit-Eintrag + Geschäfts-Change in einer Transaktion sind.
 
+## `objects` (Steckbrief-Haupt-Entity)
+
+| Feld | Typ | Hinweis |
+|---|---|---|
+| `id` | UUID PK | |
+| `short_code` | String UNIQUE, indexed | Interne Kurzform (z.B. HAM61). |
+| `name` | String | |
+| `full_address` | String, nullable | Flachtext-Adresse; strukturierte Felder folgen mit Story 1.3. |
+| `weg_nr` | String, nullable | WEG-Nummer falls gesetzt. |
+| `impower_property_id` | String, nullable, indexed | Impower-Referenz fuer Nightly-Mirror. |
+| `year_built`, `year_roof` | Integer, nullable | |
+| `entry_code_main_door` / `_garage` / `_technical_room` | String, nullable | Ciphertext-Placeholder — Fernet-Encryption kommt mit Story 1.7. Klartext niemals in Provenance/Audit (Write-Gate `{"encrypted": True}`-Marker). |
+| `last_known_balance` | Numeric(12,2), nullable | Letzter Impower-Saldo, Live-Pull laeuft ueber Finanzen-Sektion (Story 1.5). |
+| `pflegegrad_score_cached` | Integer, nullable | Cache, vom Write-Gate auf None gesetzt bei jedem Feld-Write. |
+| `pflegegrad_score_updated_at` | Timestamp tz, nullable | |
+| `voting_rights` | JSONB `{}` | MEA/Stimmverteilung. |
+| `object_history_structured` | JSONB `[]` | |
+| `equipment_flags` | JSONB `{}` | |
+| `notes_owners` | JSONB `{}` | Interne Notizen zu Eigentuemern. |
+| `created_at`, `updated_at` | Timestamp tz | |
+
+## `field_provenance` (Write-Gate, Governance)
+
+| Feld | Typ | Hinweis |
+|---|---|---|
+| `id` | UUID PK | |
+| `entity_type` | String | `object`, `unit`, `police`, `versicherer`, ... (generisch, kein FK). |
+| `entity_id` | UUID | ID der betroffenen Entity (keine FK-Constraints — alle CD1-Typen). |
+| `field_name` | String | |
+| `source` | String | `user_edit` \| `impower_mirror` \| `facilioo_mirror` \| `sharepoint_mirror` \| `ai_suggestion`. |
+| `source_ref` | String, nullable | Agenten-Ref bei ai_suggestion, Mirror-Job-ID sonst. |
+| `user_id` | UUID FK `users.id` SET NULL, nullable | Null bei Mirror-Jobs (kein User-Kontext). |
+| `confidence` | Float, nullable | Nur bei ai_suggestion gesetzt. |
+| `value_snapshot` | JSONB `{}` | `{"old": ..., "new": ...}` — JSON-safe konvertiert; Ciphertext-Felder landen als `{"encrypted": True}`. |
+| `created_at` | Timestamp tz, indexed | |
+
+Indexe: `(entity_type, entity_id, field_name)` fuer Mirror-Guard-Queries, `user_id`, `created_at`.
+
+## `review_queue_entries` (Write-Gate, KI-Freigabe-Pipeline)
+
+| Feld | Typ | Hinweis |
+|---|---|---|
+| `id` | UUID PK | |
+| `target_entity_type` | String | Wie bei `field_provenance.entity_type`. |
+| `target_entity_id` | UUID | |
+| `field_name` | String | |
+| `proposed_value` | JSONB | Einheitlich `{"value": <typisierter Wert>}` — so sind int/str/dict-Werte gleich strukturiert. |
+| `agent_ref` | String | KI-Agent-Kennung (`te_scan_agent`, `sepa_extract_agent`, ...). |
+| `confidence` | Float | In `[0.0, 1.0]`. |
+| `source_doc_id` | UUID FK `documents.id` SET NULL, nullable | Quell-PDF; loeschen setzt das Feld auf NULL, Entry bleibt erhalten. |
+| `agent_context` | JSONB `{}` | Prompt-Version, Modell-Name etc. |
+| `status` | String `pending` | `pending` \| `approved` \| `rejected` \| `superseded`. |
+| `assigned_to_user_id` | UUID FK `users.id` SET NULL, nullable | v1 ungenutzt, v1.1-Filter FR24 ohne Migration scharfschaltbar. |
+| `decided_at`, `decided_by_user_id`, `decision_reason` | | bei approve/reject gesetzt. |
+| `created_at` | Timestamp tz | |
+
+Indexe: `(status, created_at)` fuer Review-Queue-Listen, `(target_entity_type, target_entity_id)`, `(assigned_to_user_id, status)`, `source_doc_id`.
+
+## Registries + weitere Steckbrief-Tabellen (Kurzuebersicht)
+
+Vollstaendige Spalten-Specs werden mit Story 1.3 (Objekt-Detailseite) und 1.5/1.6 (Finanzen + Technik) nachgezogen. Stand 1.2:
+
+| Tabelle | Zentrale Felder |
+|---|---|
+| `versicherer` | `name`, `contact_info` (JSONB). |
+| `dienstleister` | `name`, `gewerke_tags` (JSONB-Array), `notes` (JSONB). |
+| `banken` | `name`, `bic` (indexed). |
+| `ablesefirmen` | `name`. |
+| `units` | FK `object_id`; `unit_number`, `impower_unit_id`, `usage_type`, `floor_area_sqm`, `equipment_features` (JSONB-Array), `floorplan_drive_item_id`. |
+| `policen` | FK `object_id` + `versicherer_id`; `police_number`, `main_due_date`, `next_main_due` (indexed), `praemie`, `coverage`/`risk_attributes` (JSONB). |
+| `wartungspflichten` | FK `policy_id` (nullable) + `dienstleister_id` (nullable); `bezeichnung`, `intervall_monate`, `next_due_date` (indexed), `notes` (JSONB). |
+| `schadensfaelle` | FK `policy_id` + `unit_id` (nullable); `description`, `amount`, `occurred_at`, `status`. |
+| `eigentuemer`, `mieter` | FK `object_id`; `name`, `email`, `phone` (+ `voting_stake_json` bei Eigentuemer). |
+| `mietvertraege` | FK `unit_id` + `mieter_id`; `start_date`, `end_date`, `cold_rent`, `deposit`. |
+| `zaehler` | FK `unit_id`; `meter_number`, `meter_type`, `current_reading_snapshot` (JSONB). |
+| `facilioo_tickets` | FK `object_id`; `facilioo_id` UNIQUE, `status`, `title`, `raw_payload` (JSONB). |
+| `steckbrief_photos` | FK `object_id` + `unit_id` (nullable); `drive_item_id`, `local_path`, `label`, **`photo_metadata`** (JSONB, nicht `metadata`). |
+
 ## Migrations-Historie
 
 Linear, in `migrations/versions/`:
@@ -307,5 +425,7 @@ Linear, in `migrations/versions/`:
 | `0007` | `0007_audit_log_generic.py` | `audit_log.entity_type` + `audit_log.entity_id` (+ `user_id` wurde generalisiert). |
 | `0008` | `0008_cases_and_document_types.py` | `cases` + `documents.case_id` + `documents.doc_type`. |
 | `0009` | `0009_chat_messages_case_id.py` | `chat_messages.case_id` + `document_id` nullable. |
+| `0010` | `0010_steckbrief_core.py` | 15 Steckbrief-Tabellen (Objects, Units, Policen, Registries, Personen, Tickets, Fotos). |
+| `0011` | `0011_steckbrief_governance.py` | `field_provenance` + `review_queue_entries` fuer das Write-Gate. |
 
 `alembic upgrade head` laeuft als erstes Kommando beim Container-Start (`Dockerfile` CMD).

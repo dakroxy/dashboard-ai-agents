@@ -45,11 +45,15 @@ _db_module.engine = _TEST_ENGINE
 _db_module.SessionLocal = _TestSessionLocal
 
 # Import models so Base.metadata is populated, then create all tables.
+# Transitiver Import ueber app.models/__init__.py — alle neuen Submodule
+# (Steckbrief-Core, Governance) werden automatisch auf Base.metadata registriert.
+import app.models  # noqa: F401, E402
 from app.models import (  # noqa: F401, E402
     AuditLog,
     ChatMessage,
     Document,
     Extraction,
+    Object,
     ResourceAccess,
     Role,
     User,
@@ -169,6 +173,60 @@ def auth_client(db, test_user):
                     )
                 )
         db.commit()
+        yield c
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_object(db):
+    """Minimal-Object fuer Write-Gate-Tests."""
+    obj = Object(
+        id=uuid.uuid4(),
+        short_code="TST1",
+        name="Test-Objekt",
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@pytest.fixture
+def steckbrief_admin_client(db):
+    """TestClient mit einem User, der alle Steckbrief-Admin-Permissions hat
+    (objects:view/edit/approve_ki + audit_log:view). Fuer Folge-Stories 1.3ff
+    schon vorbereitet."""
+    user = User(
+        id=uuid.uuid4(),
+        google_sub="google-sub-admin-steckbrief",
+        email="steckbrief-admin@dbshome.de",
+        name="Steckbrief Admin",
+        permissions_extra=[
+            "objects:view",
+            "objects:edit",
+            "objects:approve_ki",
+            "objects:view_confidential",
+            "registries:view",
+            "registries:edit",
+            "audit_log:view",
+        ],
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    def override_db():
+        yield db
+
+    def override_user():
+        return user
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = override_user
+    app.dependency_overrides[get_optional_user] = override_user
+
+    with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
         yield c
 
     app.dependency_overrides.clear()

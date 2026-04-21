@@ -21,6 +21,73 @@ from sqlalchemy.orm import Session
 from app.models import AuditLog, User
 
 
+# Known Audit-Actions — fuer das Filter-Dropdown in /admin/logs.
+#
+# Das Dropdown zeigt die Union aus dieser Konstante und den distinct-Actions,
+# die tatsaechlich in der DB liegen. Damit tauchen neue Actions nach Deploy
+# sofort im Filter auf, auch wenn noch kein Log-Eintrag existiert.
+# Neue Actions beim Hinzufuegen des audit()-Calls hier miterweitern.
+KNOWN_AUDIT_ACTIONS: list[str] = sorted(
+    [
+        # Auth + User
+        "login",
+        "login_new_user",
+        "login_denied_disabled",
+        "logout",
+        "user_updated",
+        "user_disabled",
+        "user_enabled",
+        # Rollen
+        "role_created",
+        "role_updated",
+        "role_deleted",
+        # Workflows
+        "workflow_edited",
+        # Dokumente (SEPA-Workflow)
+        "document_uploaded",
+        "document_extracted",
+        "document_approved",
+        "document_written",
+        "document_already_present",
+        "document_write_failed",
+        "document_chat_message",
+        # Cases (Mietverwaltung)
+        "case_created",
+        "case_renamed",
+        "case_document_uploaded",
+        "case_document_classified",
+        "case_document_extracted",
+        "case_state_saved",
+        "case_state_reset",
+        "case_chat_message",
+        "mietverwaltung_write_triggered",
+        "mietverwaltung_write_complete",
+        "mietverwaltung_write_error",
+        "mietverwaltung_write_crashed",
+        "mietverwaltung_write_preflight_failed",
+        # Kontakte
+        "contact_created",
+        # Audit selbst
+        "audit_entry_deleted",
+        # Objektsteckbrief (Epic 1) — Emit folgt in spaeteren Stories.
+        "object_created",
+        "object_field_updated",
+        "object_photo_uploaded",
+        "object_photo_deleted",
+        "registry_entry_created",
+        "registry_entry_updated",
+        "review_queue_created",
+        "review_queue_approved",
+        "review_queue_rejected",
+        "sync_started",
+        "sync_finished",
+        "sync_failed",
+        "policy_violation",
+        "encryption_key_missing",
+    ]
+)
+
+
 def audit(
     db: Session,
     user: User | None,

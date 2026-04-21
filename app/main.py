@@ -1,8 +1,9 @@
+import logging
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -30,6 +31,9 @@ from app.services.claude import (
     DEFAULT_SYSTEM_PROMPT,
 )
 from app.templating import templates
+
+
+_logger = logging.getLogger(__name__)
 
 
 _DEFAULT_WORKFLOWS: tuple[dict[str, str], ...] = (
@@ -108,15 +112,20 @@ _ROLE_META: dict[str, dict[str, str]] = {
 
 
 def _seed_default_roles() -> None:
-    """Seeded System-Rollen admin + user. Permissions werden NUR bei
-    Neuanlage gesetzt — spaetere Permission-Aenderungen im Admin-UI
-    bleiben beim App-Restart erhalten."""
+    """Seeded System-Rollen admin + user.
+
+    Defaults werden bei jedem Start additiv gemerged — User-Customizations
+    bleiben erhalten, aber neue Default-Keys kommen automatisch mit Deploy an.
+    """
     db = SessionLocal()
     try:
         for key, perms in DEFAULT_ROLE_PERMISSIONS.items():
             existing = db.query(Role).filter(Role.key == key).first()
             if existing is not None:
                 existing.is_system_role = True
+                existing.permissions = sorted(
+                    set(existing.permissions or []) | set(perms)
+                )
                 continue
             meta = _ROLE_META.get(key, {"name": key.title(), "description": ""})
             db.add(
@@ -190,6 +199,20 @@ app.add_middleware(
     https_only=settings.app_env != "development",
     max_age=60 * 60 * 24 * 7,
 )
+
+
+@app.middleware("http")
+async def set_default_security_headers(request: Request, call_next):
+    # Starlette's ServerErrorMiddleware wrappt unsere Chain von aussen — bei
+    # unhandled Exceptions wuerde unsere Header-Logik sonst uebersprungen.
+    # Darum hier faangen, 500er selbst bauen, Stacktrace loggen und Header setzen.
+    try:
+        response = await call_next(request)
+    except Exception:
+        _logger.exception("Unhandled exception in request %s %s", request.method, request.url.path)
+        response = PlainTextResponse("Internal Server Error", status_code=500)
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
