@@ -18,7 +18,7 @@ Zentrale Web-Plattform, auf der Mitarbeitende Dokumente hochladen und KI-Agenten
 
 - **M0–M2**: fertig, live verifiziert.
 - **M3 SEPA-Schreibpfad**: Code fertig. Idempotenz-Zweig live OK (Floegel HAM61 → `already_present`). **Neuanlage-Zweig (Tilker GVE1 / Kulessa BRE11: PUT Contact mit neuem Bank-Account + POST Mandat + POST UCM-Array) noch nicht live verifiziert.**
-- **M4 Elestio-Deployment**: **deprioritisiert** — erledigen wir irgendwann nebenbei, kein aktiver Meilenstein.
+- **M4 Elestio-Deployment**: **fertig, live unter https://dashboard.dbshome.de** (Hetzner Nuremberg via Elestio, GHCR-Image public, Let's-Encrypt-Cert, Google-OAuth mit Workspace-Restriktion). Details siehe Memory `reference_elestio_deployment.md`.
 - **M5 Mietverwaltungs-Anlage**: **Code komplett (Pakete 1–8), Live-Tests komplett offen.** Multi-Doc-Workflow (Verwaltervertrag + Grundbuch + Mietvertraege + Mieterliste → Fall), typ-spezifische Extraktion, konsolidierter Case-State mit User-Overrides, Impower-Write in 8 Schritten (Contacts → Property → PROPERTY_OWNER-Contract → PUT Property + Buildings → Units → TENANT-Contracts → Exchange-Plan → Deposit), Delta-Patch-Chat am Case.
 - **UI**: Sidebar-Layout (Dashboard · Workflows · Admin + User-Block unten); Workflow-Zugang nur ueber Dashboard-Kacheln mit Gradient-Header.
 - **Git-Repo**: initialisiert, 2 Commits auf `main`, Remote `git@github.com:dakroxy/dashboard-ai-agents.git`.
@@ -79,7 +79,7 @@ docker compose up --build
 | M1 | OAuth + Upload + Extraktion + Chat + Workflow-Einstellungen | fertig |
 | M2 | Impower-Matching (Property + Contact, Read-Pfad) | fertig, live verifiziert (HAM61 Score 100 %) |
 | M3 | Freigabe → Impower-Schreibpfad (Bank-Account, Mandat, Haken) | **Code fertig, Idempotenz-Zweig live OK — Neuanlage-Zweig noch live zu verifizieren** |
-| M4 | Elestio-Deployment + DNS + TLS | **deprioritisiert** (irgendwann nebenbei) |
+| M4 | Elestio-Deployment + DNS + TLS | **fertig, live auf https://dashboard.dbshome.de** (2026-04-21) |
 | M5 | Mietverwaltungs-Anlage (Multi-Doc → Impower, neuer Workflow) | **Code komplett (Pakete 1–8), Live-Tests offen** — insbesondere Impower-Write (Paket 7); Exchange-Plan-Schema muss ggf. nach erstem POST angepasst werden |
 
 ## Stand M3 (2026-04-19)
@@ -160,8 +160,7 @@ Sammelstelle fuer Anforderungen, die quer zu den Modulen liegen. Werden beizeite
 
 ## Externe Blocker
 
-- **GitHub-Push**: User macht manuell. Remote: `git@github.com:dakroxy/dashboard-ai-agents.git`.
-- *(M4-bezogen: Elestio-Projekt + DNS `dashboard.dbshome.de` bei All-Inkl — deprioritisiert, kein aktiver Blocker.)*
+- **GitHub-Push**: Claude pusht direkt auf `main` bei gewollten Aenderungen; Remote `git@github.com:dakroxy/dashboard-ai-agents.git`. Force-Pushes und Pushes auf andere Branches weiter nur mit Rueckfrage.
 
 ## Design-Regeln (verbindlich, vom User vorgegeben)
 
