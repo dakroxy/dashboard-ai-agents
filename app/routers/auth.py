@@ -89,6 +89,12 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         if role is not None:
             user.role_id = role.id
 
+    # Ab hier muss der User in der DB sein (inkl. neue Rolle), damit der
+    # audit_log-Eintrag seinen FK auf users.id zuverlaessig aufloesen kann.
+    # Ohne flush fuehrt is_new_user=True zu einer ForeignKeyViolation im commit,
+    # weil der insert auf audit_log vor dem insert auf users ausgefuehrt werden kann.
+    db.flush()
+
     # Disabled-Accounts kommen nicht rein — loggen und Fehler anzeigen.
     if user.disabled_at is not None:
         audit(
