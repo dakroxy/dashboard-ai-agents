@@ -1,8 +1,22 @@
 services:
   app:
-    build: .
-    env_file:
-      - .env
+    image: ghcr.io/dakroxy/dashboard-ai-agents:latest
+    environment:
+      APP_ENV: ${APP_ENV}
+      BASE_URL: ${BASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_HOSTED_DOMAIN: ${GOOGLE_HOSTED_DOMAIN}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      IMPOWER_BASE_URL: ${IMPOWER_BASE_URL}
+      IMPOWER_BEARER_TOKEN: ${IMPOWER_BEARER_TOKEN}
+      INITIAL_ADMIN_EMAILS: ${INITIAL_ADMIN_EMAILS}
     volumes:
       - uploads:/app/uploads
     ports:
