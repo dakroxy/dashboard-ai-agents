@@ -45,8 +45,18 @@ _db_module.engine = _TEST_ENGINE
 _db_module.SessionLocal = _TestSessionLocal
 
 # Import models so Base.metadata is populated, then create all tables.
-from app.models import AuditLog, ChatMessage, Document, Extraction, User, Workflow  # noqa: F401, E402
+from app.models import (  # noqa: F401, E402
+    AuditLog,
+    ChatMessage,
+    Document,
+    Extraction,
+    ResourceAccess,
+    Role,
+    User,
+    Workflow,
+)
 from app.db import Base  # noqa: E402
+from app.permissions import RESOURCE_TYPE_WORKFLOW  # noqa: E402
 
 Base.metadata.create_all(_TEST_ENGINE)
 
@@ -96,11 +106,22 @@ def db():
 
 @pytest.fixture
 def test_user(db):
+    # Standard-Default-Perms der Rolle `user` (vgl. app/permissions.py
+    # DEFAULT_ROLE_PERMISSIONS["user"]). Direkt ueber `permissions_extra`
+    # gesetzt, damit wir in Tests ohne Role-Seeding auskommen. Tests, die
+    # explizit eine andere Permission-Konstellation brauchen, bauen sich
+    # ihren User selbst (siehe test_permissions.py).
     user = User(
         id=uuid.uuid4(),
         google_sub="google-sub-test-123",
         email="test@dbshome.de",
         name="Test User",
+        permissions_extra=[
+            "documents:upload",
+            "documents:view_all",
+            "documents:approve",
+            "workflows:view",
+        ],
     )
     db.add(user)
     db.commit()
@@ -122,6 +143,32 @@ def auth_client(db, test_user):
     app.dependency_overrides[get_optional_user] = override_user
 
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        # Lifespan hat die Default-Workflows geseedet; der test_user hat aber
+        # keine Rolle, ueber die Resource-Access auf diese Workflows vererbt
+        # wuerde. Um die bestehenden Router-Tests (Upload/Approve) nicht bei
+        # `can_access_workflow` zu blocken, geben wir dem test_user direkt
+        # User-Level-Zugriff auf alle geseedeten Workflows.
+        for wf in db.query(Workflow).all():
+            exists = (
+                db.query(ResourceAccess)
+                .filter(
+                    ResourceAccess.user_id == test_user.id,
+                    ResourceAccess.resource_type == RESOURCE_TYPE_WORKFLOW,
+                    ResourceAccess.resource_id == wf.id,
+                )
+                .first()
+            )
+            if exists is None:
+                db.add(
+                    ResourceAccess(
+                        id=uuid.uuid4(),
+                        user_id=test_user.id,
+                        resource_type=RESOURCE_TYPE_WORKFLOW,
+                        resource_id=wf.id,
+                        mode="allow",
+                    )
+                )
+        db.commit()
         yield c
 
     app.dependency_overrides.clear()

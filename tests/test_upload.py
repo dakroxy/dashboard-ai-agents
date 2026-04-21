@@ -118,9 +118,38 @@ class TestDocumentDetailRoute:
         resp = auth_client.get(f"/documents/{uuid.uuid4()}")
         assert resp.status_code == 404
 
-    def test_other_users_document_returns_404(self, auth_client, db):
-        """A document belonging to a different user should not be accessible."""
-        from app.models import Document, User
+    def test_other_users_document_hidden_without_view_all(self, auth_client, db):
+        """Ohne `documents:view_all` darf ein User keine fremden Docs sehen.
+
+        Der conftest-`test_user` hat `documents:view_all` per Default — hier
+        tauschen wir den Override auf einen restricted User ohne dieses Recht.
+        Die `auth_client`-Fixture hat lifespan bereits ausgefuehrt, damit ist
+        der sepa_mandate-Workflow geseedet.
+        """
+        from app.auth import get_current_user, get_optional_user
+        from app.main import app as _app
+        from app.models import Document, ResourceAccess, User, Workflow
+        from app.permissions import RESOURCE_TYPE_WORKFLOW
+
+        wf = db.query(Workflow).filter(Workflow.key == "sepa_mandate").first()
+
+        restricted = User(
+            id=uuid.uuid4(),
+            google_sub="restricted-sub",
+            email="restricted@dbshome.de",
+            name="Restricted",
+            permissions_extra=["documents:upload"],  # kein view_all
+        )
+        db.add(restricted)
+        db.add(
+            ResourceAccess(
+                id=uuid.uuid4(),
+                user_id=restricted.id,
+                resource_type=RESOURCE_TYPE_WORKFLOW,
+                resource_id=wf.id,
+                mode="allow",
+            )
+        )
 
         other_user = User(
             id=uuid.uuid4(),
@@ -132,6 +161,7 @@ class TestDocumentDetailRoute:
         doc = Document(
             id=uuid.uuid4(),
             uploaded_by_id=other_user.id,
+            workflow_id=wf.id,
             original_filename="other.pdf",
             stored_path="deadbeef.pdf",
             content_type="application/pdf",
@@ -142,17 +172,22 @@ class TestDocumentDetailRoute:
         db.add(doc)
         db.commit()
 
+        _app.dependency_overrides[get_current_user] = lambda: restricted
+        _app.dependency_overrides[get_optional_user] = lambda: restricted
+
         resp = auth_client.get(f"/documents/{doc.id}")
         assert resp.status_code == 404
 
 
 class TestApproveRoute:
     def _create_doc(self, db, user, status: str) -> "Document":  # noqa: F821
-        from app.models import Document
+        from app.models import Document, Workflow
 
+        wf = db.query(Workflow).filter(Workflow.key == "sepa_mandate").first()
         doc = Document(
             id=uuid.uuid4(),
             uploaded_by_id=user.id,
+            workflow_id=wf.id,
             original_filename="mandat.pdf",
             stored_path="aabbccdd.pdf",
             content_type="application/pdf",
@@ -184,7 +219,7 @@ class TestApproveRoute:
         auth_client.post(f"/documents/{doc.id}/approve")
         log = db.query(AuditLog).filter_by(document_id=doc.id).first()
         assert log is not None
-        assert log.action == "approve"
+        assert log.action == "document_approved"
         assert log.user_email == "test@dbshome.de"
 
     @patch("app.routers.documents._run_write")
