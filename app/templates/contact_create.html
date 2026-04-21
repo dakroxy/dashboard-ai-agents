@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-5">
+    <h1 class="text-2xl font-semibold">Kontakt anlegen</h1>
+    <p class="text-sm text-slate-500 mt-1">
+        Impower-Kontakt (Person / Unternehmen / Verwaltungsunternehmen). Duplicate-Check
+        laeuft vor jeder Anlage &mdash; bestehende Treffer werden angezeigt, bevor wir
+        neu schreiben.
+    </p>
+</div>
+
+{% if success_contact %}
+<div class="mb-5 rounded-lg bg-emerald-50 border border-emerald-200 p-4 flex items-start gap-3">
+    <svg class="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+    </svg>
+    <div class="text-sm text-emerald-900">
+        <p class="font-medium">Kontakt angelegt.</p>
+        <p class="mt-0.5">
+            Impower-ID: <code class="font-mono">{{ success_contact.id }}</code>
+            {% if success_contact.companyName %} &middot; {{ success_contact.companyName }}
+            {% elif success_contact.lastName %} &middot; {{ success_contact.firstName or "" }} {{ success_contact.lastName }}
+            {% endif %}
+        </p>
+    </div>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="mb-5 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-800">
+    <p class="font-medium">Fehler</p>
+    <p class="mt-0.5">{{ error }}</p>
+</div>
+{% endif %}
+
+{% if duplicates %}
+<div class="mb-5 rounded-lg bg-amber-50 border border-amber-200 p-4">
+    <div class="flex items-start gap-3 mb-3">
+        <svg class="h-5 w-5 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <div class="text-sm text-amber-900">
+            <p class="font-medium">{{ duplicates|length }} moegliche{% if duplicates|length == 1 %}r{% else %}s{% endif %} Duplikat{% if duplicates|length != 1 %}e{% endif %} gefunden</p>
+            <p class="mt-0.5 text-amber-800">Bitte pruefen, bevor Sie neu anlegen. Wenn es eine Uebereinstimmung ist, brechen Sie ab und verwenden den bestehenden Kontakt.</p>
+        </div>
+    </div>
+    <ul class="divide-y divide-amber-200 border-t border-amber-200">
+        {% for dup in duplicates %}
+        {% set c = dup.contact if dup.contact else dup %}
+        <li class="py-2 flex items-start justify-between gap-3 text-sm">
+            <div class="min-w-0">
+                <p class="font-medium text-amber-900">
+                    {% if c.companyName %}{{ c.companyName }}
+                    {% elif c.lastName %}{{ c.firstName or "" }} {{ c.lastName }}
+                    {% else %}(ohne Name){% endif %}
+                    <span class="text-xs font-normal text-amber-700 ml-1">#{{ c.id }}</span>
+                </p>
+                {% if c.email %}<p class="text-xs text-amber-800">{{ c.email }}</p>{% endif %}
+                {% if dup.score is defined %}
+                <p class="text-[11px] text-amber-700 mt-0.5">
+                    Score {{ "%.0f"|format(dup.score * 100) }}%
+                </p>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+
+{% if payload_json %}
+<div class="mb-5 rounded-lg bg-white border border-slate-200 p-5">
+    <h2 class="text-sm font-semibold mb-3">Trotzdem neu anlegen?</h2>
+    <p class="text-sm text-slate-600 mb-3">
+        Die obigen Treffer sind nur Vorschlaege. Wenn keiner passt, koennen Sie den Kontakt
+        trotzdem anlegen.
+    </p>
+    <form action="/contacts/confirm" method="post" class="flex items-center gap-3">
+        <input type="hidden" name="payload_json" value="{{ payload_json }}">
+        <input type="hidden" name="return_to" value="{{ return_to }}">
+        <button type="submit" class="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">
+            Ja, neu anlegen
+        </button>
+        <a href="{{ return_to or '/contacts/new' }}" class="text-sm text-slate-500 hover:text-slate-900">Abbrechen</a>
+    </form>
+</div>
+{% endif %}
+{% endif %}
+
+{% if duplicates is none and payload_json and not success_contact %}
+{# Dup-Check war OK (0 Treffer) → direkte Bestaetigung anbieten #}
+<div class="mb-5 rounded-lg bg-emerald-50 border border-emerald-200 p-5">
+    <p class="text-sm text-emerald-900 mb-3">
+        Duplicate-Check OK &mdash; keine aehnlichen Kontakte gefunden.
+    </p>
+    <form action="/contacts/confirm" method="post" class="flex items-center gap-3">
+        <input type="hidden" name="payload_json" value="{{ payload_json }}">
+        <input type="hidden" name="return_to" value="{{ return_to }}">
+        <button type="submit" class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
+            Anlegen
+        </button>
+        <a href="/contacts/new" class="text-sm text-slate-500 hover:text-slate-900">Abbrechen</a>
+    </form>
+</div>
+{% endif %}
+
+{% set f = fields or {"type": "PERSON", "salutation": "", "title": "", "first_name": "", "last_name": "", "company_name": "", "trade_register_number": "", "vat_id": "", "email": "", "phone_business": "", "phone_mobile": "", "phone_private": "", "notes": "", "addr_street": "", "addr_number": "", "addr_postal_code": "", "addr_city": "", "addr_country": "DE"} %}
+
+{% if not success_contact %}
+<form action="/contacts/new" method="post" class="rounded-lg bg-white border border-slate-200 p-5 space-y-5">
+
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+
+    <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Typ *</label>
+        <div class="flex items-center gap-4">
+            <label class="inline-flex items-center gap-2 text-sm">
+                <input type="radio" name="type" value="PERSON" {% if f.type == "PERSON" %}checked{% endif %}>
+                Person
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm">
+                <input type="radio" name="type" value="COMPANY" {% if f.type == "COMPANY" %}checked{% endif %}>
+                Unternehmen
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm">
+                <input type="radio" name="type" value="MANAGEMENT_COMPANY" {% if f.type == "MANAGEMENT_COMPANY" %}checked{% endif %}>
+                Verwaltungsunternehmen
+            </label>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-6 gap-4">
+        <div class="col-span-1">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Anrede</label>
+            <input type="text" name="salutation" value="{{ f.salutation }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+        <div class="col-span-1">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Titel</label>
+            <input type="text" name="title" value="{{ f.title }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+        <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Vorname</label>
+            <input type="text" name="first_name" value="{{ f.first_name }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+        <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Nachname</label>
+            <input type="text" name="last_name" value="{{ f.last_name }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+
+        <div class="col-span-4">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Firma (bei Unternehmen)</label>
+            <input type="text" name="company_name" value="{{ f.company_name }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+        <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">HRB-Nr.</label>
+            <input type="text" name="trade_register_number" value="{{ f.trade_register_number }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+
+        <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">USt-ID</label>
+            <input type="text" name="vat_id" value="{{ f.vat_id }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+        <div class="col-span-4">
+            <label class="block text-xs font-medium text-slate-600 mb-1">E-Mail</label>
+            <input type="email" name="email" value="{{ f.email }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+
+        <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Tel. Geschaeftlich</label>
+            <input type="text" name="phone_business" value="{{ f.phone_business }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+        <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Tel. Mobil</label>
+            <input type="text" name="phone_mobile" value="{{ f.phone_mobile }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+        <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Tel. Privat</label>
+            <input type="text" name="phone_private" value="{{ f.phone_private }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+        </div>
+    </div>
+
+    <div class="border-t border-slate-100 pt-4">
+        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Anschrift</h3>
+        <div class="grid grid-cols-6 gap-4">
+            <div class="col-span-4">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Strasse</label>
+                <input type="text" name="addr_street" value="{{ f.addr_street }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+            </div>
+            <div class="col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Hausnummer</label>
+                <input type="text" name="addr_number" value="{{ f.addr_number }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+            </div>
+            <div class="col-span-1">
+                <label class="block text-xs font-medium text-slate-600 mb-1">PLZ</label>
+                <input type="text" name="addr_postal_code" value="{{ f.addr_postal_code }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+            </div>
+            <div class="col-span-4">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Ort</label>
+                <input type="text" name="addr_city" value="{{ f.addr_city }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+            </div>
+            <div class="col-span-1">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Land</label>
+                <select name="addr_country" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    <option value="DE" {% if f.addr_country == "DE" %}selected{% endif %}>DE</option>
+                    <option value="AT" {% if f.addr_country == "AT" %}selected{% endif %}>AT</option>
+                    <option value="CH" {% if f.addr_country == "CH" %}selected{% endif %}>CH</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="border-t border-slate-100 pt-4">
+        <label class="block text-xs font-medium text-slate-600 mb-1">Notizen</label>
+        <textarea name="notes" rows="2" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">{{ f.notes }}</textarea>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+        {% if return_to %}<a href="{{ return_to }}" class="text-sm text-slate-500 hover:text-slate-900">Abbrechen</a>{% endif %}
+        <button type="submit" class="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">
+            Duplicate-Check &amp; weiter
+        </button>
+    </div>
+</form>
+{% endif %}
+
+{% endblock %}

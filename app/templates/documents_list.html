@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_pill %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold">Dokumente</h1>
+        <p class="text-sm text-slate-500 mt-1">SEPA-Lastschriftmandate hochladen &rarr; Claude extrahiert.</p>
+    </div>
+    <a href="/" class="text-sm text-slate-500 hover:text-slate-900">&larr; Dashboard</a>
+</div>
+
+{% set show_uploader = has_permission(user, "documents:view_all") %}
+
+{% if has_permission(user, "documents:upload") %}
+<div class="rounded-lg bg-white border border-slate-200 p-6 mb-6">
+    <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Upload</h2>
+    <form action="/documents/" method="post" enctype="multipart/form-data" class="flex items-center gap-4">
+        <input
+            type="file"
+            name="file"
+            accept="application/pdf"
+            required
+            class="block text-sm text-slate-700 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-slate-900 file:text-white hover:file:bg-slate-800 file:cursor-pointer">
+        <button type="submit"
+                class="rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-800">
+            Hochladen
+        </button>
+    </form>
+    <p class="text-xs text-slate-400 mt-2">Nur PDF. Nach dem Hochladen startet die KI-Extraktion automatisch.</p>
+</div>
+{% endif %}
+
+<div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-semibold">Dateiname</th>
+                {% if show_uploader %}<th class="text-left px-4 py-3 font-semibold">Uploader</th>{% endif %}
+                <th class="text-left px-4 py-3 font-semibold">Hochgeladen</th>
+                <th class="text-left px-4 py-3 font-semibold">Status</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for doc in documents %}
+            <tr class="border-t border-slate-100 hover:bg-slate-50">
+                <td class="px-4 py-3 font-medium truncate max-w-xs">{{ doc.original_filename }}</td>
+                {% if show_uploader %}
+                <td class="px-4 py-3 text-slate-600 text-xs">
+                    {% if doc.uploader %}{{ doc.uploader.email }}{% else %}—{% endif %}
+                </td>
+                {% endif %}
+                <td class="px-4 py-3 text-slate-500">{{ doc.uploaded_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                <td class="px-4 py-3">{{ status_pill(doc.status) }}</td>
+                <td class="px-4 py-3 text-right">
+                    <a href="/documents/{{ doc.id }}" class="text-slate-600 hover:text-slate-900">Details &rarr;</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="{{ 5 if show_uploader else 4 }}" class="px-4 py-10 text-center text-slate-400">Noch keine Dokumente hochgeladen.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

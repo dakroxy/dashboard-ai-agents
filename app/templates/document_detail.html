@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_pill %}
+{% block content %}
+<div class="mb-6 flex items-center justify-between gap-4">
+    <a href="/documents/" class="text-sm text-slate-500 hover:text-slate-900 shrink-0">&larr; Alle Dokumente</a>
+    <div class="text-xs text-slate-500 truncate text-right">
+        <span class="font-medium text-slate-700 truncate">{{ document.original_filename }}</span>
+        &middot; {{ document.uploaded_at.strftime("%Y-%m-%d %H:%M") }}
+        &middot; {{ (document.size_bytes / 1024) | round(0) | int }} KB
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-6 items-start">
+    <div class="lg:sticky lg:top-6">
+        <div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+            <iframe src="/documents/{{ document.id }}/file#view=FitH&pagemode=none&toolbar=1"
+                    class="w-full h-[calc(100vh-8rem)] block"
+                    title="PDF"></iframe>
+        </div>
+    </div>
+
+    <div class="space-y-6">
+        {% include "_extraction_block.html" %}
+        {% include "_chat_block.html" %}
+    </div>
+</div>
+{% endblock %}

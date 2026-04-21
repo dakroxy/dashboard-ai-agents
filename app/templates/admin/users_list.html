@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold">User</h1>
+        <p class="text-sm text-slate-500 mt-1">Rollen und Per-User-Berechtigungen verwalten.</p>
+    </div>
+    <a href="/admin" class="text-sm text-slate-500 hover:text-slate-900">&larr; Admin</a>
+</div>
+
+<div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-semibold">Email</th>
+                <th class="text-left px-4 py-3 font-semibold">Name</th>
+                <th class="text-left px-4 py-3 font-semibold">Rolle</th>
+                <th class="text-left px-4 py-3 font-semibold">Letzter Login</th>
+                <th class="text-left px-4 py-3 font-semibold">Status</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr class="border-t border-slate-100 hover:bg-slate-50">
+                <td class="px-4 py-3 font-medium">{{ u.email }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ u.name }}</td>
+                <td class="px-4 py-3">
+                    {% if u.role %}
+                        <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">{{ u.role.name }}</span>
+                    {% else %}
+                        <span class="text-xs text-slate-400">—</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-slate-500 text-xs">
+                    {% if u.last_login_at %}{{ u.last_login_at.strftime("%Y-%m-%d %H:%M") }}{% else %}nie{% endif %}
+                </td>
+                <td class="px-4 py-3">
+                    {% if u.disabled_at %}
+                        <span class="text-xs px-2 py-0.5 rounded bg-rose-50 text-rose-700">deaktiviert</span>
+                    {% else %}
+                        <span class="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">aktiv</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-right">
+                    <a href="/admin/users/{{ u.id }}" class="text-slate-600 hover:text-slate-900">Bearbeiten &rarr;</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="px-4 py-10 text-center text-slate-400">Keine User.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6">
+    <a href="/workflows/" class="text-sm text-slate-500 hover:text-slate-900">&larr; Workflows</a>
+</div>
+
+<form action="/workflows/{{ workflow.key }}" method="post" class="space-y-5 max-w-4xl">
+    <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-4">
+        <h1 class="text-xl font-semibold">{{ workflow.name }}</h1>
+
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Name</label>
+            <input type="text"
+                   name="name"
+                   value="{{ workflow.name }}"
+                   required
+                   class="w-full rounded-md border border-slate-200 p-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400">
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Erkennungsmodell</label>
+                <select name="model"
+                        class="w-full rounded-md border border-slate-200 p-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-slate-400">
+                    {% for m_id, m_label in available_models %}
+                    <option value="{{ m_id }}" {% if m_id == workflow.model %}selected{% endif %}>{{ m_label }}</option>
+                    {% endfor %}
+                </select>
+                <p class="mt-1 text-xs text-slate-500">Wird beim initialen PDF-Extract verwendet.</p>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Chat-Modell</label>
+                <select name="chat_model"
+                        class="w-full rounded-md border border-slate-200 p-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-slate-400">
+                    {% for m_id, m_label in available_models %}
+                    <option value="{{ m_id }}" {% if m_id == workflow.chat_model %}selected{% endif %}>{{ m_label }}</option>
+                    {% endfor %}
+                </select>
+                <p class="mt-1 text-xs text-slate-500">Beantwortet R&uuml;ckfragen / Korrekturen. Haiku nicht empfohlen &mdash; scheitert an 20+stelligen Ziffern.</p>
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Beschreibung</label>
+            <textarea name="description"
+                      rows="2"
+                      class="w-full rounded-md border border-slate-200 p-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400">{{ workflow.description }}</textarea>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-2">
+        <div class="flex items-baseline justify-between">
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide">System-Prompt</label>
+            <span class="text-xs text-slate-400">Wird beim Extrahieren genutzt</span>
+        </div>
+        <p class="text-xs text-slate-500">
+            Vorsicht bei Feldnamen im JSON-Schema &mdash; diese werden
+            serverseitig beim Parsen erwartet. Format und Struktur bleiben, Regeln
+            und Formulierungen kannst du anpassen.
+        </p>
+        <textarea name="system_prompt"
+                  rows="22"
+                  required
+                  class="w-full rounded-md border border-slate-200 p-3 text-xs font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-slate-400">{{ workflow.system_prompt }}</textarea>
+    </div>
+
+    <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-2">
+        <div class="flex items-baseline justify-between">
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide">Lernnotizen</label>
+            <span class="text-xs text-slate-400">wird dem Prompt angeh&auml;ngt</span>
+        </div>
+        <p class="text-xs text-slate-500">
+            Zus&auml;tzliche Regeln aus bisherigen Korrekturen. Wird dem System-Prompt
+            bei jeder Extraktion &amp; Chat-Antwort angeh&auml;ngt. So l&auml;sst sich
+            der Agent &uuml;ber die Zeit gezielt schaerfen, ohne den Haupt-Prompt zu
+            &auml;ndern.
+        </p>
+        <textarea name="learning_notes"
+                  rows="8"
+                  placeholder="Noch keine Lernnotizen."
+                  class="w-full rounded-md border border-slate-200 p-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400">{{ workflow.learning_notes }}</textarea>
+    </div>
+
+    <div class="flex items-center justify-between">
+        <span class="text-xs text-slate-400">
+            Key <code class="font-mono">{{ workflow.key }}</code>
+            &middot; zuletzt bearbeitet {{ workflow.updated_at.strftime("%Y-%m-%d %H:%M") }}
+        </span>
+        <button type="submit"
+                class="rounded-md bg-slate-900 text-white px-5 py-2 text-sm font-medium hover:bg-slate-800">
+            Speichern
+        </button>
+    </div>
+</form>
+{% endblock %}

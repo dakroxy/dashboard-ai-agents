@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-semibold">Workflows</h1>
+    <p class="text-sm text-slate-500 mt-1">Einstellungen pro KI-Agent: Modell, System-Prompt, Lernnotizen.</p>
+</div>
+
+<div class="space-y-3">
+    {% for wf in workflows %}
+    <a href="/workflows/{{ wf.key }}"
+       class="block rounded-lg bg-white border border-slate-200 p-5 hover:border-slate-300 transition">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                    <h2 class="font-semibold text-slate-800">{{ wf.name }}</h2>
+                    {% if not wf.active %}
+                    <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500">inaktiv</span>
+                    {% endif %}
+                </div>
+                {% if wf.description %}
+                <p class="text-sm text-slate-500 mt-1">{{ wf.description }}</p>
+                {% endif %}
+            </div>
+            <div class="shrink-0 text-right text-xs text-slate-400 space-y-1">
+                <div class="font-mono">{{ wf.model }}</div>
+                <div>bearbeitet {{ wf.updated_at.strftime("%Y-%m-%d %H:%M") }}</div>
+            </div>
+        </div>
+    </a>
+    {% else %}
+    <div class="rounded-lg bg-white border border-slate-200 p-10 text-center text-slate-400">
+        Keine Workflows angelegt.
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

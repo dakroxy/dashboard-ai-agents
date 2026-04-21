@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6">
+    <a href="/admin/users" class="text-sm text-slate-500 hover:text-slate-900">&larr; User</a>
+</div>
+
+<div class="rounded-lg bg-white border border-slate-200 p-5 mb-5">
+    <div class="flex items-start justify-between gap-4">
+        <div>
+            <h1 class="text-xl font-semibold">{{ target.email }}</h1>
+            <p class="text-sm text-slate-500 mt-0.5">{{ target.name }}</p>
+            <div class="mt-2 text-xs text-slate-400 space-x-3">
+                <span>angelegt {{ target.created_at.strftime("%Y-%m-%d %H:%M") }}</span>
+                {% if target.last_login_at %}
+                <span>&middot;</span>
+                <span>letzter Login {{ target.last_login_at.strftime("%Y-%m-%d %H:%M") }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="text-right">
+            {% if target.disabled_at %}
+                <span class="inline-block text-xs px-2 py-0.5 rounded bg-rose-50 text-rose-700 mb-2">deaktiviert</span>
+                {% if not is_self %}
+                <form action="/admin/users/{{ target.id }}/enable" method="post">
+                    <button class="text-sm text-emerald-700 hover:underline">Aktivieren</button>
+                </form>
+                {% endif %}
+            {% else %}
+                <span class="inline-block text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 mb-2">aktiv</span>
+                {% if not is_self %}
+                <form action="/admin/users/{{ target.id }}/disable" method="post"
+                      onsubmit="return confirm('User wirklich deaktivieren?');">
+                    <button class="text-sm text-rose-700 hover:underline">Deaktivieren</button>
+                </form>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<form action="/admin/users/{{ target.id }}" method="post" class="space-y-5 max-w-4xl">
+    <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-4">
+        <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Rolle</h2>
+        <div>
+            <select name="role_id" class="w-full rounded-md border border-slate-200 p-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-slate-400">
+                <option value="" {% if not target.role_id %}selected{% endif %}>— keine Rolle —</option>
+                {% for r in roles %}
+                <option value="{{ r.id }}" {% if target.role_id == r.id %}selected{% endif %}>
+                    {{ r.name }}{% if r.is_system_role %} (System){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <p class="text-xs text-slate-500 mt-1">
+                Die Rolle legt die Basis-Berechtigungen fest. Unten kannst du sie pro User erweitern oder einschraenken.
+            </p>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-4">
+        <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Per-User-Berechtigungen</h2>
+        <p class="text-xs text-slate-500">
+            <span class="font-medium">Extra erlauben</span> gewaehrt eine Permission zusaetzlich zur Rolle.
+            <span class="font-medium">Verbieten</span> entzieht eine Permission, selbst wenn die Rolle sie gaebe.
+            Bei Konflikt gewinnt <em>Verbieten</em>.
+        </p>
+        <div class="space-y-5">
+            {% for group, perms in permissions_by_group.items() %}
+            <div>
+                <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{{ group }}</div>
+                <div class="border border-slate-200 rounded-md overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead class="text-xs uppercase tracking-wide text-slate-400 bg-slate-50">
+                            <tr>
+                                <th class="text-left px-3 py-2 font-medium">Berechtigung</th>
+                                <th class="text-center px-3 py-2 font-medium w-24">Effektiv</th>
+                                <th class="text-center px-3 py-2 font-medium w-28">Extra</th>
+                                <th class="text-center px-3 py-2 font-medium w-28">Verbieten</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in perms %}
+                            <tr class="border-t border-slate-100">
+                                <td class="px-3 py-2">
+                                    <div>{{ p.label }}</div>
+                                    <div class="text-xs font-mono text-slate-400">{{ p.key }}</div>
+                                </td>
+                                <td class="px-3 py-2 text-center">
+                                    {% if p.key in effective %}
+                                        <span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+                                    {% else %}
+                                        <span class="inline-block h-2 w-2 rounded-full bg-slate-200"></span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-3 py-2 text-center">
+                                    <input type="checkbox" name="permissions_extra" value="{{ p.key }}"
+                                           {% if p.key in (target.permissions_extra or []) %}checked{% endif %}>
+                                </td>
+                                <td class="px-3 py-2 text-center">
+                                    <input type="checkbox" name="permissions_denied" value="{{ p.key }}"
+                                           {% if p.key in (target.permissions_denied or []) %}checked{% endif %}>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-3">
+        <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Workflow-Zugriff</h2>
+        <p class="text-xs text-slate-500">
+            Standard: der Zugriff richtet sich nach der Rolle. Per User kannst du einzelne Workflows explizit erlauben oder verbieten.
+        </p>
+        <div class="border border-slate-200 rounded-md overflow-hidden">
+            <table class="w-full text-sm">
+                <thead class="text-xs uppercase tracking-wide text-slate-400 bg-slate-50">
+                    <tr>
+                        <th class="text-left px-3 py-2 font-medium">Workflow</th>
+                        <th class="text-center px-3 py-2 font-medium w-40">Status</th>
+                        <th class="text-right px-3 py-2 font-medium w-80">User-Override</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for wf in workflows %}
+                    {% set current = wf_override_map.get(wf.id, "default") %}
+                    <tr class="border-t border-slate-100">
+                        <td class="px-3 py-2">
+                            <div class="font-medium">{{ wf.name }}</div>
+                            <div class="text-xs font-mono text-slate-400">{{ wf.key }}</div>
+                        </td>
+                        <td class="px-3 py-2 text-center">
+                            {% if current == "allow" %}
+                                <span class="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">User: erlauben</span>
+                            {% elif current == "deny" %}
+                                <span class="text-xs px-2 py-0.5 rounded bg-rose-50 text-rose-700">User: verbieten</span>
+                            {% elif wf.id in role_workflow_ids %}
+                                <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">durch Rolle</span>
+                            {% else %}
+                                <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-400">kein Zugriff</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-2">
+                            <div class="flex justify-end gap-3 text-xs">
+                                <label class="inline-flex items-center gap-1">
+                                    <input type="radio" name="wf_{{ wf.id }}" value="default" {% if current == "default" %}checked{% endif %}>
+                                    <span>Rolle</span>
+                                </label>
+                                <label class="inline-flex items-center gap-1">
+                                    <input type="radio" name="wf_{{ wf.id }}" value="allow" {% if current == "allow" %}checked{% endif %}>
+                                    <span>Erlauben</span>
+                                </label>
+                                <label class="inline-flex items-center gap-1">
+                                    <input type="radio" name="wf_{{ wf.id }}" value="deny" {% if current == "deny" %}checked{% endif %}>
+                                    <span>Verbieten</span>
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-3">
+        <a href="/admin/users" class="text-sm text-slate-500 hover:text-slate-900">Abbrechen</a>
+        <button type="submit"
+                class="rounded-md bg-slate-900 text-white px-5 py-2 text-sm font-medium hover:bg-slate-800">
+            Speichern
+        </button>
+    </div>
+</form>
+{% endblock %}

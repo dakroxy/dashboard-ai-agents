@@ -1,0 +1,231 @@
+{% from "_macros.html" import status_pill %}
+{% set polling_statuses = ["uploaded", "extracting", "matching", "approved", "writing"] %}
+<div id="extraction-block"
+     {% if oob %}hx-swap-oob="outerHTML"{% endif %}
+     {% if document.status in polling_statuses %}
+     hx-get="/documents/{{ document.id }}/status"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}
+     class="rounded-lg bg-white border border-slate-200 p-5">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">KI-Extraktion</h2>
+        {{ status_pill(document.status) }}
+    </div>
+
+    {% if document.status in ["uploaded", "extracting"] %}
+        <div class="flex items-center gap-3 text-slate-500">
+            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+            </svg>
+            <span class="text-sm">Claude liest das Dokument&hellip;</span>
+        </div>
+
+    {% elif document.status == "matching" %}
+        <div class="flex items-center gap-3 text-slate-500">
+            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+            </svg>
+            <span class="text-sm">Suche Eigent&uuml;mer in Impower&hellip;</span>
+        </div>
+
+    {% elif document.status in ["approved", "writing"] %}
+        <div class="flex items-center gap-3 text-slate-500">
+            <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+            </svg>
+            <span class="text-sm">Mandat wird in Impower geschrieben&hellip;</span>
+        </div>
+
+    {% elif document.status == "failed" or (extraction and extraction.error and not extraction.extracted) %}
+        <div class="text-sm text-red-700">
+            Die Extraktion ist fehlgeschlagen.
+            {% if extraction and extraction.error %}
+            <div class="text-xs text-red-500 mt-2 font-mono break-all whitespace-pre-wrap">{{ extraction.error }}</div>
+            {% endif %}
+        </div>
+
+    {% elif extraction and extraction.extracted %}
+        {# Extraktions-Felder #}
+        <dl class="grid grid-cols-1 gap-x-5 gap-y-3 text-sm">
+            {% set fields = [
+                ("WEG-K&uuml;rzel", "weg_kuerzel"),
+                ("WEG", "weg_name"),
+                ("Adresse WEG", "weg_adresse"),
+                ("Einheit", "unit_nr"),
+                ("Eigent&uuml;mer", "owner_name"),
+                ("IBAN", "iban"),
+                ("BIC", "bic"),
+                ("Bank", "bank_name"),
+                ("SEPA-Datum", "sepa_date"),
+                ("Gl&auml;ubiger-ID", "creditor_id")
+            ] %}
+            {% for label, key in fields %}
+            <div class="grid grid-cols-[8rem_1fr] items-baseline gap-3">
+                <dt class="text-xs text-slate-400 uppercase tracking-wide">{{ label | safe }}</dt>
+                <dd class="{% if not extraction.extracted.get(key) %}text-slate-300 italic{% else %}font-mono text-slate-800 break-words{% endif %}">
+                    {% if not extraction.extracted.get(key) %}
+                        &mdash;
+                    {% elif key == "iban" %}
+                        {{ extraction.extracted[key] | iban_format }}
+                    {% else %}
+                        {{ extraction.extracted[key] }}
+                    {% endif %}
+                </dd>
+            </div>
+            {% endfor %}
+        </dl>
+        {% if extraction.extracted.get("notes") %}
+        <div class="mt-4 pt-4 border-t border-slate-100">
+            <dt class="text-xs text-slate-400 uppercase tracking-wide">Hinweise der KI</dt>
+            <dd class="mt-1 text-sm text-slate-600">{{ extraction.extracted["notes"] }}</dd>
+        </div>
+        {% endif %}
+        <div class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
+            Modell {{ extraction.model }} &middot; Konfidenz
+            <span class="font-medium text-slate-500">{{ extraction.extracted.get("confidence", "?") }}</span>
+            &middot; {{ extraction.created_at.strftime("%Y-%m-%d %H:%M") }}
+        </div>
+
+        {# Matching-Ergebnis #}
+        {% if document.matching_result %}
+        {% set mr = document.matching_result %}
+        <div class="mt-4 pt-4 border-t border-slate-100">
+            <div class="text-xs text-slate-400 uppercase tracking-wide mb-2">Impower-Matching</div>
+            {% if mr.get("error") %}
+                <p class="text-xs text-red-600">{{ mr["error"] }}</p>
+            {% else %}
+                <dl class="grid grid-cols-1 gap-y-2 text-sm">
+                    <div class="grid grid-cols-[8rem_1fr] items-baseline gap-3">
+                        <dt class="text-xs text-slate-400 uppercase tracking-wide">Objekt</dt>
+                        {% if mr.get("property") %}
+                        <dd class="text-slate-800">
+                            <span class="font-mono">{{ mr["property"]["property_hr_id"] }}</span>
+                            &nbsp;{{ mr["property"]["property_name"] }}
+                            <span class="text-xs text-slate-400 ml-1">(Score {{ "%.0f"|format(mr["property"]["score"] * 100) }}%)</span>
+                        </dd>
+                        {% else %}
+                        <dd class="text-red-500 italic">nicht gefunden</dd>
+                        {% endif %}
+                    </div>
+                    <div class="grid grid-cols-[8rem_1fr] items-baseline gap-3">
+                        <dt class="text-xs text-slate-400 uppercase tracking-wide">Kontakt</dt>
+                        {% if mr.get("contact") %}
+                        <dd class="text-slate-800">
+                            {{ mr["contact"]["display_name"] }}
+                            <span class="text-xs text-slate-400 ml-1">(Score {{ "%.0f"|format(mr["contact"]["score"] * 100) }}%)</span>
+                            {% if mr["contact"]["open_contract_ids"] %}
+                            <span class="text-xs text-emerald-600 ml-1">{{ mr["contact"]["open_contract_ids"]|length }} offene Vertr&auml;ge</span>
+                            {% else %}
+                            <span class="text-xs text-amber-600 ml-1">keine offenen Vertr&auml;ge</span>
+                            {% endif %}
+                        </dd>
+                        {% else %}
+                        <dd class="text-red-500 italic">nicht gefunden</dd>
+                        {% endif %}
+                    </div>
+                </dl>
+                {% if mr.get("ambiguous") %}
+                <p class="text-xs text-amber-700 mt-2">&#9888; Mehrdeutiges Matching &mdash; bitte pr&uuml;fen.</p>
+                {% endif %}
+                {% for note in (mr.get("notes") or []) %}
+                <p class="text-xs text-slate-500 mt-1">{{ note }}</p>
+                {% endfor %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {# Impower-Schreibergebnis #}
+        {% if document.impower_result %}
+        {% set ir = document.impower_result %}
+        <div class="mt-4 pt-4 border-t border-slate-100">
+            <div class="text-xs text-slate-400 uppercase tracking-wide mb-2">Impower-Schreibpfad</div>
+            {% if ir.get("error") %}
+                <div class="flex items-start gap-2 text-sm text-red-700">
+                    <span class="shrink-0">&#10007;</span>
+                    <span>{{ ir["error"] }}</span>
+                </div>
+            {% elif ir.get("already_present") %}
+                <div class="flex items-start gap-2 text-sm text-emerald-800">
+                    <span class="shrink-0">&#10003;</span>
+                    <span>
+                        Mandat bereits mit dieser IBAN eingetragen &mdash; nichts ge&auml;ndert.
+                        <span class="text-xs text-slate-500 ml-1">
+                            (Mandat-ID {{ ir.get("direct_debit_mandate_id") }}, Bank-Account-ID {{ ir.get("bank_account_id") }})
+                        </span>
+                    </span>
+                </div>
+            {% else %}
+                <ul class="text-sm text-emerald-800 space-y-1">
+                    <li>&#10003; Bank-Account
+                        {% if ir.get("bank_account_created") %}neu angelegt{% else %}bereits vorhanden{% endif %}
+                        (ID {{ ir.get("bank_account_id") }})
+                    </li>
+                    <li>&#10003; Direct-Debit-Mandat angelegt (ID {{ ir.get("direct_debit_mandate_id") }})</li>
+                    {% if ir.get("unit_contract_mandate_ids") %}
+                    <li>&#10003; {{ ir["unit_contract_mandate_ids"]|length }}
+                        Vertrag{% if ir["unit_contract_mandate_ids"]|length != 1 %}sverkn&uuml;pfungen{% else %}sverkn&uuml;pfung{% endif %}
+                        erstellt
+                    </li>
+                    {% endif %}
+                </ul>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {# Aktions-Bereich #}
+        {% if document.status in ["extracted", "needs_review", "matched"] %}
+        <div class="mt-5 pt-4 border-t border-slate-100">
+            {% if document.status == "needs_review" %}
+            <p class="text-xs text-amber-700 mb-3">
+                &#9888; Bitte Extraktion und Matching pr&uuml;fen. Bei Korrekturen den Chat nutzen.
+            </p>
+            {% endif %}
+            <form action="/documents/{{ document.id }}/approve" method="post">
+                <button type="submit"
+                        class="w-full rounded-md
+                            {% if document.status == 'matched' %}bg-emerald-600 hover:bg-emerald-700
+                            {% else %}bg-amber-600 hover:bg-amber-700{% endif %}
+                            text-white px-4 py-2 text-sm font-medium">
+                    &#10003; Freigeben &amp; in Impower schreiben
+                </button>
+            </form>
+        </div>
+
+        {% elif document.status == "error" %}
+        <div class="mt-5 pt-4 border-t border-slate-100">
+            <p class="text-xs text-slate-500 mb-3">
+                Fehler behoben? Extraktion im Chat korrigieren, dann erneut freigeben.
+            </p>
+            <form action="/documents/{{ document.id }}/approve" method="post">
+                <button type="submit"
+                        class="w-full rounded-md bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 text-sm font-medium">
+                    Erneut versuchen
+                </button>
+            </form>
+        </div>
+
+        {% elif document.status == "written" %}
+        <div class="mt-5 pt-4 border-t border-slate-100 flex items-center gap-2 text-sm text-emerald-700">
+            <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.41 0l-4-4a1 1 0 011.41-1.41L8 12.58l7.29-7.29a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            Mandat erfolgreich in Impower gespeichert.
+        </div>
+
+        {% elif document.status == "already_present" %}
+        <div class="mt-5 pt-4 border-t border-slate-100 flex items-center gap-2 text-sm text-emerald-700">
+            <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.41 0l-4-4a1 1 0 011.41-1.41L8 12.58l7.29-7.29a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            Mandat bereits in Impower vorhanden &mdash; nichts ge&auml;ndert.
+        </div>
+        {% endif %}
+
+    {% else %}
+        <div class="text-sm text-slate-500">Kein Extraktions-Ergebnis verf&uuml;gbar.</div>
+    {% endif %}
+</div>

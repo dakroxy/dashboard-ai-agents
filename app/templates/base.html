@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} · DBS Home</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+<div class="flex min-h-screen">
+
+    {% if user %}
+    <!-- ============================ Sidebar ============================ -->
+    <aside class="w-60 bg-slate-900 text-slate-300 flex flex-col shrink-0">
+        <!-- Logo / Brand -->
+        <div class="px-6 py-5 border-b border-slate-800">
+            <a href="/" class="block text-white leading-tight">
+                <div class="text-base font-semibold tracking-tight">Dashboard</div>
+                <div class="text-xs text-slate-400 font-normal">KI-Agenten &middot; DBS Home</div>
+            </a>
+        </div>
+
+        <!-- Nav -->
+        <nav class="flex-1 py-4">
+            {% set path = request.url.path %}
+
+            {# Dashboard #}
+            {% set active = path == "/" %}
+            <a href="/"
+               class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
+                      {% if active %}bg-slate-800 text-white border-emerald-400
+                      {% else %}text-slate-300 hover:bg-slate-800 hover:text-white border-transparent{% endif %}">
+                <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10"/>
+                </svg>
+                Dashboard
+            </a>
+
+            {# Workflows (Konfiguration) #}
+            {% if has_permission(user, "workflows:view") %}
+            {% set active = path.startswith("/workflows") %}
+            <a href="/workflows/"
+               class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
+                      {% if active %}bg-slate-800 text-white border-emerald-400
+                      {% else %}text-slate-300 hover:bg-slate-800 hover:text-white border-transparent{% endif %}">
+                <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Workflows
+            </a>
+            {% endif %}
+
+            {# Admin #}
+            {% if has_permission(user, "users:manage") or has_permission(user, "audit_log:view") %}
+            {% set active = path.startswith("/admin") %}
+            <a href="/admin"
+               class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
+                      {% if active %}bg-slate-800 text-white border-emerald-400
+                      {% else %}text-slate-300 hover:bg-slate-800 hover:text-white border-transparent{% endif %}">
+                <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+                Admin
+            </a>
+            {% endif %}
+        </nav>
+
+        <!-- User block -->
+        <div class="border-t border-slate-800 p-4">
+            <div class="flex items-center gap-3 mb-3 min-w-0">
+                {% if user.picture %}
+                <img src="{{ user.picture }}" alt=""
+                     class="h-8 w-8 rounded-full border border-slate-700 shrink-0">
+                {% else %}
+                <div class="h-8 w-8 rounded-full bg-slate-700 shrink-0"></div>
+                {% endif %}
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm text-white truncate">{{ user.name }}</div>
+                    <div class="text-xs text-slate-500 truncate">{{ user.email }}</div>
+                </div>
+            </div>
+            <a href="/auth/logout"
+               class="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors">
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                Abmelden
+            </a>
+        </div>
+    </aside>
+    {% endif %}
+
+    <!-- ============================ Main ============================ -->
+    <main class="flex-1 min-w-0">
+        <div class="mx-auto max-w-6xl px-6 py-8">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+</div>
+</body>
+</html>

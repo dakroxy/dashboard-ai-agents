@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold">Rollen</h1>
+        <p class="text-sm text-slate-500 mt-1">Berechtigungs-Bundles fuer User.</p>
+    </div>
+    <div class="flex items-center gap-4">
+        <a href="/admin" class="text-sm text-slate-500 hover:text-slate-900">&larr; Admin</a>
+        <a href="/admin/roles/new"
+           class="rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-800">
+            Neue Rolle
+        </a>
+    </div>
+</div>
+
+<div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-semibold">Name</th>
+                <th class="text-left px-4 py-3 font-semibold">Key</th>
+                <th class="text-left px-4 py-3 font-semibold">Permissions</th>
+                <th class="text-left px-4 py-3 font-semibold">User</th>
+                <th class="text-left px-4 py-3 font-semibold">Typ</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in roles %}
+            <tr class="border-t border-slate-100 hover:bg-slate-50">
+                <td class="px-4 py-3 font-medium">{{ r.name }}</td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-500">{{ r.key }}</td>
+                <td class="px-4 py-3 text-slate-500">{{ r.permissions|length }}</td>
+                <td class="px-4 py-3 text-slate-500">{{ user_counts.get(r.id, 0) }}</td>
+                <td class="px-4 py-3">
+                    {% if r.is_system_role %}
+                        <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">System</span>
+                    {% else %}
+                        <span class="text-xs px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">Custom</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-right">
+                    <a href="/admin/roles/{{ r.id }}" class="text-slate-600 hover:text-slate-900">Bearbeiten &rarr;</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

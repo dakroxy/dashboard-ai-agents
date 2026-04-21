@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold">Audit-Log</h1>
+        <p class="text-sm text-slate-500 mt-1">Wer hat wann was gemacht. Letzte 500 Eintraege werden angezeigt.</p>
+    </div>
+    <a href="/admin" class="text-sm text-slate-500 hover:text-slate-900">&larr; Admin</a>
+</div>
+
+<form method="get" class="rounded-lg bg-white border border-slate-200 p-4 mb-5">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Email</label>
+            <input type="text" name="user_email" value="{{ filter_user_email }}"
+                   placeholder="enthaelt…"
+                   class="w-full rounded-md border border-slate-200 p-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400">
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Action</label>
+            <select name="action" class="w-full rounded-md border border-slate-200 p-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-slate-400">
+                <option value="">— alle —</option>
+                {% for a in distinct_actions %}
+                <option value="{{ a }}" {% if a == filter_action %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Von</label>
+            <input type="date" name="from" value="{{ filter_from }}"
+                   class="w-full rounded-md border border-slate-200 p-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400">
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Bis</label>
+            <input type="date" name="to" value="{{ filter_to }}"
+                   class="w-full rounded-md border border-slate-200 p-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400">
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="submit" class="rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-800">
+                Filtern
+            </button>
+            <a href="/admin/logs" class="text-sm text-slate-500 hover:text-slate-900">Reset</a>
+        </div>
+    </div>
+</form>
+
+<div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-semibold">Zeit</th>
+                <th class="text-left px-4 py-3 font-semibold">Action</th>
+                <th class="text-left px-4 py-3 font-semibold">User</th>
+                <th class="text-left px-4 py-3 font-semibold">Entity</th>
+                <th class="text-left px-4 py-3 font-semibold">Details</th>
+                <th class="text-left px-4 py-3 font-semibold">IP</th>
+                {% if can_delete %}<th class="px-4 py-3"></th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr class="border-t border-slate-100 align-top hover:bg-slate-50">
+                <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                    {{ log.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+                </td>
+                <td class="px-4 py-3 font-mono text-xs">{{ log.action }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ log.user_email or "—" }}</td>
+                <td class="px-4 py-3 text-xs text-slate-500">
+                    {% if log.entity_type %}
+                        <span class="font-medium">{{ log.entity_type }}</span>
+                        {% if log.entity_id %}
+                        <br><span class="font-mono text-slate-400">{{ log.entity_id }}</span>
+                        {% endif %}
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3">
+                    {% if log.details_json %}
+                    <details class="text-xs">
+                        <summary class="cursor-pointer text-slate-600 hover:text-slate-900">anzeigen</summary>
+                        <pre class="mt-1 p-2 bg-slate-50 rounded font-mono text-[11px] leading-snug overflow-x-auto max-w-lg">{{ log.details_json|tojson(indent=2) }}</pre>
+                    </details>
+                    {% else %}
+                    <span class="text-xs text-slate-400">—</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-xs text-slate-400 font-mono">{{ log.ip_address or "" }}</td>
+                {% if can_delete %}
+                <td class="px-4 py-3 text-right">
+                    <form action="/admin/logs/{{ log.id }}/delete" method="post"
+                          onsubmit="return confirm('Eintrag loeschen?');">
+                        <button class="text-xs text-rose-700 hover:underline">Loeschen</button>
+                    </form>
+                </td>
+                {% endif %}
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="{{ 7 if can_delete else 6 }}" class="px-4 py-10 text-center text-slate-400">
+                    Keine Eintraege.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

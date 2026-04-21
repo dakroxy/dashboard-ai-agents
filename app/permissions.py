@@ -1,0 +1,227 @@
+"""Permissions-Registry und Helper fuer Rollen-/Resource-basierten Zugriff.
+
+Zwei Ebenen:
+
+1. Flache Permission-Keys (string) — granulare Feature-Berechtigungen.
+   Resolvierung: Role.permissions ∪ User.permissions_extra \\ User.permissions_denied.
+
+2. Resource-Access via ResourceAccess-Tabelle — Workflow/Objekt/Task/CRM-Sichtbarkeit.
+   User-Overrides (allow/deny) gewinnen immer ueber Role-Defaults.
+
+Jedes neue Modul registriert seine Permission-Keys in PERMISSIONS und
+nutzt ggf. einen neuen RESOURCE_TYPE_*-Konstanten.
+"""
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.auth import get_current_user
+from app.db import get_db
+from app.models import ResourceAccess, User, Workflow
+
+
+# ---------------------------------------------------------------------------
+# Permission-Registry
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Permission:
+    key: str
+    label: str
+    group: str
+
+
+PERMISSIONS: list[Permission] = [
+    # Dokumente
+    Permission("documents:upload", "Dokumente hochladen", "Dokumente"),
+    Permission(
+        "documents:view_all",
+        "Alle Dokumente sehen (auch von anderen Usern)",
+        "Dokumente",
+    ),
+    Permission("documents:approve", "Dokumente freigeben / Impower-Schreibpfad ausloesen", "Dokumente"),
+    Permission("documents:delete", "Dokumente loeschen", "Dokumente"),
+    # Workflows
+    Permission("workflows:view", "Workflow-Uebersicht ansehen", "Workflows"),
+    Permission("workflows:edit", "Workflows/Prompts editieren", "Workflows"),
+    # Admin
+    Permission("users:manage", "User und Rollen verwalten", "Admin"),
+    Permission("audit_log:view", "Audit-Log ansehen", "Admin"),
+    Permission("audit_log:delete", "Audit-Log-Eintraege loeschen", "Admin"),
+    Permission("impower:debug", "Impower-Debug-Endpoints nutzen", "Admin"),
+]
+
+PERMISSION_KEYS: frozenset[str] = frozenset(p.key for p in PERMISSIONS)
+
+PERMISSIONS_BY_GROUP: dict[str, list[Permission]] = {}
+for _p in PERMISSIONS:
+    PERMISSIONS_BY_GROUP.setdefault(_p.group, []).append(_p)
+
+
+# Resource-Types — erweitert sich pro neuem Modul.
+RESOURCE_TYPE_WORKFLOW = "workflow"
+
+
+# Defaults fuers Seeding der System-Rollen.
+DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
+    "admin": sorted(PERMISSION_KEYS),
+    "user": sorted(
+        [
+            "documents:upload",
+            "documents:view_all",
+            "documents:approve",
+            "workflows:view",
+        ]
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# Permission-Checks
+# ---------------------------------------------------------------------------
+
+def effective_permissions(user: User) -> set[str]:
+    """Wirksame Permissions: Role-Defaults + extra - denied."""
+    if user.disabled_at is not None:
+        return set()
+    base: set[str] = set()
+    if user.role is not None:
+        base.update(user.role.permissions or [])
+    base.update(user.permissions_extra or [])
+    for denied in user.permissions_denied or []:
+        base.discard(denied)
+    return base
+
+
+def has_permission(user: User | None, key: str) -> bool:
+    if user is None:
+        return False
+    return key in effective_permissions(user)
+
+
+def require_permission(key: str):
+    """FastAPI-Dependency: gibt den User zurueck ODER wirft 403."""
+
+    def dep(user: User = Depends(get_current_user)) -> User:
+        if not has_permission(user, key):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Keine Berechtigung: {key}",
+            )
+        return user
+
+    return dep
+
+
+def require_any_permission(*keys: str):
+    """Wie require_permission, aber erlaubt mehrere Alternativ-Keys."""
+
+    def dep(user: User = Depends(get_current_user)) -> User:
+        effective = effective_permissions(user)
+        if not any(k in effective for k in keys):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Keine Berechtigung: {' oder '.join(keys)}",
+            )
+        return user
+
+    return dep
+
+
+# ---------------------------------------------------------------------------
+# Resource-Access
+# ---------------------------------------------------------------------------
+
+def can_access_resource(
+    db: Session,
+    user: User,
+    resource_type: str,
+    resource_id: uuid.UUID,
+) -> bool:
+    """Prueft, ob der User auf die Ressource zugreifen darf.
+
+    Reihenfolge: User-deny > User-allow > Role-allow (sonst kein Zugriff).
+    """
+    if user.disabled_at is not None:
+        return False
+
+    user_override = (
+        db.query(ResourceAccess)
+        .filter(
+            ResourceAccess.user_id == user.id,
+            ResourceAccess.resource_type == resource_type,
+            ResourceAccess.resource_id == resource_id,
+        )
+        .first()
+    )
+    if user_override is not None:
+        return user_override.mode == "allow"
+
+    if user.role_id is None:
+        return False
+
+    role_allow = (
+        db.query(ResourceAccess)
+        .filter(
+            ResourceAccess.role_id == user.role_id,
+            ResourceAccess.resource_type == resource_type,
+            ResourceAccess.resource_id == resource_id,
+            ResourceAccess.mode == "allow",
+        )
+        .first()
+    )
+    return role_allow is not None
+
+
+def accessible_resource_ids(
+    db: Session, user: User, resource_type: str
+) -> set[uuid.UUID]:
+    """Alle Resource-IDs eines Typs, auf die der User zugreifen darf."""
+    if user.disabled_at is not None:
+        return set()
+
+    overrides = (
+        db.query(ResourceAccess)
+        .filter(
+            ResourceAccess.user_id == user.id,
+            ResourceAccess.resource_type == resource_type,
+        )
+        .all()
+    )
+    denied: set[uuid.UUID] = set()
+    allowed: set[uuid.UUID] = set()
+    for ov in overrides:
+        if ov.mode == "allow":
+            allowed.add(ov.resource_id)
+        else:
+            denied.add(ov.resource_id)
+
+    if user.role_id is not None:
+        role_allows = (
+            db.query(ResourceAccess)
+            .filter(
+                ResourceAccess.role_id == user.role_id,
+                ResourceAccess.resource_type == resource_type,
+                ResourceAccess.mode == "allow",
+            )
+            .all()
+        )
+        for ra in role_allows:
+            if ra.resource_id not in denied:
+                allowed.add(ra.resource_id)
+
+    return allowed
+
+
+def can_access_workflow(db: Session, user: User, workflow: Workflow) -> bool:
+    return can_access_resource(
+        db, user, RESOURCE_TYPE_WORKFLOW, workflow.id
+    )
+
+
+def accessible_workflow_ids(db: Session, user: User) -> set[uuid.UUID]:
+    return accessible_resource_ids(db, user, RESOURCE_TYPE_WORKFLOW)

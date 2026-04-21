@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mietverwaltung anlegen · Mockup · DBS Home</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  [data-tab-content] { display: none; }
+  [data-tab-content].active { display: block; }
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen">
+
+<!-- ===================== Header (wie base.html) ===================== -->
+<header class="bg-white border-b border-slate-200">
+  <div class="mx-auto max-w-[1400px] px-6 py-4 flex items-center justify-between gap-6">
+    <div class="flex items-center gap-8 min-w-0">
+      <a href="#" class="text-lg font-semibold tracking-tight shrink-0">
+        Dashboard <span class="text-slate-400 font-normal">KI-Agenten</span>
+      </a>
+      <nav class="flex items-center gap-5 text-sm text-slate-600">
+        <a href="#" class="hover:text-slate-900">Dashboard</a>
+        <a href="#" class="hover:text-slate-900">Dokumente</a>
+        <a href="#" class="text-slate-900 font-medium">Mietverwaltung</a>
+        <a href="#" class="hover:text-slate-900">Workflows</a>
+      </nav>
+    </div>
+    <div class="text-sm text-slate-600 flex items-center gap-4 shrink-0">
+      <div class="flex items-center gap-2">
+        <div class="h-7 w-7 rounded-full bg-slate-300"></div>
+        <span class="text-slate-700">Daniel Kroll</span>
+      </div>
+      <a href="#" class="text-slate-500 hover:text-slate-900">Logout</a>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-[1400px] px-6 py-6">
+
+  <!-- ===================== Sub-Header ===================== -->
+  <div class="mb-6 flex items-start justify-between gap-4">
+    <div class="min-w-0">
+      <a href="#" class="text-sm text-slate-500 hover:text-slate-900">&larr; Alle Mietverwaltungs-Fälle</a>
+      <h1 class="text-2xl font-semibold mt-1">
+        MV SBA9 · <span class="font-normal text-slate-600">Senator-Braun-Allee 9, 31135 Hildesheim</span>
+      </h1>
+      <p class="text-sm text-slate-500 mt-1">
+        Fall #42 · angelegt 20.04.2026 · Status:
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-xs font-medium ml-1">in Bearbeitung</span>
+      </p>
+    </div>
+    <div class="text-right shrink-0">
+      <div class="flex items-center gap-2 justify-end text-xs">
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">● 38 erkannt</span>
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200 font-medium">● 9 unklar</span>
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 font-medium">● 14 offen</span>
+      </div>
+      <div class="mt-2 flex items-center gap-2 justify-end">
+        <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-sm hover:bg-white">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          Agent fragen
+        </button>
+        <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-700">
+          Entwurf speichern
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Two columns ===================== -->
+  <div class="grid grid-cols-1 lg:grid-cols-[1.15fr_1fr] gap-6 items-start">
+
+    <!-- ===================== LEFT: Documents ===================== -->
+    <aside class="lg:sticky lg:top-6 space-y-3">
+      <!-- Doc Tabs -->
+      <div class="flex items-center border-b border-slate-200 overflow-x-auto">
+        <button data-tab="doc-1" class="doc-tab px-3 py-2 text-sm font-medium border-b-2 border-slate-900 text-slate-900 flex items-center gap-2 shrink-0">
+          <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+          Verwaltervertrag.pdf
+        </button>
+        <button data-tab="doc-2" class="doc-tab px-3 py-2 text-sm text-slate-500 hover:text-slate-900 flex items-center gap-2 shrink-0 border-b-2 border-transparent">
+          <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+          Grundbuch.pdf
+        </button>
+        <button data-tab="doc-3" class="doc-tab px-3 py-2 text-sm text-slate-500 hover:text-slate-900 flex items-center gap-2 shrink-0 border-b-2 border-transparent">
+          <span class="h-2 w-2 rounded-full bg-amber-500"></span>
+          Mieterliste.xlsx
+        </button>
+        <button data-tab="doc-4" class="doc-tab px-3 py-2 text-sm text-slate-400 hover:text-slate-900 flex items-center gap-1.5 shrink-0 border-b-2 border-transparent ml-auto">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          hochladen
+        </button>
+      </div>
+
+      <!-- Doc Viewer -->
+      <div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+        <div class="w-full h-[calc(100vh-14rem)] flex flex-col items-center justify-center text-slate-400 text-sm bg-slate-50 border-b border-slate-100">
+          <svg class="h-12 w-12 mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          [PDF-Viewer · Verwaltervertrag.pdf]
+          <p class="text-xs mt-1 text-slate-400">inline-view kommt hier rein (wie bei Dokumenten-Detail)</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ===================== RIGHT: Form ===================== -->
+    <div class="space-y-4">
+
+      <!-- Sticky Section Nav -->
+      <div class="sticky top-4 z-10 bg-slate-50/95 backdrop-blur pt-1 pb-3 -mx-1 px-1">
+        <div class="flex items-center gap-1.5 flex-wrap text-xs">
+          <a href="#sec-verwaltung" class="px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">● 1 Verwaltung</a>
+          <a href="#sec-rechnung" class="px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200 font-medium">● 2 Rechnung</a>
+          <a href="#sec-eigentuemer" class="px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200 font-medium">● 3 Eigentümer</a>
+          <a href="#sec-gebaeude" class="px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">● 4 Gebäude</a>
+          <a href="#sec-einheiten" class="px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200 font-medium">● 5 Einheiten · 13</a>
+          <a href="#sec-vertraege" class="px-2 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 font-medium">○ 6 Verträge · 0/13</a>
+        </div>
+      </div>
+
+      <!-- ===================== 1 VERWALTUNG ===================== -->
+      <section id="sec-verwaltung" class="rounded-lg bg-white border border-slate-200">
+        <header class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold">1. Verwaltung</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Stammdaten · Verwaltungsvertrag · Sonderhonorare</p>
+          </div>
+          <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            vollständig
+          </span>
+        </header>
+        <div class="p-5 grid grid-cols-6 gap-4">
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Objekt-Nr. *</label>
+            <input type="text" value="SBA9" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+            <p class="mt-1 text-[11px] text-emerald-700 flex items-center gap-1">
+              <span class="h-1 w-1 rounded-full bg-emerald-500"></span>
+              erkannt · Verwaltervertrag S. 1
+            </p>
+          </div>
+          <div class="col-span-4">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Objektbezeichnung</label>
+            <input type="text" value="MV SBA9 Senator-Braun-Allee 9" class="w-full px-3 py-2 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600">
+            <p class="mt-1 text-[11px] text-slate-400">auto-generiert aus Nr. + Adresse (wie in Impower)</p>
+          </div>
+
+          <div class="col-span-4">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Straße & Hausnummer *</label>
+            <input type="text" value="Senator-Braun-Allee 9" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+            <p class="mt-1 text-[11px] text-emerald-700 flex items-center gap-1"><span class="h-1 w-1 rounded-full bg-emerald-500"></span>erkannt · Verwaltervertrag S. 1</p>
+          </div>
+          <div class="col-span-1">
+            <label class="block text-xs font-medium text-slate-600 mb-1">PLZ *</label>
+            <input type="text" value="31135" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+          </div>
+          <div class="col-span-1">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Land</label>
+            <select class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+              <option>DE</option><option>AT</option><option>CH</option>
+            </select>
+          </div>
+          <div class="col-span-3">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Ort *</label>
+            <input type="text" value="Hildesheim" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+          </div>
+          <div class="col-span-3">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Gläubiger-ID *</label>
+            <input type="text" value="DE71ZZZ00002822264" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm font-mono">
+            <p class="mt-1 text-[11px] text-emerald-700 flex items-center gap-1"><span class="h-1 w-1 rounded-full bg-emerald-500"></span>erkannt · Verwaltervertrag S. 4</p>
+          </div>
+
+          <div class="col-span-6 border-t border-slate-100 pt-4 mt-1">
+            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Verwaltungsvertrag</h3>
+            <div class="grid grid-cols-6 gap-4">
+              <div class="col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Verwaltungsunternehmen</label>
+                <input type="text" value="DBS Home GmbH" class="w-full px-3 py-2 rounded-md border border-slate-200 bg-slate-50 text-sm text-slate-600" readonly>
+                <p class="mt-1 text-[11px] text-slate-400">Standard</p>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Objektbetreuer *</label>
+                <select class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                  <option>Daniel Kroll</option>
+                  <option>— wählen —</option>
+                </select>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Objektbuchhalter *</label>
+                <select class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                  <option>Daniel Kroll</option>
+                </select>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Vertragsbeginn *</label>
+                <input type="date" value="2024-01-01" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                <p class="mt-1 text-[11px] text-emerald-700 flex items-center gap-1"><span class="h-1 w-1 rounded-full bg-emerald-500"></span>erkannt · Verwaltervertrag S. 3</p>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Vertragsende</label>
+                <input type="date" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                <p class="mt-1 text-[11px] text-slate-400">leer = unbefristet</p>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs font-medium text-slate-600 mb-1">Mahnung netto (€)</label>
+                <input type="number" value="15.00" step="0.01" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 2 RECHNUNGSADRESSE ===================== -->
+      <section id="sec-rechnung" class="rounded-lg bg-white border border-slate-200">
+        <header class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold">2. Rechnungsadresse</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Empfänger der Verwaltungsabrechnung (häufig = Eigentümer)</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="inline-flex items-center gap-1.5 text-xs text-slate-600">
+              <input type="checkbox" checked class="rounded border-slate-300">
+              identisch mit Objekteigentümer
+            </label>
+            <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">folgt Eigentümer</span>
+          </div>
+        </header>
+        <div class="p-5 text-sm text-slate-500">
+          Bei Haken oben werden die Daten aus Abschnitt 3 (Objekteigentümer) übernommen.
+          Haken entfernen, um abweichende Rechnungsadresse einzutragen.
+        </div>
+      </section>
+
+      <!-- ===================== 3 OBJEKTEIGENTÜMER ===================== -->
+      <section id="sec-eigentuemer" class="rounded-lg bg-white border border-slate-200">
+        <header class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold">3. Objekteigentümer</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Verknüpfung mit Impower-Kontakt · ggf. Neuanlage</p>
+          </div>
+          <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">Kontakt nicht gefunden</span>
+        </header>
+        <div class="p-5">
+          <div class="rounded-md border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+            <div class="flex items-start gap-3">
+              <svg class="h-5 w-5 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              <div class="text-sm text-amber-900">
+                <p class="font-medium">Kontakt „Schmidt Immobilien GmbH" nicht in Impower gefunden</p>
+                <p class="mt-1">Aus Grundbuch.pdf erkannt:<br>
+                  <span class="font-medium">Schmidt Immobilien GmbH</span> · Sonnenstraße 12, 30159 Hannover · HRB 123456
+                </p>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2 pt-1">
+              <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-700">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Als Unternehmen neu anlegen
+              </button>
+              <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm hover:bg-slate-50">
+                Als Person anlegen
+              </button>
+              <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm hover:bg-slate-50">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                Bestehenden Kontakt suchen
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 4 GEBÄUDE ===================== -->
+      <section id="sec-gebaeude" class="rounded-lg bg-white border border-slate-200">
+        <header class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold">4. Gebäude · 2</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Blöcke auf dem Grundstück</p>
+          </div>
+          <button class="text-xs text-slate-500 hover:text-slate-900 inline-flex items-center gap-1">
+            <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Gebäude hinzufügen
+          </button>
+        </header>
+        <div class="p-5 grid grid-cols-2 gap-3">
+          <div class="rounded-md border border-slate-200 p-3 flex items-center justify-between">
+            <div>
+              <input type="text" value="Block F" class="text-sm font-medium bg-transparent w-24">
+              <p class="text-xs text-slate-500">7 Einheiten</p>
+            </div>
+            <button class="text-xs text-slate-400 hover:text-slate-900">entfernen</button>
+          </div>
+          <div class="rounded-md border border-slate-200 p-3 flex items-center justify-between">
+            <div>
+              <input type="text" value="Block B" class="text-sm font-medium bg-transparent w-24">
+              <p class="text-xs text-slate-500">6 Einheiten</p>
+            </div>
+            <button class="text-xs text-slate-400 hover:text-slate-900">entfernen</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 5 EINHEITEN ===================== -->
+      <section id="sec-einheiten" class="rounded-lg bg-white border border-slate-200">
+        <header class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold">5. Einheiten · 13</h2>
+            <p class="text-xs text-slate-500 mt-0.5">erkannt aus Mieterliste.xlsx · Eigenschaften (Fläche etc.) inline</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="text-xs text-slate-500 hover:text-slate-900">CSV importieren</button>
+            <button class="text-xs text-slate-500 hover:text-slate-900 inline-flex items-center gap-1">
+              <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              Einheit
+            </button>
+          </div>
+        </header>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50">
+              <tr class="text-left text-[11px] font-medium text-slate-500 uppercase tracking-wide">
+                <th class="py-2 px-3">Nr.</th>
+                <th class="py-2 px-3">Kategorie</th>
+                <th class="py-2 px-3">Gebäude</th>
+                <th class="py-2 px-3">Stockw.</th>
+                <th class="py-2 px-3">Lage</th>
+                <th class="py-2 px-3 text-right">Fläche m²</th>
+                <th class="py-2 px-3 text-right">Heizfl. m²</th>
+                <th class="py-2 px-3 text-right">Pers.</th>
+                <th class="py-2 px-3">Vertrag</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr class="hover:bg-slate-50/50">
+                <td class="py-2 px-3 font-medium">1</td>
+                <td class="py-2 px-3">Gewerbe</td>
+                <td class="py-2 px-3">Block F</td>
+                <td class="py-2 px-3">EG</td>
+                <td class="py-2 px-3">—</td>
+                <td class="py-2 px-3 text-right">1.089,00</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3"><span class="inline-flex items-center gap-1 text-[11px] text-slate-500">○ offen</span></td>
+                <td class="py-2 px-3 text-right"><button class="text-xs text-slate-600 hover:text-slate-900">öffnen</button></td>
+              </tr>
+              <tr class="hover:bg-slate-50/50">
+                <td class="py-2 px-3 font-medium">2</td>
+                <td class="py-2 px-3">Gewerbe</td>
+                <td class="py-2 px-3">Block F</td>
+                <td class="py-2 px-3">1</td>
+                <td class="py-2 px-3">1OGR</td>
+                <td class="py-2 px-3 text-right">272,00</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3"><span class="inline-flex items-center gap-1 text-[11px] text-slate-500">○ offen</span></td>
+                <td class="py-2 px-3 text-right"><button class="text-xs text-slate-600 hover:text-slate-900">öffnen</button></td>
+              </tr>
+              <tr class="hover:bg-slate-50/50">
+                <td class="py-2 px-3 font-medium">3</td>
+                <td class="py-2 px-3">Gewerbe</td>
+                <td class="py-2 px-3">Block F</td>
+                <td class="py-2 px-3">1</td>
+                <td class="py-2 px-3">1OGR</td>
+                <td class="py-2 px-3 text-right">272,00</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3"><span class="inline-flex items-center gap-1 text-[11px] text-slate-500">○ offen</span></td>
+                <td class="py-2 px-3 text-right"><button class="text-xs text-slate-600 hover:text-slate-900">öffnen</button></td>
+              </tr>
+              <tr class="hover:bg-slate-50/50">
+                <td class="py-2 px-3 font-medium">4</td>
+                <td class="py-2 px-3">Gewerbe</td>
+                <td class="py-2 px-3">Block B</td>
+                <td class="py-2 px-3">1</td>
+                <td class="py-2 px-3">1OGL</td>
+                <td class="py-2 px-3 text-right">272,00</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3"><span class="inline-flex items-center gap-1 text-[11px] text-slate-500">○ offen</span></td>
+                <td class="py-2 px-3 text-right"><button class="text-xs text-slate-600 hover:text-slate-900">öffnen</button></td>
+              </tr>
+              <tr>
+                <td colspan="10" class="py-2 px-3 text-center text-xs text-slate-400">… 9 weitere Einheiten</td>
+              </tr>
+            </tbody>
+            <tfoot class="border-t border-slate-200 bg-slate-50">
+              <tr class="text-xs text-slate-600">
+                <td class="py-2 px-3 font-semibold">Σ</td>
+                <td colspan="4"></td>
+                <td class="py-2 px-3 text-right font-semibold">4.291,00</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td class="py-2 px-3 text-right text-slate-400">—</td>
+                <td colspan="2"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===================== 6 VERTRÄGE ===================== -->
+      <section id="sec-vertraege" class="rounded-lg bg-white border border-slate-200">
+        <header class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold">6. Mietverträge · 0 / 13</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Pro Einheit ein Vertrag · Mieter-Kontakt, Miete, Kaution</p>
+          </div>
+          <button class="text-xs text-slate-500 hover:text-slate-900">Mietvertrag-PDFs batch-hochladen</button>
+        </header>
+
+        <div class="p-5 space-y-2">
+
+          <!-- Expanded contract -->
+          <details open class="rounded-md border border-slate-300 bg-slate-50/40">
+            <summary class="p-3 flex items-center justify-between gap-3 hover:bg-slate-100/50 rounded-md">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="inline-flex items-center justify-center h-6 w-6 rounded bg-white border border-slate-300 text-xs font-medium shrink-0">1</span>
+                <div class="min-w-0">
+                  <p class="text-sm font-medium truncate">Elithera Gesundheitszentrum Hildesheim</p>
+                  <p class="text-xs text-slate-500">Gewerbe · Block F · EG · 1.089 m²</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">Mieter erkannt, offen</span>
+                <svg class="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </div>
+            </summary>
+
+            <div class="border-t border-slate-200 bg-white rounded-b-md">
+              <!-- Stepper tabs within contract -->
+              <div class="flex items-center border-b border-slate-100 px-3 overflow-x-auto">
+                <button data-contract-tab="vd" class="contract-tab px-3 py-2 text-xs font-medium border-b-2 border-slate-900 text-slate-900 shrink-0">1 · Vertragsdetails</button>
+                <button data-contract-tab="mz" class="contract-tab px-3 py-2 text-xs text-slate-500 hover:text-slate-900 shrink-0 border-b-2 border-transparent">2 · Mietzahlung</button>
+                <button data-contract-tab="ka" class="contract-tab px-3 py-2 text-xs text-slate-500 hover:text-slate-900 shrink-0 border-b-2 border-transparent">3 · Kaution</button>
+                <button data-contract-tab="vv" class="contract-tab px-3 py-2 text-xs text-slate-500 hover:text-slate-900 shrink-0 border-b-2 border-transparent">4 · Vertragsverteilung</button>
+              </div>
+
+              <!-- Vertragsdetails -->
+              <div data-contract-content="vd" class="active p-4 grid grid-cols-6 gap-4">
+                <div class="col-span-6">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Mieter-Kontakt *</label>
+                  <div class="flex items-center gap-2">
+                    <input type="text" value="Elithera Gesundheitszentrum Hildesheim" class="flex-1 px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    <span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200 shrink-0">nicht in Impower</span>
+                    <button class="px-2.5 py-1.5 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-700 shrink-0">+ anlegen</button>
+                  </div>
+                  <p class="mt-1 text-[11px] text-emerald-700 flex items-center gap-1"><span class="h-1 w-1 rounded-full bg-emerald-500"></span>erkannt · Mietvertrag_E1.pdf</p>
+                </div>
+
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Vertrags-Nr.</label>
+                  <input type="text" placeholder="optional" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Startdatum *</label>
+                  <input type="date" value="2023-03-01" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Enddatum</label>
+                  <input type="date" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                  <p class="mt-1 text-[11px] text-slate-400">leer = unbefristet</p>
+                </div>
+
+                <div class="col-span-3">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Umsatzsteuerpflichtig</label>
+                  <select class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    <option>nicht umsatzsteuerpflichtig</option>
+                    <option>umsatzsteuerpflichtig</option>
+                  </select>
+                </div>
+                <div class="col-span-3">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Mahnwesen</label>
+                  <select class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    <option>Kein Mahnlauf</option>
+                    <option>Standard Mahnlauf</option>
+                  </select>
+                </div>
+
+                <div class="col-span-6 border-t border-slate-100 pt-4">
+                  <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Lastschriftmandat</h4>
+                    <button class="text-xs text-slate-500 hover:text-slate-900">+ Mandat verknüpfen</button>
+                  </div>
+                  <p class="text-xs text-slate-400 italic">kein Lastschriftmandat hinterlegt — Mieter zahlt selbst</p>
+                </div>
+              </div>
+
+              <!-- Mietzahlung -->
+              <div data-contract-content="mz" class="p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Miet-Positionen</h4>
+                  <button class="text-xs text-slate-500 hover:text-slate-900">+ Miete hinzufügen</button>
+                </div>
+                <table class="w-full text-sm border border-slate-200 rounded-md overflow-hidden">
+                  <thead class="bg-slate-50 text-[11px] font-medium text-slate-500 uppercase tracking-wide">
+                    <tr>
+                      <th class="py-2 px-3 text-left">Status</th>
+                      <th class="py-2 px-3 text-left">Ab</th>
+                      <th class="py-2 px-3 text-right">Kaltmiete</th>
+                      <th class="py-2 px-3 text-right">Betriebsk.</th>
+                      <th class="py-2 px-3 text-right">Heizk.</th>
+                      <th class="py-2 px-3 text-right">Gesamt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="border-t border-slate-100">
+                      <td class="py-2 px-3"><span class="inline-flex items-center gap-1 text-[11px] text-emerald-700">● Aktiv</span></td>
+                      <td class="py-2 px-3">01.01.2024</td>
+                      <td class="py-2 px-3 text-right">13.925,15 €</td>
+                      <td class="py-2 px-3 text-right">700,00 €</td>
+                      <td class="py-2 px-3 text-right">650,00 €</td>
+                      <td class="py-2 px-3 text-right font-semibold">15.275,15 €</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Kaution -->
+              <div data-contract-content="ka" class="p-4 grid grid-cols-6 gap-4">
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Art</label>
+                  <select class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    <option>Barkaution</option>
+                    <option>Bürgschaft</option>
+                    <option>Mietkautionskonto</option>
+                  </select>
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Fällig am</label>
+                  <input type="date" value="2023-03-01" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Betrag (€)</label>
+                  <input type="text" value="41.775,45" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm text-right">
+                </div>
+                <div class="col-span-6">
+                  <label class="block text-xs font-medium text-slate-600 mb-1">Abwicklung</label>
+                  <select class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    <option>Selbstzahler</option>
+                    <option>Lastschrift</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Vertragsverteilung -->
+              <div data-contract-content="vv" class="p-4 text-sm text-slate-500">
+                Vertragsverteilung wird in einem späteren Schritt gepflegt (Heizkosten-/BK-Schlüssel).
+              </div>
+            </div>
+          </details>
+
+          <!-- Collapsed contracts -->
+          <details class="rounded-md border border-slate-200">
+            <summary class="p-3 flex items-center justify-between gap-3 hover:bg-slate-50 rounded-md">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="inline-flex items-center justify-center h-6 w-6 rounded bg-slate-50 border border-slate-200 text-xs font-medium shrink-0">2</span>
+                <div class="min-w-0">
+                  <p class="text-sm font-medium truncate">Hör mit Uns</p>
+                  <p class="text-xs text-slate-500">Gewerbe · Block F · 272 m² · 4.228,90 €/Mon.</p>
+                </div>
+              </div>
+              <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">offen</span>
+            </summary>
+          </details>
+
+          <details class="rounded-md border border-slate-200">
+            <summary class="p-3 flex items-center justify-between gap-3 hover:bg-slate-50 rounded-md">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="inline-flex items-center justify-center h-6 w-6 rounded bg-slate-50 border border-slate-200 text-xs font-medium shrink-0">3</span>
+                <div class="min-w-0">
+                  <p class="text-sm font-medium truncate">proTeam Himmelsthür gGmbH</p>
+                  <p class="text-xs text-slate-500">Gewerbe · Block F · 272 m² · 3.780,04 €/Mon.</p>
+                </div>
+              </div>
+              <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">offen</span>
+            </summary>
+          </details>
+
+          <div class="text-center text-xs text-slate-400 py-1">… 10 weitere Verträge</div>
+        </div>
+      </section>
+
+      <!-- ===================== Footer Actions ===================== -->
+      <div class="flex items-center justify-between gap-4 py-4 border-t border-slate-200">
+        <div class="text-xs text-slate-500">
+          Zuletzt gespeichert: vor 2 Min. · Entwurf wird alle 30s automatisch gespeichert
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="px-4 py-2 rounded-md border border-slate-300 text-sm hover:bg-slate-50">
+            Entwurf schließen
+          </button>
+          <button disabled class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed">
+            Nach Impower übertragen · 14 Pflichtfelder offen
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===================== Chat-Drawer (fixed, demo only) ===================== -->
+  <div class="fixed bottom-6 right-6 w-80 rounded-lg bg-white border border-slate-200 shadow-lg overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+      <div class="flex items-center gap-2">
+        <div class="h-2 w-2 rounded-full bg-emerald-400"></div>
+        <span class="text-sm font-medium">Mietverwaltungs-Agent</span>
+      </div>
+      <button class="text-slate-300 hover:text-white">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+    </div>
+    <div class="p-3 space-y-2 max-h-64 overflow-y-auto text-sm">
+      <div class="rounded-md bg-slate-100 p-2 text-slate-800">
+        Ich habe Verwaltervertrag, Grundbuch und Mieterliste ausgewertet. Offen sind:
+        <ul class="list-disc ml-4 mt-1 text-xs">
+          <li>Objektbuchhalter (keine Info im PDF)</li>
+          <li>Heizflächen der Einheiten (Flächenaufstellung fehlt)</li>
+          <li>13 Mietverträge (bitte hochladen)</li>
+        </ul>
+      </div>
+      <div class="rounded-md bg-slate-100 p-2 text-slate-800">
+        Soll ich den Eigentümer (Schmidt Immobilien GmbH) direkt als neuen Unternehmens-Kontakt anlegen?
+      </div>
+    </div>
+    <div class="px-3 py-2 border-t border-slate-100 flex items-center gap-2">
+      <input type="text" placeholder="Frage stellen oder Datei anhängen …" class="flex-1 px-3 py-1.5 rounded-md border border-slate-300 text-sm">
+      <button class="px-2.5 py-1.5 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-700">Senden</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // Contract tabs
+  document.querySelectorAll('.contract-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const parent = btn.closest('details');
+      parent.querySelectorAll('.contract-tab').forEach(b => {
+        b.classList.remove('border-slate-900', 'text-slate-900');
+        b.classList.add('border-transparent', 'text-slate-500');
+      });
+      btn.classList.add('border-slate-900', 'text-slate-900');
+      btn.classList.remove('border-transparent', 'text-slate-500');
+      parent.querySelectorAll('[data-contract-content]').forEach(c => c.classList.remove('active'));
+      parent.querySelector(`[data-contract-content="${btn.dataset.contractTab}"]`).classList.add('active');
+    });
+  });
+  // Doc tabs (dummy)
+  document.querySelectorAll('.doc-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.doc-tab').forEach(b => {
+        b.classList.remove('border-slate-900', 'text-slate-900', 'font-medium');
+        b.classList.add('border-transparent', 'text-slate-500');
+      });
+      btn.classList.add('border-slate-900', 'text-slate-900', 'font-medium');
+      btn.classList.remove('border-transparent', 'text-slate-500');
+    });
+  });
+</script>
+
+</body>
+</html>

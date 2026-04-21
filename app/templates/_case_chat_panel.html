@@ -1,0 +1,70 @@
+{# Chat-Panel-Fragment fuer den Mietverwaltungs-Case.
+
+   Wird sowohl im initialen Render (case_detail.html) eingebettet als auch
+   als HTMX-Response fuer POST /cases/{id}/chat benutzt. Die HTMX-Response
+   ersetzt das ``#case-chat-panel``-Ziel.
+#}
+<div id="case-chat-panel" class="fixed bottom-4 right-4 w-96 max-w-[calc(100vw-2rem)] rounded-lg bg-white border border-slate-200 shadow-xl overflow-hidden flex flex-col"
+     style="max-height: calc(100vh - 2rem);">
+    <header class="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white shrink-0">
+        <div class="flex items-center gap-2">
+            <div class="h-2 w-2 rounded-full bg-emerald-400"></div>
+            <span class="text-sm font-medium">Mietverwaltungs-Agent</span>
+        </div>
+        <button type="button"
+                onclick="document.getElementById('case-chat-panel').classList.toggle('collapsed');"
+                class="text-slate-300 hover:text-white">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+    </header>
+
+    <div class="flex-1 overflow-y-auto p-3 space-y-2 text-sm bg-slate-50/40" id="case-chat-history" style="min-height: 220px; max-height: 45vh;">
+        {% if not chat_messages %}
+        <div class="rounded-md bg-slate-100 p-2 text-slate-700 text-[13px] leading-relaxed">
+            Hallo. Ich kenne den aktuellen Stand dieses Falls und kann dir Felder
+            korrigieren oder ergaenzen. Frag zum Beispiel: <em>"Was ist noch unklar?"</em>
+            oder <em>"Setze den Objektbetreuer auf Daniel Kroll."</em>
+        </div>
+        {% else %}
+        {% for m in chat_messages %}
+        <div class="flex {% if m.role == 'user' %}justify-end{% else %}justify-start{% endif %}">
+            <div class="rounded-md px-3 py-2 max-w-[85%] whitespace-pre-wrap text-[13px] leading-relaxed
+                        {% if m.role == 'user' %}bg-slate-900 text-white{% else %}bg-white border border-slate-200 text-slate-800{% endif %}">
+                {{ m.content }}
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        {% if patch_applied %}
+        <div class="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-[12px] text-emerald-800">
+            Daten wurden aktualisiert &mdash; Formular links zeigt den neuen Stand.
+        </div>
+        {% endif %}
+    </div>
+
+    <form action="/cases/{{ case.id }}/chat"
+          method="post"
+          hx-post="/cases/{{ case.id }}/chat"
+          hx-target="#case-chat-panel"
+          hx-swap="outerHTML"
+          hx-on::after-request="this.reset(); document.getElementById('case-chat-history')?.scrollTo(0, 1e9);"
+          class="border-t border-slate-100 p-2 flex items-center gap-2 shrink-0 bg-white">
+        <input type="text"
+               name="message"
+               required
+               placeholder="Frage oder Korrektur eingeben..."
+               class="flex-1 px-3 py-1.5 rounded-md border border-slate-300 text-sm"
+               autocomplete="off">
+        <button type="submit"
+                class="px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-700">
+            Senden
+        </button>
+    </form>
+</div>
+
+<style>
+    #case-chat-panel.collapsed > div:not(header),
+    #case-chat-panel.collapsed > form { display: none; }
+    #case-chat-panel.collapsed { width: auto; }
+</style>

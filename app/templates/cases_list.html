@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_pill %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold">Mietverwaltung</h1>
+        <p class="text-sm text-slate-500 mt-1">Faelle anlegen, Dokumente hochladen, KI extrahiert &rarr; Freigabe &rarr; Impower.</p>
+    </div>
+    <a href="/" class="text-sm text-slate-500 hover:text-slate-900">&larr; Dashboard</a>
+</div>
+
+{% set show_owner = has_permission(user, "documents:view_all") %}
+
+{% if has_permission(user, "documents:upload") %}
+<div class="rounded-lg bg-white border border-slate-200 p-6 mb-6">
+    <div class="flex items-center justify-between gap-4">
+        <div>
+            <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Neuer Fall</h2>
+            <p class="text-sm text-slate-600 mt-1">Leeren Fall anlegen, danach 1&ndash;n Dokumente hochladen.</p>
+        </div>
+        <form action="/cases/" method="post">
+            <button type="submit"
+                    class="rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-800">
+                + Neuer Fall
+            </button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-semibold">Fall</th>
+                <th class="text-left px-4 py-3 font-semibold">Dokumente</th>
+                {% if show_owner %}<th class="text-left px-4 py-3 font-semibold">Angelegt von</th>{% endif %}
+                <th class="text-left px-4 py-3 font-semibold">Angelegt</th>
+                <th class="text-left px-4 py-3 font-semibold">Status</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for case in cases %}
+            <tr class="border-t border-slate-100 hover:bg-slate-50">
+                <td class="px-4 py-3 font-medium">
+                    <a href="/cases/{{ case.id }}" class="hover:underline">
+                        {{ case.name or "Neuer Fall" }}
+                    </a>
+                    <div class="text-xs text-slate-400 mt-0.5">#{{ case.id.hex[:8] }}</div>
+                </td>
+                <td class="px-4 py-3 text-slate-600">{{ doc_counts.get(case.id, 0) }}</td>
+                {% if show_owner %}
+                <td class="px-4 py-3 text-slate-600 text-xs">
+                    {% if case.creator %}{{ case.creator.email }}{% else %}&mdash;{% endif %}
+                </td>
+                {% endif %}
+                <td class="px-4 py-3 text-slate-500">{{ case.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                <td class="px-4 py-3">{{ status_pill(case.status) }}</td>
+                <td class="px-4 py-3 text-right">
+                    <a href="/cases/{{ case.id }}" class="text-slate-600 hover:text-slate-900">oeffnen &rarr;</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="{{ 6 if show_owner else 5 }}" class="px-4 py-10 text-center text-slate-400">
+                    Noch keine Faelle angelegt.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

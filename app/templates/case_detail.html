@@ -1,0 +1,1019 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_pill %}
+
+{# ---------------------------------------------------------------
+   Feld-Status-Pill: zeigt an, ob ein Feld auto-erkannt, manuell
+   gesetzt oder noch leer ist. Wird in allen Sektionen benutzt.
+   ``src`` ist das Dict aus `field_source(case.state, section, field)`.
+   --------------------------------------------------------------- #}
+{% macro field_pill(src) %}
+    {% if src.state == "user" %}
+        <span class="inline-flex items-center gap-1 text-[10px] text-blue-700 mt-1">
+            <span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>manuell
+        </span>
+    {% elif src.state == "auto" %}
+        <span class="inline-flex items-center gap-1 text-[10px] text-emerald-700 mt-1">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+            erkannt{% if src.doc_type %} · aus {{ src.doc_type }}{% endif %}
+        </span>
+    {% elif src.state == "missing" %}
+        <span class="inline-flex items-center gap-1 text-[10px] text-slate-400 mt-1">
+            <span class="h-1.5 w-1.5 rounded-full bg-slate-300"></span>leer
+        </span>
+    {% endif %}
+{% endmacro %}
+
+{% macro section_status_pill(counts) %}
+    {% if counts.missing == 0 and counts.total > 0 %}
+        <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            vollstaendig
+        </span>
+    {% elif counts.total == 0 %}
+        <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200">offen</span>
+    {% else %}
+        <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">
+            {{ counts.missing }} / {{ counts.total }} offen
+        </span>
+    {% endif %}
+{% endmacro %}
+
+{% block content %}
+{% if case.status in ("extracting", "writing") %}
+<meta http-equiv="refresh" content="6">
+{% endif %}
+
+{# ---------- State-Aliasse + Status-Summe ---------- #}
+{% set prop = (case.state or {}).get("property") or {} %}
+{% set mc = (case.state or {}).get("management_contract") or {} %}
+{% set billing = (case.state or {}).get("billing_address") %}
+{% set owner = (case.state or {}).get("owner") %}
+{% set buildings = (case.state or {}).get("buildings") or [] %}
+{% set units = (case.state or {}).get("units") or [] %}
+{% set tenant_contracts = (case.state or {}).get("tenant_contracts") or [] %}
+{% set overrides = (case.state or {}).get("_overrides") or {} %}
+
+{# Pflicht-Checklist je Sektion: (section, field) #}
+{% set property_required = [("number", prop.get("number")), ("street", prop.get("street")), ("postal_code", prop.get("postal_code")), ("city", prop.get("city")), ("creditor_id", prop.get("creditor_id"))] %}
+{% set property_counts = {"total": property_required|length, "missing": property_required|selectattr(1, "none")|list|length + property_required|rejectattr(1, "none")|selectattr(1, "equalto", "")|list|length} %}
+{% set mc_required = [("supervisor_name", mc.get("supervisor_name")), ("accountant_name", mc.get("accountant_name")), ("contract_start_date", mc.get("contract_start_date"))] %}
+{% set mc_counts = {"total": mc_required|length, "missing": mc_required|selectattr(1, "none")|list|length + mc_required|rejectattr(1, "none")|selectattr(1, "equalto", "")|list|length} %}
+{% set owner_counts = {"total": 1, "missing": (0 if owner and (owner.get("last_name") or owner.get("company_name")) else 1)} %}
+{% set units_counts = {"total": units|length if units|length else 1, "missing": (0 if units|length else 1)} %}
+{% set contracts_counts = {"total": tenant_contracts|length if tenant_contracts|length else 1, "missing": tenant_contracts|rejectattr("tenant")|list|length + tenant_contracts|selectattr("_partial")|list|length} %}
+
+<div class="mb-5 flex items-start justify-between gap-4">
+    <div class="min-w-0">
+        <a href="/cases/" class="text-sm text-slate-500 hover:text-slate-900">&larr; Alle Faelle</a>
+        <form action="/cases/{{ case.id }}/name" method="post" class="mt-1 flex items-center gap-2">
+            <input type="text" name="name" value="{{ case.name or '' }}"
+                   placeholder="Name des Falls, z. B. MV SBA9 · Senator-Braun-Allee 9"
+                   class="flex-1 min-w-0 max-w-[42rem] px-3 py-2 rounded-md border border-slate-300 text-lg font-semibold bg-white">
+            <button type="submit" class="px-3 py-2 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-800">Speichern</button>
+        </form>
+        <p class="text-xs text-slate-500 mt-1">
+            {{ status_pill(case.status) }} · angelegt {{ case.created_at.strftime("%Y-%m-%d %H:%M") }}
+            {% if case.creator %} · von {{ case.creator.email }}{% endif %}
+        </p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-[1fr_1.35fr] gap-6 items-start">
+
+    {# ========================= LINKS: Dokumente ========================= #}
+    <aside class="lg:sticky lg:top-4 space-y-4">
+        <div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+            <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold text-sm">Dokumente</h2>
+                    <p class="text-[11px] text-slate-500 mt-0.5">{{ documents|length }} hochgeladen</p>
+                </div>
+            </header>
+
+            {% if documents %}
+            <ul class="divide-y divide-slate-100">
+                {% for doc in documents %}
+                <li class="px-4 py-3">
+                    <div class="flex items-start gap-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <a href="/cases/{{ case.id }}/documents/{{ doc.id }}/file"
+                                   target="_blank"
+                                   class="text-sm font-medium hover:underline truncate">{{ doc.original_filename }}</a>
+                                {{ status_pill(doc.status) }}
+                            </div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">
+                                {{ (doc.size_bytes / 1024) | round(0) | int }} KB ·
+                                {{ doc.uploaded_at.strftime("%Y-%m-%d %H:%M") }}
+                            </div>
+                            <form action="/cases/{{ case.id }}/documents/{{ doc.id }}/type" method="post"
+                                  class="mt-1.5 flex items-center gap-2 flex-wrap">
+                                <select name="doc_type" onchange="this.form.submit()"
+                                        class="text-xs px-2 py-1 rounded border border-slate-300 bg-white">
+                                    <option value="" {% if not doc.doc_type %}selected{% endif %}>— auto —</option>
+                                    {% for key, label in doc_types %}
+                                    <option value="{{ key }}" {% if doc.doc_type == key %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <noscript><button type="submit" class="text-xs text-slate-600">setzen</button></noscript>
+                            </form>
+                            {% set latest = extractions_by_doc.get(doc.id) %}
+                            {% if latest and latest.error %}
+                            <div class="mt-1.5 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1">
+                                <span class="font-medium">Extract-Fehler:</span> {{ latest.error }}
+                            </div>
+                            {% elif latest and latest.status == "needs_review" %}
+                            <div class="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                Pflichtfelder unvollstaendig.
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-col items-end gap-1 shrink-0">
+                            {% if has_permission(user, "documents:upload") and doc.doc_type %}
+                            <form action="/cases/{{ case.id }}/documents/{{ doc.id }}/extract" method="post">
+                                <button type="submit" class="text-[11px] text-slate-500 hover:text-slate-900" title="PDF erneut extrahieren">neu extrahieren</button>
+                            </form>
+                            {% endif %}
+                            {% if has_permission(user, "documents:delete") %}
+                            <form action="/cases/{{ case.id }}/documents/{{ doc.id }}/delete" method="post"
+                                  onsubmit="return confirm('Dokument {{ doc.original_filename }} entfernen?');">
+                                <button type="submit" class="text-[11px] text-slate-400 hover:text-red-600">entfernen</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="px-5 py-8 text-center text-slate-400 text-sm">
+                Noch keine Dokumente. Unten ein PDF hochladen.
+            </div>
+            {% endif %}
+        </div>
+
+        {% if has_permission(user, "documents:upload") %}
+        <div class="rounded-lg bg-white border border-slate-200 p-4">
+            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Dokument hinzufuegen</h3>
+            <form action="/cases/{{ case.id }}/documents" method="post" enctype="multipart/form-data" class="space-y-2">
+                <input type="file" name="file" accept="application/pdf" required
+                       class="block w-full text-xs text-slate-700 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-slate-900 file:text-white hover:file:bg-slate-800 file:cursor-pointer">
+                <select name="doc_type" class="w-full text-xs px-2 py-1.5 rounded-md border border-slate-300 bg-white">
+                    <option value="">— Typ auto —</option>
+                    {% for key, label in doc_types %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="w-full rounded-md bg-slate-900 text-white px-3 py-1.5 text-xs font-medium hover:bg-slate-800">Hochladen</button>
+            </form>
+            <p class="text-[10px] text-slate-400 mt-2">PDF, max. 20 MB. Claude klassifiziert und extrahiert.</p>
+        </div>
+        {% endif %}
+    </aside>
+
+    {# ========================= RECHTS: Formular ========================= #}
+    <div class="space-y-4">
+        {% if case.status == "extracting" %}
+        <div class="rounded-lg bg-blue-50 border border-blue-200 p-3 flex items-center gap-3 text-sm">
+            <svg class="h-5 w-5 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="text-blue-900">KI-Extraktion laeuft… Seite aktualisiert sich automatisch.</span>
+        </div>
+        {% endif %}
+
+        {# Sticky Section-Nav #}
+        <div class="sticky top-2 z-10 bg-slate-50/95 backdrop-blur pt-1 pb-2 -mx-1 px-1 flex items-center gap-1.5 flex-wrap text-xs">
+            <a href="#sec-property" class="px-2 py-1 rounded {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if property_counts.missing == 0 else 'bg-amber-50 text-amber-700 border-amber-200' }} border font-medium">
+                ● 1 Objekt
+            </a>
+            <a href="#sec-management" class="px-2 py-1 rounded {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if mc_counts.missing == 0 else 'bg-amber-50 text-amber-700 border-amber-200' }} border font-medium">
+                ● 2 Verwaltung
+            </a>
+            <a href="#sec-billing" class="px-2 py-1 rounded bg-slate-100 text-slate-600 border-slate-200 border font-medium">
+                ● 3 Rechnung
+            </a>
+            <a href="#sec-owner" class="px-2 py-1 rounded {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if owner_counts.missing == 0 else 'bg-amber-50 text-amber-700 border-amber-200' }} border font-medium">
+                ● 4 Eigentuemer
+            </a>
+            <a href="#sec-buildings" class="px-2 py-1 rounded bg-slate-100 text-slate-600 border-slate-200 border font-medium">
+                ● 5 Gebaeude · {{ buildings|length }}
+            </a>
+            <a href="#sec-units" class="px-2 py-1 rounded {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if units|length else 'bg-slate-100 text-slate-600 border-slate-200' }} border font-medium">
+                ● 6 Einheiten · {{ units|length }}
+            </a>
+            <a href="#sec-contracts" class="px-2 py-1 rounded {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if tenant_contracts|length else 'bg-slate-100 text-slate-600 border-slate-200' }} border font-medium">
+                ● 7 Vertraege · {{ tenant_contracts|length }}
+            </a>
+        </div>
+
+        {# ==================== 1. OBJEKT ==================== #}
+        <section id="sec-property" class="rounded-lg bg-white border border-slate-200">
+            <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold">1. Objekt</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Stammdaten aus Verwaltervertrag / Grundbuch / Mieterliste</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    {{ section_status_pill(property_counts) }}
+                    {% if "property" in overrides %}
+                    <form action="/cases/{{ case.id }}/state/reset/property" method="post"
+                          onsubmit="return confirm('Manuelle Werte fuer Objekt zuruecksetzen?');">
+                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </header>
+            <form action="/cases/{{ case.id }}/state/property" method="post" class="p-5 grid grid-cols-6 gap-4">
+                <div class="col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Objekt-Nr. *</label>
+                    <input type="text" name="number" value="{{ prop.get('number') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "property", "number")) }}
+                </div>
+                <div class="col-span-4">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Objektbezeichnung</label>
+                    <input type="text" name="name" value="{{ prop.get('name') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "property", "name")) }}
+                </div>
+
+                <div class="col-span-4">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Strasse &amp; Hausnummer *</label>
+                    <input type="text" name="street" value="{{ prop.get('street') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "property", "street")) }}
+                </div>
+                <div class="col-span-1">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">PLZ *</label>
+                    <input type="text" name="postal_code" value="{{ prop.get('postal_code') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "property", "postal_code")) }}
+                </div>
+                <div class="col-span-1">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Land</label>
+                    <select name="country" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                        {% set cty = prop.get('country') or 'DE' %}
+                        <option value="DE" {% if cty == "DE" %}selected{% endif %}>DE</option>
+                        <option value="AT" {% if cty == "AT" %}selected{% endif %}>AT</option>
+                        <option value="CH" {% if cty == "CH" %}selected{% endif %}>CH</option>
+                    </select>
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Ort *</label>
+                    <input type="text" name="city" value="{{ prop.get('city') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "property", "city")) }}
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Glaeubiger-ID *</label>
+                    <input type="text" name="creditor_id" value="{{ prop.get('creditor_id') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm font-mono">
+                    {{ field_pill(field_source(case.state, "property", "creditor_id")) }}
+                </div>
+
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Grundbuch-Bezirk</label>
+                    <input type="text" name="land_registry_district" value="{{ prop.get('land_registry_district') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "property", "land_registry_district")) }}
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Grundbuch-Blatt-Nr.</label>
+                    <input type="text" name="folio_number" value="{{ prop.get('folio_number') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "property", "folio_number")) }}
+                </div>
+
+                {% if has_permission(user, "documents:upload") %}
+                <div class="col-span-6 flex justify-end border-t border-slate-100 pt-3">
+                    <button type="submit" class="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">Speichern</button>
+                </div>
+                {% endif %}
+            </form>
+        </section>
+
+        {# ==================== 2. VERWALTUNG ==================== #}
+        <section id="sec-management" class="rounded-lg bg-white border border-slate-200">
+            <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold">2. Verwaltungsvertrag</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Laufzeit, Objektbetreuung, Gebuehren</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    {{ section_status_pill(mc_counts) }}
+                    {% if "management_contract" in overrides %}
+                    <form action="/cases/{{ case.id }}/state/reset/management_contract" method="post"
+                          onsubmit="return confirm('Manuelle Werte fuer Verwaltung zuruecksetzen?');">
+                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </header>
+            <form action="/cases/{{ case.id }}/state/management" method="post" class="p-5 grid grid-cols-6 gap-4">
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Verwaltungsunternehmen</label>
+                    <input type="text" name="management_company_name" value="{{ mc.get('management_company_name') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "management_contract", "management_company_name")) }}
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Mahnung netto (€)</label>
+                    <input type="text" name="dunning_fee_net" value="{{ '%.2f'|format(mc.get('dunning_fee_net')) if mc.get('dunning_fee_net') is not none else '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "management_contract", "dunning_fee_net")) }}
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Objektbetreuer *</label>
+                    <input type="text" name="supervisor_name" value="{{ mc.get('supervisor_name') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "management_contract", "supervisor_name")) }}
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Objektbuchhalter *</label>
+                    <input type="text" name="accountant_name" value="{{ mc.get('accountant_name') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "management_contract", "accountant_name")) }}
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Vertragsbeginn *</label>
+                    <input type="date" name="contract_start_date" value="{{ mc.get('contract_start_date') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "management_contract", "contract_start_date")) }}
+                </div>
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Vertragsende</label>
+                    <input type="date" name="contract_end_date" value="{{ mc.get('contract_end_date') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    <p class="text-[10px] text-slate-400 mt-1">leer = unbefristet</p>
+                </div>
+
+                {% if has_permission(user, "documents:upload") %}
+                <div class="col-span-6 flex justify-end border-t border-slate-100 pt-3">
+                    <button type="submit" class="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">Speichern</button>
+                </div>
+                {% endif %}
+            </form>
+        </section>
+
+        {# ==================== 3. RECHNUNGSADRESSE ==================== #}
+        <section id="sec-billing" class="rounded-lg bg-white border border-slate-200">
+            <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold">3. Rechnungsadresse</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Empfaenger der Verwaltungsabrechnung</p>
+                </div>
+                {% if "billing_address" in overrides %}
+                <form action="/cases/{{ case.id }}/state/reset/billing_address" method="post">
+                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                </form>
+                {% endif %}
+            </header>
+            <form action="/cases/{{ case.id }}/state/billing" method="post" class="p-5 space-y-3">
+                {% set is_same = billing.get('is_same_as_owner') if billing else True %}
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" name="is_same_as_owner" value="1"
+                           {% if is_same %}checked{% endif %}
+                           onchange="document.getElementById('billing-fields').classList.toggle('hidden', this.checked);"
+                           class="rounded border-slate-300">
+                    identisch mit Objekteigentuemer
+                </label>
+                <div id="billing-fields" class="grid grid-cols-6 gap-4 {% if is_same %}hidden{% endif %}">
+                    <div class="col-span-4">
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Strasse &amp; Hausnummer</label>
+                        <input type="text" name="street" value="{{ (billing or {}).get('street') or '' }}"
+                               class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs font-medium text-slate-600 mb-1">PLZ</label>
+                        <input type="text" name="postal_code" value="{{ (billing or {}).get('postal_code') or '' }}"
+                               class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    </div>
+                    <div class="col-span-6">
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Ort</label>
+                        <input type="text" name="city" value="{{ (billing or {}).get('city') or '' }}"
+                               class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    </div>
+                </div>
+                {% if has_permission(user, "documents:upload") %}
+                <div class="flex justify-end border-t border-slate-100 pt-3">
+                    <button type="submit" class="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">Speichern</button>
+                </div>
+                {% endif %}
+            </form>
+        </section>
+
+        {# ==================== 4. EIGENTUEMER ==================== #}
+        {% set owner_prefill = {
+            "type": (owner or {}).get("type") or "PERSON",
+            "salutation": (owner or {}).get("salutation") or "",
+            "title": (owner or {}).get("title") or "",
+            "first_name": (owner or {}).get("first_name") or "",
+            "last_name": (owner or {}).get("last_name") or "",
+            "company_name": (owner or {}).get("company_name") or "",
+            "trade_register_number": (owner or {}).get("trade_register_number") or "",
+            "addr_street": (owner or {}).get("street") or "",
+            "addr_postal_code": (owner or {}).get("postal_code") or "",
+            "addr_city": (owner or {}).get("city") or "",
+            "addr_country": (owner or {}).get("country") or "DE",
+        } %}
+        <section id="sec-owner" class="rounded-lg bg-white border border-slate-200">
+            <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold">4. Objekteigentuemer</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">aus Grundbuch erkannt · Impower-Kontakt anlegen oder bestehenden waehlen</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    {% if owner and (owner.get('last_name') or owner.get('company_name')) %}
+                    <a href="/contacts/new?prefill={{ owner_prefill|tojson|urlencode }}&return_to=/cases/{{ case.id }}"
+                       class="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-violet-600 text-white hover:bg-violet-500">
+                        <svg class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                        </svg>
+                        Kontakt in Impower anlegen
+                    </a>
+                    {% endif %}
+                    {{ section_status_pill(owner_counts) }}
+                    {% if "owner" in overrides %}
+                    <form action="/cases/{{ case.id }}/state/reset/owner" method="post">
+                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </header>
+            <form action="/cases/{{ case.id }}/state/owner" method="post" class="p-5 grid grid-cols-6 gap-4">
+                <div class="col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Typ *</label>
+                    <select name="type" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                        {% set otype = (owner or {}).get('type') or 'PERSON' %}
+                        <option value="PERSON" {% if otype == "PERSON" %}selected{% endif %}>Person</option>
+                        <option value="COMPANY" {% if otype == "COMPANY" %}selected{% endif %}>Unternehmen</option>
+                    </select>
+                </div>
+                <div class="col-span-4">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Firma (bei Unternehmen)</label>
+                    <input type="text" name="company_name" value="{{ (owner or {}).get('company_name') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "owner", "company_name")) }}
+                </div>
+
+                <div class="col-span-1">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Anrede</label>
+                    <input type="text" name="salutation" value="{{ (owner or {}).get('salutation') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                </div>
+                <div class="col-span-1">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Titel</label>
+                    <input type="text" name="title" value="{{ (owner or {}).get('title') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Vorname</label>
+                    <input type="text" name="first_name" value="{{ (owner or {}).get('first_name') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "owner", "first_name")) }}
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Nachname *</label>
+                    <input type="text" name="last_name" value="{{ (owner or {}).get('last_name') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "owner", "last_name")) }}
+                </div>
+
+                <div class="col-span-3">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">HRB-Nr.</label>
+                    <input type="text" name="trade_register_number" value="{{ (owner or {}).get('trade_register_number') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                </div>
+                <div class="col-span-3"></div>
+
+                <div class="col-span-4">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Strasse</label>
+                    <input type="text" name="street" value="{{ (owner or {}).get('street') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "owner", "street")) }}
+                </div>
+                <div class="col-span-1">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">PLZ</label>
+                    <input type="text" name="postal_code" value="{{ (owner or {}).get('postal_code') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                </div>
+                <div class="col-span-1">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Land</label>
+                    {% set octy = (owner or {}).get('country') or 'DE' %}
+                    <select name="country" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                        <option value="DE" {% if octy == "DE" %}selected{% endif %}>DE</option>
+                        <option value="AT" {% if octy == "AT" %}selected{% endif %}>AT</option>
+                        <option value="CH" {% if octy == "CH" %}selected{% endif %}>CH</option>
+                    </select>
+                </div>
+                <div class="col-span-6">
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Ort</label>
+                    <input type="text" name="city" value="{{ (owner or {}).get('city') or '' }}"
+                           class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    {{ field_pill(field_source(case.state, "owner", "city")) }}
+                </div>
+
+                {% if has_permission(user, "documents:upload") %}
+                <div class="col-span-6 flex justify-end border-t border-slate-100 pt-3">
+                    <button type="submit" class="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">Speichern</button>
+                </div>
+                {% endif %}
+            </form>
+        </section>
+
+        {# ==================== 5. GEBAEUDE ==================== #}
+        <section id="sec-buildings" class="rounded-lg bg-white border border-slate-200">
+            <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold">5. Gebaeude · {{ buildings|length }}</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Bloecke auf dem Grundstueck</p>
+                </div>
+                {% if "buildings" in overrides %}
+                <form action="/cases/{{ case.id }}/state/reset/buildings" method="post">
+                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                </form>
+                {% endif %}
+            </header>
+            <div class="p-5 space-y-3">
+                {% if buildings %}
+                <div class="grid grid-cols-2 gap-2">
+                    {% for b in buildings %}
+                    <div class="rounded-md border border-slate-200 p-3 flex items-center justify-between">
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium truncate">{{ b.name }}</p>
+                            <p class="text-[11px] text-slate-500">
+                                {% set bunit_count = units|selectattr("building_name", "equalto", b.name)|list|length %}
+                                {{ bunit_count }} Einheit{% if bunit_count != 1 %}en{% endif %}
+                            </p>
+                        </div>
+                        {% if has_permission(user, "documents:upload") %}
+                        <form action="/cases/{{ case.id }}/state/buildings/{{ loop.index0 }}/delete" method="post"
+                              onsubmit="return confirm('Gebaeude {{ b.name }} entfernen?');">
+                            <button type="submit" class="text-xs text-slate-400 hover:text-red-600">entfernen</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-400">Keine Gebaeude erkannt. Unten hinzufuegen.</p>
+                {% endif %}
+
+                {% if has_permission(user, "documents:upload") %}
+                <form action="/cases/{{ case.id }}/state/buildings/add" method="post" class="flex items-center gap-2 pt-2 border-t border-slate-100">
+                    <input type="text" name="name" placeholder="z. B. Block F, Haus 2"
+                           class="flex-1 px-3 py-2 rounded-md border border-slate-300 text-sm">
+                    <button type="submit" class="px-3 py-2 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-800">+ Gebaeude</button>
+                </form>
+                {% endif %}
+            </div>
+        </section>
+
+        {# ==================== 6. EINHEITEN ==================== #}
+        <section id="sec-units" class="rounded-lg bg-white border border-slate-200">
+            <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold">6. Einheiten · {{ units|length }}</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">erkannt aus Mieterliste/Mietvertraegen · inline editierbar</p>
+                </div>
+                {% if "units" in overrides %}
+                <form action="/cases/{{ case.id }}/state/reset/units" method="post">
+                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                </form>
+                {% endif %}
+            </header>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50">
+                        <tr class="text-left text-[11px] font-medium text-slate-500 uppercase tracking-wide">
+                            <th class="py-2 px-3">Nr.</th>
+                            <th class="py-2 px-3">Typ</th>
+                            <th class="py-2 px-3">Gebaeude</th>
+                            <th class="py-2 px-3">Stockw.</th>
+                            <th class="py-2 px-3">Lage</th>
+                            <th class="py-2 px-3 text-right">Flaeche m²</th>
+                            <th class="py-2 px-3 text-right">Heizfl.</th>
+                            <th class="py-2 px-3 text-right">Pers.</th>
+                            <th class="py-2 px-3">Mieter</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for u in units %}
+                        <tr>
+                            <td class="py-1.5 px-3 font-medium">{{ u.number or "—" }}</td>
+                            <td class="py-1.5 px-3 text-xs">{{ u.unit_type or "—" }}</td>
+                            <td class="py-1.5 px-3 text-xs">{{ u.building_name or "—" }}</td>
+                            <td class="py-1.5 px-3 text-xs">{{ u.floor or "—" }}</td>
+                            <td class="py-1.5 px-3 text-xs">{{ u.position or "—" }}</td>
+                            <td class="py-1.5 px-3 text-right text-xs">{% if u.living_area is not none %}{{ "%.2f"|format(u.living_area) }}{% else %}—{% endif %}</td>
+                            <td class="py-1.5 px-3 text-right text-xs">{% if u.heating_area is not none %}{{ "%.2f"|format(u.heating_area) }}{% else %}—{% endif %}</td>
+                            <td class="py-1.5 px-3 text-right text-xs">{{ u.persons if u.persons is not none else "—" }}</td>
+                            <td class="py-1.5 px-3 text-xs truncate max-w-[10rem]">{{ u.tenant_name or "" }}</td>
+                            <td class="py-1.5 px-3 text-right text-xs">
+                                <details>
+                                    <summary class="cursor-pointer text-slate-500 hover:text-slate-900">bearbeiten</summary>
+                                </details>
+                            </td>
+                        </tr>
+                        <tr class="bg-slate-50/40 hidden" data-edit-row="{{ loop.index0 }}">
+                            <td colspan="10" class="p-3">
+                                <form action="/cases/{{ case.id }}/state/units/{{ loop.index0 }}" method="post" class="grid grid-cols-12 gap-2 text-xs">
+                                    <input type="text" name="number" value="{{ u.number or '' }}" placeholder="Nr. *" class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
+                                    <select name="unit_type" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
+                                        <option value="" {% if not u.unit_type %}selected{% endif %}>Typ —</option>
+                                        <option value="APARTMENT" {% if u.unit_type == "APARTMENT" %}selected{% endif %}>Wohnung</option>
+                                        <option value="COMMERCIAL" {% if u.unit_type == "COMMERCIAL" %}selected{% endif %}>Gewerbe</option>
+                                        <option value="PARKING" {% if u.unit_type == "PARKING" %}selected{% endif %}>Stellplatz</option>
+                                        <option value="OTHER" {% if u.unit_type == "OTHER" %}selected{% endif %}>Sonstiges</option>
+                                    </select>
+                                    <input type="text" name="building_name" value="{{ u.building_name or '' }}" placeholder="Gebaeude" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
+                                    <input type="text" name="floor" value="{{ u.floor or '' }}" placeholder="Stockw." class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
+                                    <input type="text" name="position" value="{{ u.position or '' }}" placeholder="Lage" class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
+                                    <input type="text" name="living_area" value="{{ u.living_area if u.living_area is not none else '' }}" placeholder="Flaeche" class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
+                                    <input type="text" name="heating_area" value="{{ u.heating_area if u.heating_area is not none else '' }}" placeholder="Heizfl." class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
+                                    <input type="text" name="persons" value="{{ u.persons if u.persons is not none else '' }}" placeholder="Pers." class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
+                                    <input type="text" name="tenant_name" value="{{ u.tenant_name or '' }}" placeholder="Mieter" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
+                                    <input type="hidden" name="cold_rent" value="{{ u.cold_rent if u.cold_rent is not none else '' }}">
+                                    <input type="hidden" name="operating_costs" value="{{ u.operating_costs if u.operating_costs is not none else '' }}">
+                                    <input type="hidden" name="heating_costs" value="{{ u.heating_costs if u.heating_costs is not none else '' }}">
+                                    <div class="col-span-12 flex items-center gap-2 justify-end">
+                                        <button type="submit" formaction="/cases/{{ case.id }}/state/units/{{ loop.index0 }}/delete"
+                                                onclick="return confirm('Einheit entfernen?');"
+                                                class="text-xs text-slate-400 hover:text-red-600">entfernen</button>
+                                        <button type="submit" class="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-800">Speichern</button>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not units %}
+                        <tr>
+                            <td colspan="10" class="py-4 px-3 text-center text-sm text-slate-400">
+                                Keine Einheiten erkannt. Unten manuell hinzufuegen.
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if has_permission(user, "documents:upload") %}
+            <div class="border-t border-slate-100 p-4">
+                <details>
+                    <summary class="cursor-pointer text-xs text-slate-500 hover:text-slate-900">+ Einheit manuell hinzufuegen</summary>
+                    <form action="/cases/{{ case.id }}/state/units/add" method="post" class="mt-3 grid grid-cols-12 gap-2 text-xs">
+                        <input type="text" name="number" placeholder="Nr. *" required class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
+                        <select name="unit_type" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
+                            <option value="">Typ —</option>
+                            <option value="APARTMENT">Wohnung</option>
+                            <option value="COMMERCIAL">Gewerbe</option>
+                            <option value="PARKING">Stellplatz</option>
+                            <option value="OTHER">Sonstiges</option>
+                        </select>
+                        <input type="text" name="building_name" placeholder="Gebaeude" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
+                        <input type="text" name="floor" placeholder="Stockw." class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
+                        <input type="text" name="position" placeholder="Lage" class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
+                        <input type="text" name="living_area" placeholder="Flaeche m²" class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
+                        <input type="text" name="heating_area" placeholder="Heizfl." class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
+                        <input type="text" name="persons" placeholder="Pers." class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
+                        <input type="text" name="tenant_name" placeholder="Mieter" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
+                        <button type="submit" class="col-span-12 px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-800">Einheit hinzufuegen</button>
+                    </form>
+                </details>
+            </div>
+            {% endif %}
+        </section>
+
+        {# ==================== 7. MIETVERTRAEGE ==================== #}
+        <section id="sec-contracts" class="rounded-lg bg-white border border-slate-200">
+            <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h2 class="font-semibold">7. Mietvertraege · {{ tenant_contracts|length }}</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">pro Einheit ein Vertrag · Mieter, Miete, Kaution</p>
+                </div>
+                {% if "tenant_contracts" in overrides %}
+                <form action="/cases/{{ case.id }}/state/reset/tenant_contracts" method="post">
+                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                </form>
+                {% endif %}
+            </header>
+            <div class="p-5 space-y-3">
+                {% for tc in tenant_contracts %}
+                {% set tenant = tc.tenant or {} %}
+                {% set contract = tc.contract or {} %}
+                <details class="rounded-md border border-slate-200">
+                    <summary class="p-3 flex items-center justify-between gap-3 hover:bg-slate-50 cursor-pointer">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="inline-flex items-center justify-center h-6 w-6 rounded bg-slate-50 border border-slate-200 text-xs font-medium shrink-0">{{ loop.index }}</span>
+                            <div class="min-w-0">
+                                <p class="text-sm font-medium truncate">
+                                    {% if tenant.company_name %}{{ tenant.company_name }}
+                                    {% elif tenant.last_name %}{{ tenant.first_name or "" }} {{ tenant.last_name }}
+                                    {% else %}(Mieter unbekannt){% endif %}
+                                </p>
+                                <p class="text-xs text-slate-500">
+                                    {% if tc.unit_number %}Einheit {{ tc.unit_number }}{% endif %}
+                                    {% if contract.start_date %} · ab {{ contract.start_date }}{% endif %}
+                                    {% if contract.cold_rent is not none %} · {{ "%.2f"|format(contract.cold_rent) }} € kalt{% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            {% if tc._partial %}
+                            <span class="inline-flex items-center text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">nur aus Mieterliste</span>
+                            {% endif %}
+                        </div>
+                    </summary>
+                    <form action="/cases/{{ case.id }}/state/tenant_contracts/{{ loop.index0 }}" method="post"
+                          class="border-t border-slate-200 p-4 grid grid-cols-6 gap-3 text-sm">
+                        <div class="col-span-6">
+                            <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Mieter</h4>
+                            <div class="grid grid-cols-6 gap-3">
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Typ</label>
+                                    <select name="tenant_type" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                        <option value="PERSON" {% if tenant.type == "PERSON" %}selected{% endif %}>Person</option>
+                                        <option value="COMPANY" {% if tenant.type == "COMPANY" %}selected{% endif %}>Unternehmen</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-4">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Firma</label>
+                                    <input type="text" name="tenant_company_name" value="{{ tenant.company_name or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-1">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Anrede</label>
+                                    <input type="text" name="tenant_salutation" value="{{ tenant.salutation or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Vorname</label>
+                                    <input type="text" name="tenant_first_name" value="{{ tenant.first_name or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-3">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Nachname</label>
+                                    <input type="text" name="tenant_last_name" value="{{ tenant.last_name or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-3">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">E-Mail</label>
+                                    <input type="email" name="tenant_email" value="{{ tenant.email or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-3">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Telefon</label>
+                                    <input type="text" name="tenant_phone" value="{{ tenant.phone or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-span-6 border-t border-slate-100 pt-3">
+                            <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Vertragsdaten</h4>
+                            <div class="grid grid-cols-6 gap-3">
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Einheit Nr.</label>
+                                    <input type="text" name="unit_number" value="{{ tc.unit_number or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Unterzeichnet</label>
+                                    <input type="date" name="signed_date" value="{{ contract.signed_date or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">USt-pflichtig</label>
+                                    <select name="vat_relevant" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                        <option value="" {% if not contract.vat_relevant %}selected{% endif %}>nein</option>
+                                        <option value="1" {% if contract.vat_relevant %}selected{% endif %}>ja</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Start *</label>
+                                    <input type="date" name="start_date" value="{{ contract.start_date or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Ende</label>
+                                    <input type="date" name="end_date" value="{{ contract.end_date or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-span-6 border-t border-slate-100 pt-3">
+                            <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Miete</h4>
+                            <div class="grid grid-cols-6 gap-3">
+                                <div class="col-span-1">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Kaltmiete €</label>
+                                    <input type="text" name="cold_rent" value="{{ contract.cold_rent if contract.cold_rent is not none else '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-right">
+                                </div>
+                                <div class="col-span-1">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Betriebsk. €</label>
+                                    <input type="text" name="operating_costs" value="{{ contract.operating_costs if contract.operating_costs is not none else '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-right">
+                                </div>
+                                <div class="col-span-1">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Heizk. €</label>
+                                    <input type="text" name="heating_costs" value="{{ contract.heating_costs if contract.heating_costs is not none else '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-right">
+                                </div>
+                                <div class="col-span-1">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Gesamt €</label>
+                                    <input type="text" name="total_rent" value="{{ contract.total_rent if contract.total_rent is not none else '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-right">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Zahlweise</label>
+                                    <select name="payment_method" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                        <option value="">—</option>
+                                        <option value="SELF_PAYER" {% if contract.payment_method == "SELF_PAYER" %}selected{% endif %}>Selbstzahler</option>
+                                        <option value="DIRECT_DEBIT" {% if contract.payment_method == "DIRECT_DEBIT" %}selected{% endif %}>Lastschrift</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-span-6 border-t border-slate-100 pt-3">
+                            <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Kaution</h4>
+                            <div class="grid grid-cols-6 gap-3">
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Art</label>
+                                    <select name="deposit_type" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                        <option value="">—</option>
+                                        <option value="CASH" {% if contract.deposit_type == "CASH" %}selected{% endif %}>Barkaution</option>
+                                        <option value="GUARANTEE" {% if contract.deposit_type == "GUARANTEE" %}selected{% endif %}>Buergschaft</option>
+                                        <option value="DEPOSIT_ACCOUNT" {% if contract.deposit_type == "DEPOSIT_ACCOUNT" %}selected{% endif %}>Mietkautionskonto</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Faellig am</label>
+                                    <input type="date" name="deposit_due_date" value="{{ contract.deposit_due_date or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">Betrag €</label>
+                                    <input type="text" name="deposit" value="{{ contract.deposit if contract.deposit is not none else '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-right">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-span-6 border-t border-slate-100 pt-3">
+                            <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Lastschriftmandat (optional)</h4>
+                            <div class="grid grid-cols-6 gap-3">
+                                <div class="col-span-4">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">IBAN</label>
+                                    <input type="text" name="iban" value="{{ contract.iban or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300 font-mono text-xs">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-[11px] font-medium text-slate-600 mb-1">BIC</label>
+                                    <input type="text" name="bic" value="{{ contract.bic or '' }}" class="w-full px-3 py-2 rounded-md border border-slate-300 font-mono text-xs">
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if has_permission(user, "documents:upload") %}
+                        <div class="col-span-6 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                            <button type="submit" formaction="/cases/{{ case.id }}/state/tenant_contracts/{{ loop.index0 }}/delete"
+                                    onclick="return confirm('Mietvertrag entfernen?');"
+                                    class="text-xs text-slate-400 hover:text-red-600">entfernen</button>
+                            <button type="submit" class="px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-800">Vertrag speichern</button>
+                        </div>
+                        {% endif %}
+                    </form>
+                </details>
+                {% endfor %}
+
+                {% if not tenant_contracts %}
+                <p class="text-sm text-slate-400 text-center py-4">
+                    Noch keine Mietvertraege. Lade Mietvertrags-PDFs hoch oder fuege manuell einen Vertrag hinzu.
+                </p>
+                {% endif %}
+
+                {% if has_permission(user, "documents:upload") %}
+                <details class="border-t border-slate-100 pt-3">
+                    <summary class="cursor-pointer text-xs text-slate-500 hover:text-slate-900">+ Mietvertrag manuell hinzufuegen</summary>
+                    <form action="/cases/{{ case.id }}/state/tenant_contracts/add" method="post" class="mt-3 grid grid-cols-6 gap-3 text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Einheit Nr.</label>
+                            <input type="text" name="unit_number" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Typ</label>
+                            <select name="tenant_type" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                                <option value="PERSON">Person</option>
+                                <option value="COMPANY">Unternehmen</option>
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Start *</label>
+                            <input type="date" name="start_date" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                        </div>
+                        <div class="col-span-3">
+                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Firma / Nachname *</label>
+                            <input type="text" name="tenant_last_name" placeholder="Nachname" class="w-full px-3 py-2 rounded-md border border-slate-300 mb-1">
+                            <input type="text" name="tenant_company_name" placeholder="oder Firma" class="w-full px-3 py-2 rounded-md border border-slate-300">
+                        </div>
+                        <div class="col-span-3">
+                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Kaltmiete €</label>
+                            <input type="text" name="cold_rent" class="w-full px-3 py-2 rounded-md border border-slate-300 text-right">
+                        </div>
+                        <div class="col-span-6">
+                            <button type="submit" class="px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-800">Vertrag hinzufuegen</button>
+                        </div>
+                    </form>
+                </details>
+                {% endif %}
+            </div>
+        </section>
+
+        {# ==================== Impower-Write-Status ==================== #}
+        {% set ir = case.impower_result or {} %}
+        {% if case.status == "writing" %}
+        <div class="rounded-lg bg-blue-50 border border-blue-200 p-4 flex items-start gap-3">
+            <svg class="h-5 w-5 text-blue-600 animate-spin shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <div class="text-sm text-blue-900">
+                <p class="font-medium">Impower-Uebertragung laeuft&hellip;</p>
+                <p class="text-xs mt-0.5">Schritte erledigt: {{ (ir.steps_completed or [])|length }} / 9 &middot; Seite aktualisiert sich automatisch.</p>
+            </div>
+        </div>
+        {% elif case.status == "written" %}
+        <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-4">
+            <div class="flex items-start gap-3">
+                <svg class="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                <div class="text-sm text-emerald-900 flex-1">
+                    <p class="font-medium">In Impower angelegt</p>
+                    <ul class="mt-1 text-xs space-y-0.5">
+                        <li>Property-ID: <code class="font-mono">{{ ir.property_id }}</code></li>
+                        <li>Eigentuemer-Contact: <code class="font-mono">{{ (ir.contacts or {}).get("owner_id") }}</code></li>
+                        <li>{{ (ir.unit_ids or {})|length }} Einheit(en), {{ (ir.tenant_contract_ids or {})|length }} Mietvertrag(e) verdrahtet</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% elif case.status in ("partial", "error") and ir.errors %}
+        <div class="rounded-lg bg-red-50 border border-red-200 p-4">
+            <div class="flex items-start gap-3">
+                <svg class="h-5 w-5 text-red-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <div class="text-sm text-red-900 flex-1">
+                    <p class="font-medium">
+                        {% if case.status == "partial" %}Teilweise Uebertragung &mdash; einige Schritte offen{% else %}Uebertragung fehlgeschlagen{% endif %}
+                    </p>
+                    <p class="text-xs mt-0.5">Schritte erledigt: {{ (ir.steps_completed or [])|length }}</p>
+                    <ul class="mt-2 text-xs space-y-1">
+                        {% for err in ir.errors[-3:] %}
+                        <li class="bg-red-100 rounded px-2 py-1"><span class="font-medium">{{ err.step }}:</span> {{ err.message }}</li>
+                        {% endfor %}
+                    </ul>
+                    <p class="text-xs mt-2 text-red-800">Mit „Erneut ausfuehren" fortsetzen &mdash; bereits angelegte IDs werden uebersprungen.</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {# ==================== Footer-Actions ==================== #}
+        <div class="flex items-center justify-between gap-4 py-4 border-t border-slate-200">
+            <div class="text-xs text-slate-500">
+                Fall-ID: <code class="font-mono">{{ case.id }}</code>
+            </div>
+            <div class="flex items-center gap-2">
+                {% set prop_ok = prop.get("number") and prop.get("street") and prop.get("postal_code") and prop.get("city") %}
+                {% set owner_ok = owner and (owner.get("last_name") or owner.get("company_name")) %}
+                {% set units_ok = units|length > 0 %}
+                {% set preflight_ok = prop_ok and owner_ok and units_ok %}
+                {% set writable = has_permission(user, "documents:upload") and case.status not in ("writing",) %}
+
+                {% if writable and preflight_ok %}
+                <form action="/cases/{{ case.id }}/write" method="post"
+                      onsubmit="return confirm('Jetzt in Impower anlegen? Alle Pflichtfelder werden uebertragen.');">
+                    <button type="submit"
+                            class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
+                        {% if case.status in ("partial", "error") %}Erneut ausfuehren{% else %}Nach Impower uebertragen{% endif %}
+                    </button>
+                </form>
+                {% elif writable %}
+                <button type="button" disabled
+                        class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm opacity-50 cursor-not-allowed"
+                        title="Fehlt: {% if not prop_ok %}Objekt-Nr./Adresse{% endif %}{% if not owner_ok %} · Eigentuemer{% endif %}{% if not units_ok %} · Einheit(en){% endif %}">
+                    Pflichtfelder fehlen
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Unit-Table: "bearbeiten"-Details toggelt die darunterliegende Edit-Row
+    document.querySelectorAll('table details').forEach(d => {
+        d.addEventListener('toggle', () => {
+            const tr = d.closest('tr');
+            const idx = [...tr.parentElement.children].indexOf(tr);
+            const editRow = tr.parentElement.children[idx + 1];
+            if (editRow && editRow.dataset.editRow !== undefined) {
+                editRow.classList.toggle('hidden', !d.open);
+            }
+        });
+    });
+</script>
+
+{# Chat-Drawer (Paket 8) — fixed unten rechts #}
+{% include "_case_chat_panel.html" %}
+{% endblock %}

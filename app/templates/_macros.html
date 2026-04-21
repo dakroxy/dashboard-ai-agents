@@ -1,0 +1,35 @@
+{% macro status_pill(status) -%}
+    {% if status == "uploaded" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-slate-100 text-slate-700">hochgeladen</span>
+    {%- elif status == "draft" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-slate-100 text-slate-700">Entwurf</span>
+    {%- elif status == "extracting" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-blue-100 text-blue-800">KI extrahiert&hellip;</span>
+    {%- elif status == "extracted" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-emerald-100 text-emerald-800">extrahiert</span>
+    {%- elif status == "matching" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-blue-100 text-blue-800">Impower-Matching&hellip;</span>
+    {%- elif status == "matched" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-emerald-100 text-emerald-800">gematcht &#10003;</span>
+    {%- elif status == "needs_review" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-amber-100 text-amber-800">Pr&uuml;fung n&ouml;tig</span>
+    {%- elif status == "ready_for_review" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-amber-100 text-amber-800">bereit zur Pr&uuml;fung</span>
+    {%- elif status == "approved" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-emerald-200 text-emerald-900">freigegeben</span>
+    {%- elif status == "writing" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-blue-100 text-blue-800">Impower schreibt&hellip;</span>
+    {%- elif status == "written" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-emerald-600 text-white">&#10003; in Impower</span>
+    {%- elif status == "already_present" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-emerald-100 text-emerald-800">bereits eingetragen</span>
+    {%- elif status == "partial" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-amber-100 text-amber-800">teilweise</span>
+    {%- elif status == "error" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-red-100 text-red-800">Fehler</span>
+    {%- elif status == "failed" -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-red-100 text-red-800">Fehler</span>
+    {%- else -%}
+        <span class="text-xs font-medium px-2 py-1 rounded bg-slate-100 text-slate-700">{{ status }}</span>
+    {%- endif %}
+{%- endmacro %}

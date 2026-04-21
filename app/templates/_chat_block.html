@@ -1,0 +1,58 @@
+<div id="chat-panel" class="rounded-lg bg-white border border-slate-200 p-5">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Chat</h2>
+        <span class="text-xs text-slate-400">R&uuml;ckfragen &amp; Korrekturen</span>
+    </div>
+
+    {% if chat_messages %}
+    <div class="space-y-3 mb-4 max-h-96 overflow-y-auto pr-1">
+        {% for m in chat_messages %}
+        <div class="flex {% if m.role == 'user' %}justify-end{% endif %}">
+            <div class="max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap
+                        {% if m.role == 'user' %}
+                            bg-slate-100 text-slate-900
+                        {% elif m.content.startswith('[Fehler]') %}
+                            bg-red-50 text-red-800 border border-red-100
+                        {% else %}
+                            bg-emerald-50 text-slate-800 border border-emerald-100
+                        {% endif %}">
+                {{ m.content }}
+                {% if m.extraction_id %}
+                <div class="text-xs text-emerald-700 mt-1 italic">&#10003; Extraktion aktualisiert</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-slate-400 italic mb-4">
+        Schreib der KI eine R&uuml;ckfrage oder Korrektur &mdash; z.&thinsp;B.
+        <span class="not-italic text-slate-500">&bdquo;IBAN 3. Ziffer muss eine 7 sein&ldquo;</span>.
+    </p>
+    {% endif %}
+
+    <form hx-post="/documents/{{ document.id }}/chat"
+          hx-target="#chat-panel"
+          hx-swap="outerHTML"
+          hx-disabled-elt="find button, find textarea"
+          class="space-y-2">
+        <textarea name="message"
+                  required
+                  rows="2"
+                  placeholder="R&uuml;ckfrage oder Korrektur an die KI&hellip;"
+                  class="w-full rounded-md border border-slate-200 p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-slate-400"></textarea>
+        <div class="flex items-center justify-between gap-3">
+            <div class="htmx-indicator flex items-center gap-2 text-xs text-slate-500">
+                <svg class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                </svg>
+                Claude denkt nach&hellip;
+            </div>
+            <button type="submit"
+                    class="rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-800 disabled:opacity-50">
+                Senden
+            </button>
+        </div>
+    </form>
+</div>
