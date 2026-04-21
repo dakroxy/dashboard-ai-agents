@@ -1,0 +1,73 @@
+{
+  "workflow_version": "1.2.0",
+  "timestamps": {
+    "started": "2026-04-21T00:00:00Z",
+    "last_updated": "2026-04-21T00:00:00Z",
+    "completed": "2026-04-21T00:00:00Z"
+  },
+  "mode": "initial_scan",
+  "scan_level": "exhaustive",
+  "project_root": "/Users/daniel/Desktop/Vibe Coding/Dashboard KI-Agenten",
+  "project_knowledge": "/Users/daniel/Desktop/Vibe Coding/Dashboard KI-Agenten/docs",
+  "completed_steps": [
+    {"step": "step_1", "status": "completed", "summary": "Monolith, single part, project_type_id=backend (FastAPI + Jinja2/HTMX als Frontend)"},
+    {"step": "step_2", "status": "completed", "summary": "Existing docs: CLAUDE.md (1200+ Zeilen Handover), README.md (Setup + Deploy); .github/workflows/docker-build.yml; mockups/; Memory-Files unter ~/.claude/projects/...*/memory"},
+    {"step": "step_3", "status": "completed", "summary": "Tech-Stack: FastAPI 0.115, SQLAlchemy 2.0, Postgres 16, Alembic, Jinja2+HTMX+Tailwind CDN, Anthropic SDK, Authlib, schwifty, httpx. Python 3.12"},
+    {"step": "step_4", "status": "completed", "summary": "Conditional scans: API-Routen (7 Router: auth, documents, cases, contacts, workflows, impower, admin); Datenmodelle (9 Tabellen + 9 Migrations); UI-Templates (~15 Jinja2-Files inkl. HTMX-Fragmente); Auth/Permissions zweistufig"},
+    {"step": "step_5", "status": "completed", "summary": "Source-Tree-Analyse mit Entry-Points + Integration-Points geschrieben"},
+    {"step": "step_6", "status": "completed", "summary": "Dev-Setup (1Password + docker-compose.yml) + Deployment (CI → GHCR → Elestio via docker-compose.prod.yml) dokumentiert"},
+    {"step": "step_7", "status": "skipped", "summary": "Single-Part-Projekt, keine Integration-Architecture noetig"},
+    {"step": "step_8", "status": "completed", "summary": "Architektur-Doku mit 10 Sektionen: Permission-Modell, Workflow-Config, SEPA-Flow, Mietverwaltung-Flow, Contact-Create, Claude-Integration, Impower-Haertungen, Audit, Testing, Deployment"},
+    {"step": "step_9", "status": "completed", "summary": "Supporting Docs geschrieben: project-overview, api-contracts, data-models, component-inventory, development-guide, deployment-guide"},
+    {"step": "step_10", "status": "completed", "summary": "Master-Index docs/index.md mit Nav + Verweise auf CLAUDE.md und Memory-Files geschrieben"},
+    {"step": "step_11", "status": "completed", "summary": "Validierung: alle 8 Zieldokumente vorhanden, keine 'To be generated'-Marker"},
+    {"step": "step_12", "status": "completed", "summary": "Workflow abgeschlossen"}
+  ],
+  "current_step": "completed",
+  "findings": {
+    "project_classification": {
+      "repository_type": "monolith",
+      "parts_count": 1,
+      "primary_language": "Python 3.12",
+      "primary_framework": "FastAPI 0.115",
+      "architecture_pattern": "Layered + Service-oriented"
+    },
+    "technology_stack": {
+      "backend": ["FastAPI 0.115", "Uvicorn", "Python 3.12"],
+      "db": ["Postgres 16", "SQLAlchemy 2.0 (typed Mapped[...])", "Alembic 1.14+", "psycopg[binary]>=3.2"],
+      "frontend": ["Jinja2", "HTMX 2", "Tailwind CSS (CDN)"],
+      "auth": ["Authlib 1.3+", "Starlette SessionMiddleware (itsdangerous)"],
+      "llm": ["Anthropic SDK 0.40+", "Claude Opus 4.7 (Extract)", "Claude Sonnet 4.6 (Chat)"],
+      "http": ["httpx 0.27+"],
+      "iban": ["schwifty 2024.1+"],
+      "config": ["pydantic-settings 2.6+", "python-dotenv"],
+      "deploy": ["Docker", "docker-compose", "GHCR", "Elestio"]
+    },
+    "counts": {
+      "python_files_app": "~22",
+      "routers": 7,
+      "services": 5,
+      "models": 9,
+      "migrations": 9,
+      "templates": "~15",
+      "tests": 62,
+      "total_loc_scanned": "~11400"
+    }
+  },
+  "project_types": [
+    {"part_id": "main", "project_type_id": "backend", "display_name": "Backend (FastAPI) + Jinja2/HTMX UI"}
+  ],
+  "outputs_generated": [
+    "docs/index.md",
+    "docs/project-overview.md",
+    "docs/architecture.md",
+    "docs/source-tree-analysis.md",
+    "docs/api-contracts.md",
+    "docs/data-models.md",
+    "docs/component-inventory.md",
+    "docs/development-guide.md",
+    "docs/deployment-guide.md",
+    "docs/project-scan-report.json"
+  ],
+  "resume_instructions": "Workflow bereits abgeschlossen. Fuer Rescan: alte project-scan-report.json loeschen oder archivieren und Workflow neu starten."
+}

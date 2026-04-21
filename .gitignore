@@ -37,3 +37,10 @@ Thumbs.db
 # Projekt-spezifisch
 uploads/
 logs/
+
+# BMad — User-spezifische Overrides (committed bleibt nur Team-Config)
+_bmad/config.user.toml
+_bmad/custom/config.user.toml
+
+# Claude Code — lokale User-Settings
+.claude/settings.local.json
