@@ -140,7 +140,23 @@
                 <td class="px-5 py-2 text-xs text-slate-600 whitespace-nowrap">
                     {% if run.started_at %}{{ run.started_at.strftime("%Y-%m-%d %H:%M:%S") }}{% else %}—{% endif %}
                 </td>
-                <td class="px-5 py-2 text-xs">{{ run.status }}</td>
+                <td class="px-5 py-2 text-xs">
+                    {% if run.status == "ok" %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-900">OK</span>
+                    {% elif run.status == "partial" %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-900">Teilweise</span>
+                    {% elif run.status == "skipped" %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">Uebersprungen</span>
+                    {% elif run.status == "running" %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-100 text-sky-900">Laeuft</span>
+                    {% elif run.status == "crashed" %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-900">Abgebrochen</span>
+                    {% elif run.status == "failed" %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-900">Fehlgeschlagen</span>
+                    {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-900">{{ run.status }}</span>
+                    {% endif %}
+                </td>
                 <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("objects_ok", 0) }}</td>
                 <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("objects_failed", 0) }}</td>
                 <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("fields_updated", 0) }}</td>

@@ -12,6 +12,7 @@ damit Story 4.3 (Facilioo-Poll) denselben Wrapper wiederverwendet.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -26,8 +27,16 @@ from app.services.audit import audit
 
 T = TypeVar("T")
 
+_logger = logging.getLogger(__name__)
+
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")
+
+# Taegliche Run-Zeit fuer den Nightly-Mirror (Europe/Berlin). Wird von
+# main.py (Scheduler) und admin.py (UI "Naechster Lauf") importiert — sonst
+# muessten beide ihre eigenen Konstanten fuehren und koennten driften.
+MIRROR_RUN_HOUR: int = 2
+MIRROR_RUN_MINUTE: int = 30
 
 
 # ---------------------------------------------------------------------------
@@ -217,18 +226,27 @@ async def run_sync_job(
         result.skipped = True
         result.skip_reason = "already_running"
         # Audit-Entry fuer skipped-Run (nur sync_started, kein sync_finished).
-        db = db_factory()
+        # Falls die DB down ist oder das Audit-Write wirft, soll der Skip
+        # trotzdem sauber zurueckkehren — sonst crasht der Scheduler, wenn
+        # gleichzeitig ein Lauf laeuft UND die DB kurzzeitig nicht
+        # erreichbar ist.
         try:
-            _audit_sync(
-                db,
-                action="sync_started",
-                run_id=run_id,
-                job_name=job_name,
-                details={"skipped": True, "skip_reason": "already_running"},
+            db = db_factory()
+            try:
+                _audit_sync(
+                    db,
+                    action="sync_started",
+                    run_id=run_id,
+                    job_name=job_name,
+                    details={"skipped": True, "skip_reason": "already_running"},
+                )
+                db.commit()
+            finally:
+                db.close()
+        except Exception:
+            _logger.exception(
+                "skipped-run audit write failed (run_id=%s)", run_id
             )
-            db.commit()
-        finally:
-            db.close()
         result.finished_at = datetime.now(tz=timezone.utc)
         return result
 

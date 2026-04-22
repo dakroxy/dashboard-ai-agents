@@ -501,14 +501,21 @@ def test_mirror_object_with_unknown_impower_id_skipped_not_failed(db):
     assert result.items_failed == 0
 
 
-def test_mirror_e2e_three_objects_one_failure(db, monkeypatch):
+def test_mirror_one_property_503_others_succeed(db, monkeypatch):
+    """AC6: Mandate-503 auf einem Property darf die anderen 2 nicht abbrechen.
+
+    Semantik (aus Runde-1-Entscheidung): Mandate-503 markiert die Property
+    als `mandates_unavailable=True`. Cluster-1/6 (ohne Mandate) werden
+    trotzdem geschrieben → Objekt zaehlt als `items_ok`, nicht `items_failed`.
+    `sync_finished.details_json.objects_ok=3`, `objects_failed=0`.
+    """
     # Retry-Delays auf 0 ziehen, damit der 5xx-Pfad nicht 112 s braucht.
     monkeypatch.setattr(
         "app.services.impower._RETRY_DELAYS_5XX", (0, 0, 0, 0, 0)
     )
-    o1 = _seed_object(db, impower_property_id="111", short_code="TSTA")
-    o2 = _seed_object(db, impower_property_id="222", short_code="TSTB")
-    o3 = _seed_object(db, impower_property_id="333", short_code="TSTC")
+    _seed_object(db, impower_property_id="111", short_code="TSTA")
+    _seed_object(db, impower_property_id="222", short_code="TSTB")
+    _seed_object(db, impower_property_id="333", short_code="TSTC")
     transport = _mock_transport(
         properties=[
             {
@@ -539,17 +546,100 @@ def test_mirror_e2e_three_objects_one_failure(db, monkeypatch):
             http_client_factory=_client_factory_for(transport),
         )
     )
-    # Mandate fuer property 333 wirft 503 → fetch_items-Phase bricht ab
-    # (Snapshot-Ladung scheitert). Das ist der "fatal fetch error"-Pfad.
-    # Alternativ: fetch kommt ohne 333-Mandate durch (MockTransport per-request).
-    # Bei unserer Implementation fliegen 5xx-Retries → eventuell gibt
-    # Impower den {"_error":503,...}-Fallback zurueck → _fetch_impower_snapshot
-    # sieht leere Mandate-Liste (isinstance(list) check). Ergo: 333 wird
-    # als OK durchgerechnet. Wir pruefen entspannt.
-    total = (
-        result.items_ok
-        + result.items_failed
-        + result.items_skipped_no_external_data
-        + result.items_skipped_no_external_id
+    # Harte Verteilungs-Assertions: alle 3 Objekte OK, kein Failure,
+    # Adresse auch fuer 333 geschrieben (Mandate-Write wurde geskippt,
+    # aber full_address/weg_nr nicht).
+    assert result.items_ok == 3
+    assert result.items_failed == 0
+    assert result.items_skipped_no_external_data == 0
+    assert result.items_skipped_no_external_id == 0
+    assert result.fetch_failed is False
+    # sync_finished-Audit mit korrekten Countern.
+    with _TestSessionLocal() as verify:
+        finished = (
+            verify.query(AuditLog)
+            .filter(AuditLog.action == "sync_finished")
+            .order_by(AuditLog.created_at.desc())
+            .first()
+        )
+        assert finished is not None
+        d = finished.details_json or {}
+        assert d.get("objects_ok") == 3
+        assert d.get("objects_failed") == 0
+        assert d.get("objects_total") == 3
+        # full_address fuer Objekt 333 gesetzt, obwohl Mandate-Fetch 503 war.
+        o333 = (
+            verify.query(Object)
+            .filter(Object.impower_property_id == "333")
+            .one()
+        )
+        assert o333.full_address == "Gamma 3, 33333 C"
+
+
+def test_mirror_item_failure_emits_sync_failed_with_cluster_phase(
+    db, monkeypatch
+):
+    """AC6: Ein echter Fehler in `_reconcile_object` (nicht Mandate-503) muss
+    als `sync_failed` mit `phase="cluster_1"` + `entity_id=obj.id` + `impower_property_id`
+    geauditet werden, und die anderen Objekte laufen durch.
+    """
+    monkeypatch.setattr(
+        "app.services.impower._RETRY_DELAYS_5XX", (0, 0, 0, 0, 0)
     )
-    assert total == 3
+    _seed_object(db, impower_property_id="111", short_code="TSTA")
+    o_bad = _seed_object(db, impower_property_id="222", short_code="TSTB")
+
+    # Patch _apply_field so, dass der erste Schreibversuch fuer Property 222
+    # (Cluster-1 full_address) in der Reconcile-Phase wirft.
+    real_apply = mirror._apply_field
+
+    def _apply_field_fail_for_222(db_, entity, field, value, source_ref, stats):
+        if source_ref == "222" and field == "full_address":
+            raise RuntimeError("synthetic Cluster-1 failure")
+        return real_apply(db_, entity, field, value, source_ref, stats)
+
+    monkeypatch.setattr(mirror, "_apply_field", _apply_field_fail_for_222)
+
+    transport = _mock_transport(
+        properties=[
+            {
+                "id": 111,
+                "addressStreet": "Alpha 1",
+                "addressZip": "11111",
+                "addressCity": "A",
+            },
+            {
+                "id": 222,
+                "addressStreet": "Beta 2",
+                "addressZip": "22222",
+                "addressCity": "B",
+            },
+        ],
+        mandates_by_pid={"111": [], "222": []},
+    )
+    result = asyncio.run(
+        run_impower_mirror(
+            db_factory=_TestSessionLocal,
+            http_client_factory=_client_factory_for(transport),
+        )
+    )
+    assert result.items_ok == 1
+    assert result.items_failed == 1
+    # Fehler-Eintrag enthaelt phase + impower_property_id + entity_id.
+    failure = next(
+        (e for e in result.errors if e.get("phase") == "cluster_1"), None
+    )
+    assert failure is not None, f"no cluster_1 failure in {result.errors}"
+    assert failure.get("external_id") == "222"
+
+    with _TestSessionLocal() as verify:
+        failed_row = (
+            verify.query(AuditLog)
+            .filter(AuditLog.action == "sync_failed")
+            .filter(AuditLog.entity_type == "object")
+            .one()
+        )
+        d = failed_row.details_json or {}
+        assert d.get("phase") == "cluster_1"
+        assert d.get("impower_property_id") == "222"
+        assert d.get("entity_id") == str(o_bad.id)

@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,7 +54,11 @@ class Object(Base):
         String, nullable=True
     )
     sepa_mandate_refs: Mapped[list[Any]] = mapped_column(
-        JSONB, nullable=False, default=list, server_default="[]"
+        # `text("'[]'")` statt String-Default "[]": das laeuft unter Postgres
+        # (impliziter Cast auf JSONB) UND SQLite (TEXT-Literal in Tests). Der
+        # alte String-Default erzeugte bei Alembic-Autogenerate-Diffs einen
+        # Rauch-Drift gegen die Migration (die sa.text("'[]'::jsonb") nutzt).
+        JSONB, nullable=False, default=list, server_default=text("'[]'")
     )
     pflegegrad_score_cached: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pflegegrad_score_updated_at: Mapped[datetime | None] = mapped_column(

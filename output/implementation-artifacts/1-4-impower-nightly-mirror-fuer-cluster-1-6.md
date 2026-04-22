@@ -249,6 +249,52 @@ Runde 1 (Prod-Code + Migration) aus `bmad-code-review`, 2026-04-22. Drei paralle
 
 **Dismissed (11):** Multi-Worker-Lock (Spec YAGNI); sepa_mandate_refs JSONB-Roundtrip (hypothetisch); strip_html_error dead branch; Template-XSS (Jinja autoescape greift); `_reset_mirror_lock_for_tests` (test-only); voting fallback readability; `percent` vs `fraction` Key (task-spec conform); plus 4 non-violation Auditor-Findings.
 
+---
+
+Runde 2 aus `bmad-code-review`, 2026-04-22. Drei parallele Layer (Blind Hunter, Edge Case Hunter, Acceptance Auditor) auf Commit `a1b57bf`.
+
+**Patch (eindeutig fixbar):**
+
+- [ ] [Review][Patch] Model-server_default Drift vs Migration 0012 NICHT durch Runde-1-Fix behoben [app/models/object.py:sepa_mandate_refs] — Runde-1-Finding war als `[x]` markiert, aber der Model-Wert ist weiterhin String `server_default="[]"`, nicht `sa.text("'[]'::jsonb")`. Alembic und `create_all` erzeugen weiterhin unterschiedliche Default-Literale. **High** (AC8)
+- [ ] [Review][Patch] `sync_failed.details_json.phase` ist generisch `"reconcile"` statt AC6-Enum [app/services/steckbrief_impower_mirror.py `_reconcile_object` → SyncItemFailure] — AC6 verlangt explizit `"cluster_1" | "cluster_6" | "eigentuemer"`. Fix: in `_reconcile_object` / `_reconcile_eigentuemer` Phase setzen, bevor SyncItemFailure geworfen wird (try/except pro Phase, `phase=` im Exception-Payload). **High** (AC6)
+- [ ] [Review][Patch] `contactId=None` pollutet Orphan-Detection als String `"None"` [app/services/steckbrief_impower_mirror.py `_reconcile_eigentuemer`] — `str(owner.get("contactId"))` gibt `"None"` zurueck, wenn Impower einen Contract ohne Contact liefert. Mehrere solcher Contracts kollidieren auf `"None"` in `impower_contact_ids`-Set → Orphan-Check bricht. Fix: `cid_raw = owner.get("contactId"); if cid_raw is None: continue`. **High**
+- [ ] [Review][Patch] `_normalize_voting_stake` akzeptiert NaN/Infinity/negativ [app/services/steckbrief_impower_mirror.py `_normalize_voting_stake`] — `float("nan")` + `float("inf")` schleichen durch `float(raw)`, `nan <= 1` ist False → `{"percent": nan}` bricht JSONB-Serialisierung. Negative Werte landen als gueltiger Prozent-Wert. Fix: `if val != val or val < 0 or val == float("inf"): return {}`. **Medium**
+- [ ] [Review][Patch] Float-Drift in `voting_stake.percent` triggert Provenance-Churn [app/services/steckbrief_impower_mirror.py `_normalize_voting_stake`] — `0.1 * 100 = 10.000000000000002`, `old != new` → jeder Nightly-Lauf schreibt die Row neu, obwohl semantisch identisch. Fix: `round(val * 100, 4)`. **Medium**
+- [ ] [Review][Patch] `_normalize_mandate_refs` dedupliziert nicht bei int/str-Mix [app/services/steckbrief_impower_mirror.py `_normalize_mandate_refs`] — Impower kann `id=7` und `id="7"` in getrennten Items liefern; nach `str(mid)`-Coercion sind das zwei identische Eintraege im Array. Fix: `seen = set(); ...; if mid_str in seen: continue; seen.add(mid_str)`. **Medium**
+- [ ] [Review][Patch] Owner-Liste wird bei Duplikat-ContactId zweimal verarbeitet [app/services/steckbrief_impower_mirror.py `_reconcile_eigentuemer`] — Zwei OWNER-Contracts mit selbem Contact (Legacy-Daten) fuehren zu doppelten write_field_human-Calls; `eigentuemer_updated`-Counter inflationiert. Fix: `seen_cids=set()` Guard in der Owner-Loop. **Medium**
+- [ ] [Review][Patch] TZ-naive `created_at` aus DB bricht Berlin-Konversion + Elapsed-Arithmetik [app/routers/admin.py `_to_berlin` / `_load_recent_mirror_runs`] — Falls `AuditLog.created_at` jemals naive zurueckkommt, wirft `astimezone(...)` oder `now - started_at` TypeError. Fix: In `_to_berlin` und in der Running-/Crashed-Elapsed-Berechnung `if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)` vorab. **Low**
+- [ ] [Review][Patch] `_MIRROR_RUN_HOUR`/`_MIRROR_RUN_MINUTE` dupliziert in `main.py` + `admin.py` [app/main.py + app/routers/admin.py] — Runde-1-Finding #20 nur teilweise geloest: Konstanten wurden zwar aus `_sync_common` exportiert, aber beide Module redefinieren sie lokal. Drift-Risiko bei Aenderung. Fix: `from app.services._sync_common import MIRROR_RUN_HOUR, MIRROR_RUN_MINUTE` in beiden Modulen. **Low**
+- [ ] [Review][Patch] Historie-Tabelle zeigt Raw-English-Status [app/templates/admin/sync_status.html Historie-Tabelle] — `{{ run.status }}` rendert `ok`/`partial`/`failed`/`skipped`/`running`/`crashed` ohne Mapping; der "letzter Lauf"-Block oben hat bereits Pill-Mappings. Fix: Jinja-Filter oder Dict in Route mit deutschen Labels. **Low** (UX-Konsistenz)
+- [ ] [Review][Patch] `run_sync_job` skipped-Audit crasht Scheduler bei DB-Outage [app/services/_sync_common.py Skipped-Pfad] — `db_factory() + _audit_sync` wirft bei DB-Down; der Skipped-Return-Path ist nicht try/except-geschuetzt. Fix: Audit-Write in try/except, bei Fehler `_logger.exception(...)` + trotzdem skipped-Result zurueckgeben. **Low**
+- [ ] [Review][Patch] AC6-E2E-Test assertiert nur Summen-Invariante, nicht Fehler-Pfad [tests/test_steckbrief_impower_mirror_unit.py `test_mirror_e2e_three_objects_one_failure`] — Assertion `total == 3` ist trivial wahr. AC6 verlangt konkrete Verteilung `items_failed==1 && items_ok==2 && phase-Enum + AuditLog-Row`. Fix: Test verschaerfen oder separaten `test_mirror_one_property_503_others_succeed` ergaenzen. **Medium** (AC6/AC10)
+- [ ] [Review][Patch] Dedizierter 503-Test aus Task-7.2 fehlt [tests/test_steckbrief_impower_mirror_unit.py] — `test_mirror_one_property_503_others_succeed` ist in Task 7.2 enumeriert, aber nicht implementiert. **Medium** (AC10)
+- [ ] [Review][Patch] AC9 Anon-Zugriff nicht getestet [tests/test_admin_sync_status_routes.py] — Spec verlangt "anon -> 302", nur 403-Pfad vorhanden. Fix: TestClient ohne Auth-Cookie gegen `/admin/sync-status`. **Low** (AC9)
+- [ ] [Review][Patch] HX-Redirect-Header-Pfad nicht getestet [tests/test_admin_sync_status_routes.py] — Runde-1-Fix fuegt `HX-Redirect`-Branch ein, nur 303-Redirect-Test vorhanden. Fix: POST mit `HX-Request: true` Header. **Low**
+
+**Defer (pre-existing / real aber nicht akut):**
+
+- [x] [Review][Defer] Serial-Mandate-Fetch 50 Properties x ~1s Latenz moegl. Richtung 30min-Timeout [app/services/steckbrief_impower_mirror.py `_fetch_impower_snapshot`] — Aktueller Portfolio-Stand <50 Objekte, wait_for=30min reicht; Parallelisierung explizit out-of-scope. Skalierung v1.1 via `asyncio.gather` + Semaphore.
+- [x] [Review][Defer] Kein Index auf `objects.impower_property_id` [migrations/versions] — Nightly-Scan auf 50 Objekten ist seq-scan-OK. Bei 10k+ Objekten: CREATE INDEX nachziehen.
+- [x] [Review][Defer] `audit_log.details_json->>'run_id'` ohne funktionalen Index [app/routers/admin.py `_load_recent_mirror_runs`] — Admin-Seite laedt immer LIMIT-basiert; bei Wachstum >100k Rows funktionalen Index oder materialisierte View.
+- [x] [Review][Defer] Eigentuemer ohne Unique-Constraint auf `(object_id, impower_contact_id)` [migrations/versions/0012] — Komposit-Index existiert, aber nicht unique. Race-Condition nur bei parallelen Mirror-Runs (aktuell strukturell ausgeschlossen durch Lock).
+- [x] [Review][Defer] `db.rollback()` / `db.close()` koennen selbst werfen [app/services/_sync_common.py Item-Loop] — Pre-existing SQLAlchemy-Pattern projektweit. Separate Story wenn DB-Connection-Stability zum Thema wird.
+- [x] [Review][Defer] `_fetch_owner_contracts_by_property` laedt ALLE Impower-Contacts in RAM [app/services/steckbrief_impower_mirror.py] — Impower hat keine Property-gefilterte Contacts-API (recherchiert in Runde 1). Memory-Footprint bei <1000 Contacts akzeptabel.
+- [x] [Review][Defer] `strip_html_error` dekodiert HTML-Entities nicht [app/services/_sync_common.py] — Impower-Error-Body-Entities selten; log zeigt `&amp;amp;` statt `&amp;`. Fix per `html.unescape` trivial, kein Blocker.
+- [x] [Review][Defer] Scheduler-Loop nicht durch echten Unit-Test abgedeckt [tests/test_mirror_scheduler.py] — Test mockt `_mirror_scheduler_loop` komplett weg; der eigentliche Body (wait_for + cooldown) ist nur manuell verifiziert. Dediziertes DST-Fall-Back-Assertion + Loop-Body-Test v1.1.
+- [x] [Review][Defer] Downgrade von 0012 verliert Mirror-Daten irrecoverable [migrations/versions/0012] — Inherent bei `op.drop_column`. Ops-Runbook muss `pg_dump` vor Downgrade verlangen.
+- [x] [Review][Defer] Empty-Mandate-Liste von Impower (legitim) ueberschreibt bestehende BOOKED-Refs [app/services/steckbrief_impower_mirror.py `_reconcile_object`] — Runde-1-Entscheidung: wenn Impower definitiv sagt "keine Mandate mehr", spiegeln wir das. Transiente Lueckenvariante ist bereits durch `mandates_unavailable` abgedeckt.
+
+**Dismissed (9):**
+1. "Lock-Race zwischen `locked()` und `acquire()`" — CPython-Asyncio-single-threaded, zwischen den beiden Zeilen existiert kein `await`, Check+Acquire sind atomar bezueglich des Event-Loops.
+2. "`lock.release()` wirft RuntimeError wenn nicht acquired" — finally-Pfad ist korrekt nur im Acquire-Zweig.
+3. "`_fetch_impower_snapshot` missinterpretiert Paginierungs-Dict als `mandates_unavailable`" — Mandate-Endpoint gibt in Runde 1 verifiziert eine Liste; wenn das sich aendert, faellt das sofort in Tests auf.
+4. "Migration blockiert Writer bei full-table rewrite" — <50 Rows, non-volatile Default.
+5. "Template-strftime-naive-DateTime" — `_to_berlin` vor-konvertiert im Router (Patch 8 deckt Hardening ab).
+6. "`test_mirror_skips_user_edit_via_mirror_guard` user=None-Setup unguelting" — `user_edit` mit `user=None` ist in der Test-Realitaet konstruierbar (Seed-Migrationen schreiben historisch ohne User-Kontext); Test bleibt relevant.
+7. "`test_mietverwaltung_write_orchestrator` Session-Pattern" — conftest nutzt TRUNCATE-Reset, dokumentiert in `project_testing_strategy.md`.
+8. "`flag_modified`-Fix ohne Regression-Test" — Orchestrator-Tests exercise den Shallow-Copy-Pfad indirekt, Fix ist risikolos.
+9. "NTP-Clock-Step-Back" — Cooldown 60s daempft; Scheduler-Loop ist kein Correctness-Issue.
+
 ## Dev Notes
 
 ### Empfohlene Implementations-Reihenfolge

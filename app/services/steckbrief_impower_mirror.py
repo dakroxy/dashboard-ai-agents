@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import unicodedata
 import uuid
 from decimal import Decimal
@@ -123,15 +124,22 @@ def _normalize_mandate_refs(mandates: list[dict[str, Any]]) -> list[dict[str, An
     kann — gemischte Listen wuerden beim Tuple-Sort `TypeError` werfen.
     """
     booked: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
     for m in mandates:
         if m.get("state") != "BOOKED":
             continue
         mid = m.get("id")
         if mid is None:
             continue
+        mid_str = str(mid)
+        # Impower kann dieselbe mandate_id als int und str in getrennten
+        # Items liefern — nach str-Coercion waeren das Duplikate.
+        if mid_str in seen_ids:
+            continue
+        seen_ids.add(mid_str)
         booked.append(
             {
-                "mandate_id": str(mid),
+                "mandate_id": mid_str,
                 "bank_account_id": m.get("bankAccountId"),
                 "state": "BOOKED",
             }
@@ -158,15 +166,26 @@ def _normalize_voting_stake(raw: Any) -> dict[str, Any]:
         val = float(raw)
     except (TypeError, ValueError):
         return {}
+    # NaN/Inf/negativ sind keine gueltigen Voting-Shares. NaN wuerde bei
+    # JSONB-Serialisierung brechen, negative Werte sind semantisch Unsinn.
+    if math.isnan(val) or math.isinf(val) or val < 0:
+        _logger.warning(
+            "voting_stake invalid raw=%r (NaN/Inf/negative) — dropped",
+            raw,
+        )
+        return {}
     if val == 0 or val == 1:
         _logger.warning(
             "voting_stake boundary value raw=%r — heuristic ambiguous, "
             "verify Impower semantics on next live run",
             raw,
         )
+    # Float-Drift kappen (0.1*100 = 10.000000000000002), damit identische
+    # Rohwerte in Folgelaeufen als No-Op vom Write-Gate erkannt werden und
+    # keine Provenance-Churn erzeugen.
     if 0 <= val <= 1:
-        return {"percent": val * 100}
-    return {"percent": val}
+        return {"percent": round(val * 100, 4)}
+    return {"percent": round(val, 4)}
 
 
 def _nfkc(value: Any) -> str:
@@ -336,6 +355,9 @@ async def _reconcile_object(
     mandates_unavailable = bool(impower_data.get("mandates_unavailable"))
     mandates_raw = impower_data.get("mandates") or []
 
+    # AC6 verlangt Phase-Enum "cluster_1" | "cluster_6" | "eigentuemer" im
+    # sync_failed-Audit. Daher drei getrennte try/except-Bloecke statt eines
+    # generischen "reconcile"-Wrappers.
     try:
         # --- Cluster 1: full_address, weg_nr ---
         full_addr = _build_full_address(prop)
@@ -352,7 +374,17 @@ async def _reconcile_object(
         )
         if weg is not None:
             _apply_field(db, obj, "weg_nr", weg, pid, stats)
+    except SyncItemFailure:
+        raise
+    except Exception as exc:
+        raise SyncItemFailure(
+            phase="cluster_1",
+            external_id=pid,
+            entity_id=obj_id,
+            cause=exc,
+        ) from exc
 
+    try:
         # --- Cluster 6: reserve_current, reserve_target,
         # wirtschaftsplan_status, sepa_mandate_refs ---
         finance = prop.get("financeSummary") or {}
@@ -387,14 +419,24 @@ async def _reconcile_object(
             _apply_field(
                 db, obj, "sepa_mandate_refs", mandate_refs, pid, stats
             )
+    except SyncItemFailure:
+        raise
+    except Exception as exc:
+        raise SyncItemFailure(
+            phase="cluster_6",
+            external_id=pid,
+            entity_id=obj_id,
+            cause=exc,
+        ) from exc
 
+    try:
         # --- Eigentuemer-Reconcile ---
         _reconcile_eigentuemer(db, obj_id, pid, owner_data, stats)
     except SyncItemFailure:
         raise
     except Exception as exc:
         raise SyncItemFailure(
-            phase="reconcile",
+            phase="eigentuemer",
             external_id=pid,
             entity_id=obj_id,
             cause=exc,
@@ -445,9 +487,21 @@ def _reconcile_eigentuemer(
     }
 
     impower_contact_ids: set[str] = set()
+    seen_cids: set[str] = set()
 
     for owner in owners:
-        cid = str(owner.get("contactId"))
+        cid_raw = owner.get("contactId")
+        # Contract ohne Contact → str(None) == "None" wuerde in
+        # impower_contact_ids landen und Orphan-Detection kaputt machen.
+        if cid_raw is None:
+            continue
+        cid = str(cid_raw)
+        # Impower kann denselben Contact in mehreren OWNER-Contracts am
+        # selben Property fuehren — doppelte Iteration wuerde den
+        # eigentuemer_updated-Counter doppelt zaehlen und zweimal schreiben.
+        if cid in seen_cids:
+            continue
+        seen_cids.add(cid)
         impower_contact_ids.add(cid)
         # NFKC-Normalize + Trim. Ohne Normalize triggern Unicode-Drifts
         # ("Mueller" vs "Müller") oder Zero-Width-Spaces staendige

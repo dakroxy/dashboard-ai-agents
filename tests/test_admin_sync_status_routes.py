@@ -201,6 +201,47 @@ def test_trigger_mirror_run_redirects_303(sync_admin_client, monkeypatch):
     assert "/admin/sync-status" in resp.headers["location"]
 
 
+def test_trigger_mirror_run_hx_request_returns_hx_redirect_header(
+    sync_admin_client, monkeypatch
+):
+    """HTMX-idiomatisch: bei `HX-Request: true` wird statt 303 ein 200
+    mit `HX-Redirect`-Header geliefert — so swappt HTMX nicht den aktuellen
+    Content, sondern laedt die Ziel-URL neu."""
+    async def fake_mirror(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "app.routers.admin.run_impower_mirror", fake_mirror
+    )
+    resp = sync_admin_client.post(
+        "/admin/sync-status/run", headers={"HX-Request": "true"}
+    )
+    assert resp.status_code == 200
+    assert "/admin/sync-status" in resp.headers.get("HX-Redirect", "")
+
+
+def test_sync_status_anonymous_access_redirects_to_login(db):
+    """AC9: Anon-Zugriff auf /admin/sync-status liefert 302 nach /auth/google/login.
+
+    get_current_user wirft HTTPException(302) bei fehlender Session — das
+    muss unverfaelscht durchkommen (kein dependency_override auf
+    get_current_user).
+    """
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    # KEIN override fuer get_current_user/get_optional_user — damit laeuft
+    # der Auth-Decorator so, wie er in Prod laeuft.
+    try:
+        with TestClient(app, raise_server_exceptions=False, follow_redirects=False) as c:
+            resp = c.get("/admin/sync-status")
+            assert resp.status_code == 302
+            assert "/auth/google/login" in resp.headers.get("location", "")
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_admin_home_shows_sync_status_link_for_admin(sync_admin_client):
     resp = sync_admin_client.get("/admin")
     assert resp.status_code == 200

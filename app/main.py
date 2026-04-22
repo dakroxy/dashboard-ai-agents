@@ -27,7 +27,11 @@ from app.routers import documents as documents_router
 from app.routers import impower as impower_router
 from app.routers import objects as objects_router
 from app.routers import workflows as workflows_router
-from app.services._sync_common import next_daily_run_at
+from app.services._sync_common import (
+    MIRROR_RUN_HOUR,
+    MIRROR_RUN_MINUTE,
+    next_daily_run_at,
+)
 from app.services.claude import (
     DEFAULT_CHAT_MODEL,
     DEFAULT_CONTACT_CREATE_SYSTEM_PROMPT,
@@ -40,8 +44,6 @@ from app.templating import templates
 
 
 _BERLIN_TZ = ZoneInfo("Europe/Berlin")
-_MIRROR_RUN_HOUR = 2
-_MIRROR_RUN_MINUTE = 30
 # Hard timeout for a single mirror run — ein haengender Impower-Call darf
 # den Scheduler nicht fuer Tage blockieren. 30 min sollte bei ~50 Objekten
 # mit bis zu 60 s Impower-Response-Time komfortabel reichen.
@@ -214,8 +216,8 @@ async def _mirror_scheduler_loop() -> None:
     while True:
         next_run = next_daily_run_at(
             datetime.now(tz=timezone.utc),
-            hour=_MIRROR_RUN_HOUR,
-            minute=_MIRROR_RUN_MINUTE,
+            hour=MIRROR_RUN_HOUR,
+            minute=MIRROR_RUN_MINUTE,
             tz=_BERLIN_TZ,
         )
         wait_seconds = max(

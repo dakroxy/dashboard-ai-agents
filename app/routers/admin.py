@@ -36,15 +36,17 @@ from app.permissions import (
     require_any_permission,
     require_permission,
 )
-from app.services._sync_common import next_daily_run_at
+from app.services._sync_common import (
+    MIRROR_RUN_HOUR,
+    MIRROR_RUN_MINUTE,
+    next_daily_run_at,
+)
 from app.services.audit import KNOWN_AUDIT_ACTIONS, audit
 from app.services.steckbrief_impower_mirror import run_impower_mirror
 from app.templating import templates
 
 _BERLIN_TZ = ZoneInfo("Europe/Berlin")
 _MIRROR_JOB_NAME = "steckbrief_impower_mirror"
-_MIRROR_RUN_HOUR = 2
-_MIRROR_RUN_MINUTE = 30
 # Runs die seit mehr als dieser Zeit im Status "started" haengen, ohne
 # `sync_finished`, werden als "crashed" markiert — typischerweise Container-
 # Restart oder OOM-Kill mitten im Lauf.
@@ -777,6 +779,17 @@ def _load_recent_mirror_runs(
             bucket["failures"].append(row)
 
     now = datetime.now(tz=timezone.utc)
+
+    def _aware(dt: datetime | None) -> datetime | None:
+        # Legacy-Rows koennten naive `created_at` haben (z. B. wenn die
+        # Spalte historisch mal ohne `timezone=True` war). Verrechnen mit
+        # `now` (tz-aware) wuerde sonst TypeError werfen.
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+
     out: list[dict] = []
     for rid in ordered_ids:
         bucket = runs_by_id[rid]
@@ -791,9 +804,7 @@ def _load_recent_mirror_runs(
         if started_details.get("skipped"):
             status_ = "skipped"
         elif finished is None:
-            started_at_local = (
-                started.created_at if started else None
-            )
+            started_at_local = _aware(started.created_at) if started else None
             if (
                 started_at_local is not None
                 and (now - started_at_local).total_seconds()
@@ -811,8 +822,8 @@ def _load_recent_mirror_runs(
             else:
                 status_ = "ok"
 
-        started_at = started.created_at if started else None
-        finished_at = finished.created_at if finished else None
+        started_at = _aware(started.created_at) if started else None
+        finished_at = _aware(finished.created_at) if finished else None
         if started_at is not None and finished_at is not None:
             duration = (finished_at - started_at).total_seconds()
         elif started_at is not None and finished is None:
@@ -896,8 +907,8 @@ async def sync_status_home(
     last_run = runs[0] if runs else None
     next_run = next_daily_run_at(
         datetime.now(tz=timezone.utc),
-        hour=_MIRROR_RUN_HOUR,
-        minute=_MIRROR_RUN_MINUTE,
+        hour=MIRROR_RUN_HOUR,
+        minute=MIRROR_RUN_MINUTE,
         tz=_BERLIN_TZ,
     )
     return templates.TemplateResponse(
