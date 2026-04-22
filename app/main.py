@@ -22,6 +22,7 @@ from app.routers import cases as cases_router
 from app.routers import contacts as contacts_router
 from app.routers import documents as documents_router
 from app.routers import impower as impower_router
+from app.routers import objects as objects_router
 from app.routers import workflows as workflows_router
 from app.services.claude import (
     DEFAULT_CHAT_MODEL,
@@ -220,6 +221,7 @@ app.include_router(auth_router.router)
 app.include_router(documents_router.router)
 app.include_router(cases_router.router)
 app.include_router(contacts_router.router)
+app.include_router(objects_router.router)
 app.include_router(workflows_router.router)
 app.include_router(impower_router.router)
 app.include_router(admin_router.router)

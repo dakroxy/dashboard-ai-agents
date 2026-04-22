@@ -45,6 +45,17 @@ Alle in `app/templates/`. Tailwind via CDN (siehe `base.html`).
 | `workflows_list.html` | Uebersicht der drei Workflows. |
 | `workflow_edit.html` | Prompt + Modell + Lernnotizen editierbar. Dropdown aus `AVAILABLE_MODELS` in `app/services/claude.py`. |
 
+### Steckbrief — Liste + Detail (Stammdaten)
+
+| Datei | Zweck |
+|---|---|
+| `objects_list.html` | Objekt-Liste-Tabelle (`short_code` · Name · Adresse · Anzahl Einheiten). Row ist HTML-Link auf `/objects/{id}` (Cmd-Click-fest, kein JS-Handler). |
+| `object_detail.html` | Container-Template fuer die Detailseite; eingebunden wird aktuell nur die Stammdaten-Sektion. Weitere Sektionen (Finanzen, Technik, Versicherungen, ...) werden mit Stories 1.4-3.6 hinzugefuegt. |
+| `_obj_stammdaten.html` | 5-Feld-Grid mit Provenance-Pills (`data-source` Attribut + Tooltip), Eigentuemer-Tabelle (Name + Stimmrecht), Stale-Banner wenn noch nie `impower_mirror`-Provenance geschrieben wurde. |
+| `_obj_table_body.html` | Tabellenkoerper der Objekt-Liste als separates Fragment — vorbereitet fuer HTMX-Sort/Filter-Swap in Story 3.1. |
+
+Feldlisten fuer `Object` + `Eigentuemer` stehen in `docs/data-models.md` (aus Story 1.2). Provenance-Render-Tabelle + Helper `provenance_pill()` in `app/templating.py`.
+
 ### Admin
 
 | Datei | Zweck |
@@ -64,6 +75,7 @@ Alle in `app/templates/`. Tailwind via CDN (siehe `base.html`).
 | `documents.py` | `/documents` | 760 | Upload + Detail + Approve + Chat + Status-Fragment + File-Inline |
 | `cases.py` | `/cases` | 1697 | Case-CRUD + 12 `state/*`-Routen + Write-Trigger + Case-Chat |
 | `contacts.py` | `/contacts` | 359 | Contact-Create 2-Phasen-Flow |
+| `objects.py` | `/objects` | ~90 | Steckbrief-Liste + Detailseite (Cluster 1 Stammdaten, read-only) |
 | `workflows.py` | `/workflows` | 114 | Workflow-Edit |
 | `impower.py` | `/impower` | 124 | Debug: health, properties, contracts, match (JSON) |
 | `admin.py` | `/admin` | 698 | User/Roles CRUD + Audit-Log |
@@ -78,6 +90,8 @@ Alle in `app/templates/`. Tailwind via CDN (siehe `base.html`).
 | `claude.py` | 533 | `extract_mandate_from_pdf`, `chat_about_mandate`, Konstanten `DEFAULT_MODEL`/`DEFAULT_CHAT_MODEL`/`AVAILABLE_MODELS`/`DEFAULT_SYSTEM_PROMPT`/`DEFAULT_MIETVERWALTUNG_SYSTEM_PROMPT`/`DEFAULT_CONTACT_CREATE_SYSTEM_PROMPT`, Helper `prompt_version_for` |
 | `mietverwaltung.py` | 1375 | `classify_document`, `extract_for_doc_type`, `merge_case_state(extractions, overrides)`, `field_source(case_state, section, field)`, `chat_about_case` |
 | `mietverwaltung_write.py` | 780 | `preflight(case_state) -> WritePreflight`, `run_mietverwaltung_write(case_id)` (BackgroundTask-Entry) |
+| `steckbrief.py` | ~140 | Read-only: `list_objects_with_unit_counts(db, accessible_ids)`, `get_object_detail(db, object_id, accessible_ids)`, `get_provenance_map(db, entity_type, entity_id, fields)` (mit LEFT JOIN auf `users.email` fuer Tooltip), `has_any_impower_provenance` (Stale-Banner-Heuristik). |
+| `steckbrief_write_gate.py` | ~540 | Zentrales Write-Gate: `write_field_human`, `write_field_ai_proposal`, `approve_review_entry`, `reject_review_entry` + `WriteResult`/`WriteGateError`. |
 | `impower.py` | 928 | Read: `load_properties`, `load_owner_contracts`, `load_all_contacts`, `load_unit_contract_mandates`, `health_check`; Matching: `match_property`, `match_contact_in_property`, `run_full_match`; Write: `write_sepa_mandate` + internals `_api_get/_api_post/_api_put`, `_ensure_bank_account`, `_normalize_iban`, `_derive_bic_from_iban`; Contact: `_build_contact_payload`, `check_contact_duplicates`, `create_contact` |
 
 ## Cross-Cutting-Module
@@ -88,7 +102,7 @@ Alle in `app/templates/`. Tailwind via CDN (siehe `base.html`).
 | `app/db.py` | `engine`, `SessionLocal`, `Base`, `get_db()` FastAPI-Dependency. |
 | `app/auth.py` | OAuth-Client + `get_current_user` / `get_optional_user`. |
 | `app/permissions.py` | Permission-Registry, `has_permission`, `effective_permissions`, `require_permission(key)` / `require_any_permission(*keys)`, `can_access_workflow`, `accessible_workflow_ids`. |
-| `app/templating.py` | `templates` Singleton. Globals: `has_permission`, `field_source`. Filter: `iban_format` (gruppiert IBAN in 4er-Blocks fuer Anzeige). |
+| `app/templating.py` | `templates` Singleton. Globals: `has_permission`, `field_source`, `provenance_pill`. Filter: `iban_format` (gruppiert IBAN in 4er-Blocks fuer Anzeige). |
 
 ## Erweiterungs-Leitfaden
 

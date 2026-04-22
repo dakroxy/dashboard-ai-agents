@@ -1,0 +1,29 @@
+{# Tabellenkoerper der Objekt-Liste. Eigenes Fragment fuer spaetere HTMX-Swaps
+   (Sortierung/Filter in Story 3.1). Aktuell ohne hx-get.
+
+   Jede Zelle ist ein eigener <a>-Link statt row-onclick, damit Cmd-/Middle-Click,
+   Screen-Reader und Right-Click-Kontextmenue funktionieren (AC2). #}
+<tbody>
+    {% for row in rows %}
+    <tr class="border-t border-slate-100 hover:bg-slate-50">
+        <td class="p-0 font-medium">
+            <a href="/objects/{{ row.id }}" class="block px-4 py-3 hover:underline">{{ row.short_code }}</a>
+        </td>
+        <td class="p-0 text-slate-700">
+            <a href="/objects/{{ row.id }}" class="block px-4 py-3">{{ row.name }}</a>
+        </td>
+        <td class="p-0 text-slate-600">
+            <a href="/objects/{{ row.id }}" class="block px-4 py-3">{{ row.full_address or "&mdash;"|safe }}</a>
+        </td>
+        <td class="p-0 text-right text-slate-700 tabular-nums">
+            <a href="/objects/{{ row.id }}" class="block px-4 py-3">{{ row.unit_count }}</a>
+        </td>
+    </tr>
+    {% else %}
+    <tr>
+        <td colspan="4" class="px-4 py-10 text-center text-slate-400">
+            Noch keine Objekte &mdash; warte auf Impower-Sync (Story 1.4) oder lege sie via Admin-Tool an.
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>

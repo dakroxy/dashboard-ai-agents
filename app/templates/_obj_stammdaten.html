@@ -1,0 +1,64 @@
+{# Stammdaten-Sektion: 5 Core-Felder + Eigentuemerliste. Provenance-Pills pro
+   Feld + Stale-Banner, wenn noch nie ein Impower-Mirror gelaufen ist. #}
+
+<section class="rounded-lg bg-white border border-slate-200 p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-slate-900">Stammdaten</h2>
+    </div>
+
+    {% if not has_impower_prov %}
+    <div class="mb-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        Noch nicht aus Impower synchronisiert &mdash; Daten werden automatisch uebernommen,
+        sobald der naechtliche Abgleich laeuft.
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        {% for item in stammdaten %}
+        {% set pill = provenance_pill(item.prov) %}
+        <div>
+            <div class="text-xs uppercase tracking-wider text-slate-500 mb-1">{{ item.field }}</div>
+            <div class="flex items-center justify-between gap-3">
+                <div class="text-sm text-slate-900 truncate">
+                    {% if item.value %}{{ item.value }}{% else %}<span class="text-slate-400">&mdash;</span>{% endif %}
+                </div>
+                <span data-source="{{ pill.source }}"
+                      title="{{ pill.tooltip }}"
+                      class="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded {{ pill.color_class }}">
+                    {{ pill.label }}
+                </span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="rounded-lg bg-white border border-slate-200 p-6">
+    <h2 class="text-lg font-semibold text-slate-900 mb-4">Eigentuemer</h2>
+
+    <table class="w-full text-sm">
+        <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-3 py-2 font-semibold">Name</th>
+                <th class="text-right px-3 py-2 font-semibold">Stimmrecht</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for eig in eigentuemer %}
+            <tr class="border-t border-slate-100">
+                <td class="px-3 py-2 text-slate-800">{{ eig.name }}</td>
+                <td class="px-3 py-2 text-right text-slate-700 tabular-nums">
+                    {% set stake = eig.voting_stake_json or {} %}
+                    {% if stake.get("percent") is not none %}{{ stake["percent"] }}&nbsp;%
+                    {% elif stake.get("share") is not none %}{{ stake["share"] }}
+                    {% else %}<span class="text-slate-400">&ndash;</span>{% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="2" class="px-3 py-6 text-center text-slate-400">Noch kein Eigentuemer erfasst.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>

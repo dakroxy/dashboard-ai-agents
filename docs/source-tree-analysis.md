@@ -43,7 +43,7 @@ app/
 ├── db.py                      # SQLAlchemy-Engine + SessionLocal + Base + get_db()-Dependency
 ├── auth.py                    # Authlib-OAuth-Client (Google) + get_current_user / get_optional_user
 ├── permissions.py             # Permission-Registry, Role/ResourceAccess-Resolver, FastAPI-Dependencies
-├── templating.py              # Jinja2Templates-Singleton + Globals (has_permission, field_source) + iban_format-Filter
+├── templating.py              # Jinja2Templates-Singleton + Globals (has_permission, field_source, provenance_pill) + iban_format-Filter
 │
 ├── models/                    # SQLAlchemy-ORM-Modelle
 │   ├── __init__.py            # Re-exports: User, Role, ResourceAccess, Document, Extraction,
@@ -63,6 +63,7 @@ app/
 │   ├── documents.py           # SEPA-Single-Doc-Flow: Upload -> Extract -> Match -> Approve -> Write -> Chat
 │   ├── cases.py               # Mietverwaltungs-Case: Multi-Doc-Upload, State-Edit-Routes, Write, Case-Chat
 │   ├── contacts.py            # Kontakt-Anlage-Sub-Workflow (2-Phasen: Duplicate-Check + Confirm)
+│   ├── objects.py             # Steckbrief: GET /objects (Liste) + GET /objects/{id} (Detail Cluster 1, read-only)
 │   ├── workflows.py           # GET/POST /workflows/{key} — Prompt/Modell/Notes editierbar
 │   ├── impower.py             # Debug-Endpoints (/impower/health, /properties, /contracts, /match)
 │   └── admin.py               # /admin/* — User, Rollen, Workflow-Access, Audit-Log
@@ -72,6 +73,8 @@ app/
 │   ├── claude.py              # SEPA-Extract + SEPA-Chat (Claude-API, IBAN-Guard + schwifty, Prompt-Caching)
 │   ├── mietverwaltung.py      # Classify + Extract per Doc-Typ, merge_case_state, Case-Chat mit Delta-Patch
 │   ├── mietverwaltung_write.py# 8-Schritte-Write-Flow (Contacts -> Property -> Contract -> Units -> ...)
+│   ├── steckbrief.py          # Read-only-Queries fuer Objekt-Liste + Detail (LEFT-JOIN unit_counts, get_provenance_map)
+│   ├── steckbrief_write_gate.py # Zentrales Write-Gate fuer CD1-Entitaeten (Provenance + Audit + Mirror-Guard)
 │   └── impower.py             # Impower-Client (httpx): Read-Pfad Matching, Write-Pfad SEPA-Mandat,
 │                              # Rate-Limiting, 5xx-Retry, Schwifty-BIC-Derivation, _build_contact_payload
 │
@@ -91,6 +94,10 @@ app/
     ├── contact_create.html    # Kontakt-Anlage-Form + Duplicate-Check-Warnung
     ├── workflows_list.html    # Workflow-Uebersicht (3 Eintraege: sepa_mandate, mietverwaltung_setup, contact_create)
     ├── workflow_edit.html     # Workflow-Konfig-Formular (Prompt + Modell + Lernnotizen)
+    ├── objects_list.html      # Steckbrief-Liste: Tabelle mit short_code/name/Adresse/Anzahl-Einheiten (Story 1.3)
+    ├── object_detail.html     # Steckbrief-Detail: Container-Template, include `_obj_stammdaten.html` (Story 1.3)
+    ├── _obj_stammdaten.html   # Stammdaten-Sektion + Eigentuemerliste + Stale-Banner + Provenance-Pills
+    ├── _obj_table_body.html   # Tabellenkoerper der Objekt-Liste (eigenes Fragment fuer spaetere HTMX-Swaps)
     ├── _macros.html           # status_pill() Jinja-Macro
     └── admin/
         ├── home.html
