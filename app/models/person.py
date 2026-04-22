@@ -26,6 +26,9 @@ class Eigentuemer(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     email: Mapped[str | None] = mapped_column(String, nullable=True)
     phone: Mapped[str | None] = mapped_column(String, nullable=True)
+    impower_contact_id: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
     voting_stake_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )

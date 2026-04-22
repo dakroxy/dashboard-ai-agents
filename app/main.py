@@ -1,6 +1,9 @@
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -24,6 +27,7 @@ from app.routers import documents as documents_router
 from app.routers import impower as impower_router
 from app.routers import objects as objects_router
 from app.routers import workflows as workflows_router
+from app.services._sync_common import next_daily_run_at
 from app.services.claude import (
     DEFAULT_CHAT_MODEL,
     DEFAULT_CONTACT_CREATE_SYSTEM_PROMPT,
@@ -31,7 +35,20 @@ from app.services.claude import (
     DEFAULT_MODEL,
     DEFAULT_SYSTEM_PROMPT,
 )
+from app.services.steckbrief_impower_mirror import run_impower_mirror
 from app.templating import templates
+
+
+_BERLIN_TZ = ZoneInfo("Europe/Berlin")
+_MIRROR_RUN_HOUR = 2
+_MIRROR_RUN_MINUTE = 30
+# Hard timeout for a single mirror run — ein haengender Impower-Call darf
+# den Scheduler nicht fuer Tage blockieren. 30 min sollte bei ~50 Objekten
+# mit bis zu 60 s Impower-Response-Time komfortabel reichen.
+_MIRROR_RUN_TIMEOUT_SECONDS = 30 * 60
+# Mindest-Cooldown NACH einem Lauf vor der naechsten next_run-Berechnung.
+# Schuetzt gegen Hot-Loop bei Clock-Jump/NTP-Resync.
+_MIRROR_POST_RUN_COOLDOWN_SECONDS = 60
 
 
 _logger = logging.getLogger(__name__)
@@ -183,12 +200,79 @@ def _seed_default_workflow_access() -> None:
         db.close()
 
 
+async def _mirror_scheduler_loop() -> None:
+    """Dauerschleife: bis zum naechsten 02:30 Uhr Europe/Berlin schlafen, dann
+    run_impower_mirror aufrufen. Fehler des einzelnen Laufs werden geloggt,
+    der Scheduler stirbt nicht.
+
+    Schutzen gegen Clock-Jumps (NTP-Resync, Host-Suspend, DST) via:
+      - Gesamt-Timeout pro Lauf (_MIRROR_RUN_TIMEOUT_SECONDS) gegen
+        haengende Calls.
+      - Post-Run-Cooldown, damit ein Lauf, der unerwartet schnell endet,
+        nicht sofort den naechsten triggert.
+    """
+    while True:
+        next_run = next_daily_run_at(
+            datetime.now(tz=timezone.utc),
+            hour=_MIRROR_RUN_HOUR,
+            minute=_MIRROR_RUN_MINUTE,
+            tz=_BERLIN_TZ,
+        )
+        wait_seconds = max(
+            0.0,
+            (next_run - datetime.now(tz=timezone.utc)).total_seconds(),
+        )
+        _logger.info(
+            "mirror_scheduler: next run at %s (in %.0f s)",
+            next_run.isoformat(),
+            wait_seconds,
+        )
+        await asyncio.sleep(wait_seconds)
+        try:
+            await asyncio.wait_for(
+                run_impower_mirror(),
+                timeout=_MIRROR_RUN_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            _logger.error(
+                "mirror_scheduler: run exceeded %s s timeout",
+                _MIRROR_RUN_TIMEOUT_SECONDS,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _logger.exception("mirror_scheduler: run failed")
+        # Cooldown, damit der Lauf nicht sofort re-triggert wird, falls
+        # `next_daily_run_at` aus irgendeinem Grund denselben Instant
+        # zurueckgibt (Clock-Skew, DST-Edge).
+        await asyncio.sleep(_MIRROR_POST_RUN_COOLDOWN_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _seed_default_workflow()
     _seed_default_roles()
     _seed_default_workflow_access()
-    yield
+
+    scheduler_task: asyncio.Task | None = None
+    if settings.impower_mirror_enabled:
+        scheduler_task = asyncio.create_task(
+            _mirror_scheduler_loop(), name="steckbrief_impower_mirror_scheduler"
+        )
+    else:
+        _logger.info(
+            "mirror_scheduler: disabled via settings.impower_mirror_enabled"
+        )
+
+    try:
+        yield
+    finally:
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            try:
+                await scheduler_task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="Dashboard KI-Agenten", lifespan=lifespan)

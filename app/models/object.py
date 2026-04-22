@@ -44,6 +44,18 @@ class Object(Base):
     last_known_balance: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True
     )
+    reserve_current: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    reserve_target: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    wirtschaftsplan_status: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
+    sepa_mandate_refs: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
     pflegegrad_score_cached: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pflegegrad_score_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

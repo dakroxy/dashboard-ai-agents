@@ -345,6 +345,10 @@ Alle Writes laufen ueber `app.services.audit.audit(db, user, action, ...)`. Comm
 | `year_built`, `year_roof` | Integer, nullable | |
 | `entry_code_main_door` / `_garage` / `_technical_room` | String, nullable | Ciphertext-Placeholder — Fernet-Encryption kommt mit Story 1.7. Klartext niemals in Provenance/Audit (Write-Gate `{"encrypted": True}`-Marker). |
 | `last_known_balance` | Numeric(12,2), nullable | Letzter Impower-Saldo, Live-Pull laeuft ueber Finanzen-Sektion (Story 1.5). |
+| `reserve_current` | Numeric(12,2), nullable | Aktueller Ruecklage-Saldo. Mirror-Quelle Cluster 6 (Story 1.4). |
+| `reserve_target` | Numeric(12,2), nullable | Ruecklage-Zielwert monatlich. Mirror-Quelle Cluster 6 (Story 1.4). |
+| `wirtschaftsplan_status` | String, nullable | Mapping `RESOLVED→beschlossen`, `IN_PREPARATION→in_vorbereitung`, `DRAFT→entwurf`, sonst lowercase. Mirror-Quelle Cluster 6. |
+| `sepa_mandate_refs` | JSONB `[]` | Liste `{mandate_id, bank_account_id, state:"BOOKED"}`, stable-sortiert nach mandate_id. Mirror-Quelle Cluster 6. |
 | `pflegegrad_score_cached` | Integer, nullable | Cache, vom Write-Gate auf None gesetzt bei jedem Feld-Write. |
 | `pflegegrad_score_updated_at` | Timestamp tz, nullable | |
 | `voting_rights` | JSONB `{}` | MEA/Stimmverteilung. |
@@ -404,7 +408,7 @@ Vollstaendige Spalten-Specs werden mit Story 1.3 (Objekt-Detailseite) und 1.5/1.
 | `policen` | FK `object_id` + `versicherer_id`; `police_number`, `main_due_date`, `next_main_due` (indexed), `praemie`, `coverage`/`risk_attributes` (JSONB). |
 | `wartungspflichten` | FK `policy_id` (nullable) + `dienstleister_id` (nullable); `bezeichnung`, `intervall_monate`, `next_due_date` (indexed), `notes` (JSONB). |
 | `schadensfaelle` | FK `policy_id` + `unit_id` (nullable); `description`, `amount`, `occurred_at`, `status`. |
-| `eigentuemer`, `mieter` | FK `object_id`; `name`, `email`, `phone` (+ `voting_stake_json` bei Eigentuemer). |
+| `eigentuemer`, `mieter` | FK `object_id`; `name`, `email`, `phone` (+ `voting_stake_json` bei Eigentuemer). `eigentuemer.impower_contact_id` (nullable) + composite Index `(object_id, impower_contact_id)` seit 0012 fuer Mirror-Reconcile. |
 | `mietvertraege` | FK `unit_id` + `mieter_id`; `start_date`, `end_date`, `cold_rent`, `deposit`. |
 | `zaehler` | FK `unit_id`; `meter_number`, `meter_type`, `current_reading_snapshot` (JSONB). |
 | `facilioo_tickets` | FK `object_id`; `facilioo_id` UNIQUE, `status`, `title`, `raw_payload` (JSONB). |
@@ -427,5 +431,6 @@ Linear, in `migrations/versions/`:
 | `0009` | `0009_chat_messages_case_id.py` | `chat_messages.case_id` + `document_id` nullable. |
 | `0010` | `0010_steckbrief_core.py` | 15 Steckbrief-Tabellen (Objects, Units, Policen, Registries, Personen, Tickets, Fotos). |
 | `0011` | `0011_steckbrief_governance.py` | `field_provenance` + `review_queue_entries` fuer das Write-Gate. |
+| `0012` | `0012_steckbrief_finance_mirror_fields.py` | Cluster-6-Finanzen auf `objects` (`reserve_current`, `reserve_target`, `wirtschaftsplan_status`, `sepa_mandate_refs`) + `eigentuemer.impower_contact_id` + composite Index fuer Mirror-Reconcile. |
 
 `alembic upgrade head` laeuft als erstes Kommando beim Container-Start (`Dockerfile` CMD).

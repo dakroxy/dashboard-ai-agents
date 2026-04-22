@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-22 (Story 1.3 → done nach bmad-code-review)
+# last_updated: 2026-04-22 (Story 1.4 → done nach bmad-code-review Runde 1)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-22 (Story 1.3 → done nach bmad-code-review)
+last_updated: 2026-04-22 (Story 1.4 → done nach bmad-code-review Runde 1)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -47,7 +47,7 @@ development_status:
   1-1-steckbrief-permissions-audit-actions-default-header: done
   1-2-objekt-datenmodell-write-gate-provenance-infrastruktur: done
   1-3-objekt-liste-stammdaten-detailseite: done
-  1-4-impower-nightly-mirror-fuer-cluster-1-6: backlog
+  1-4-impower-nightly-mirror-fuer-cluster-1-6: done
   1-5-finanzen-sektion-mit-live-saldo-ruecklage-sparkline: backlog
   1-6-technik-sektion-mit-inline-edit: backlog
   1-7-zugangscodes-mit-field-level-encryption: backlog

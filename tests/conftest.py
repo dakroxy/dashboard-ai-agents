@@ -14,6 +14,10 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-do-not-use")
 os.environ.setdefault("POSTGRES_PASSWORD", "")
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 os.environ.setdefault("IMPOWER_BEARER_TOKEN", "")
+# Default: im Testsuite-Lauf kein Nightly-Scheduler-Task anlegen. Tests, die
+# den Scheduler explizit verifizieren, setzen settings.impower_mirror_enabled
+# per monkeypatch auf True, bevor der Lifespan-Enter laeuft.
+os.environ.setdefault("IMPOWER_MIRROR_ENABLED", "false")
 
 import pytest
 import sqlalchemy as sa

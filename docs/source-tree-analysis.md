@@ -75,6 +75,8 @@ app/
 │   ├── mietverwaltung_write.py# 8-Schritte-Write-Flow (Contacts -> Property -> Contract -> Units -> ...)
 │   ├── steckbrief.py          # Read-only-Queries fuer Objekt-Liste + Detail (LEFT-JOIN unit_counts, get_provenance_map)
 │   ├── steckbrief_write_gate.py # Zentrales Write-Gate fuer CD1-Entitaeten (Provenance + Audit + Mirror-Guard)
+│   ├── steckbrief_impower_mirror.py # Nightly-Mirror Cluster 1+6 aus Impower (Story 1.4)
+│   ├── _sync_common.py        # Generischer Sync-Job-Wrapper (Lock, Audit, per-Item-Session, Fehler-Isolation)
 │   └── impower.py             # Impower-Client (httpx): Read-Pfad Matching, Write-Pfad SEPA-Mandat,
 │                              # Rate-Limiting, 5xx-Retry, Schwifty-BIC-Derivation, _build_contact_payload
 │
@@ -103,7 +105,8 @@ app/
         ├── home.html
         ├── users_list.html · user_edit.html
         ├── roles_list.html · role_edit.html
-        └── logs.html
+        ├── logs.html
+        └── sync_status.html   # Sync-Status-Dashboard + Manual-Trigger (Story 1.4)
 ```
 
 ### Entry-Points

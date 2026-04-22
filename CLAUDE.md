@@ -27,6 +27,7 @@ Zentrale Web-Plattform, auf der Mitarbeitende Dokumente hochladen und KI-Agenten
 
 1. **M5 Paket 7 Live-Test** — Fall mit Verwaltervertrag + Grundbuch + Mieterliste + ≥1 Mietvertrag komplett durchspielen → `POST /cases/{id}/write`. Besonders beobachten: Exchange-Plan-Step. Wenn Impower 400/422 wirft, muss der `templateExchanges[]`-Aufbau (MVP: 1 Plan mit 3 Positions-Typen COLD_RENT / OPERATING_COSTS / HEATING_COSTS) auf eine andere Granularitaet umgebaut werden (ggf. 1 Plan pro Position oder Summen-Eintrag mit Splits).
 2. **M3 Neuanlage-Zweig** live verifizieren (Tilker GVE1 / Kulessa BRE11).
+3. **Story 1.4 Impower-Nightly-Mirror Cluster 1+6** — Code fertig (Migration 0012 + `_sync_common.py` + `steckbrief_impower_mirror.py` + Lifespan-Scheduler + `/admin/sync-status`). Live-Verifikation offen: erster automatischer Lauf 02:30 Europe/Berlin, pruefen per `/admin/sync-status` am naechsten Morgen. Fuer schnellen Test `Jetzt ausfuehren`-Button nutzen.
 
 ## Architektur (Module)
 

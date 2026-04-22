@@ -8,10 +8,22 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -24,8 +36,19 @@ from app.permissions import (
     require_any_permission,
     require_permission,
 )
+from app.services._sync_common import next_daily_run_at
 from app.services.audit import KNOWN_AUDIT_ACTIONS, audit
+from app.services.steckbrief_impower_mirror import run_impower_mirror
 from app.templating import templates
+
+_BERLIN_TZ = ZoneInfo("Europe/Berlin")
+_MIRROR_JOB_NAME = "steckbrief_impower_mirror"
+_MIRROR_RUN_HOUR = 2
+_MIRROR_RUN_MINUTE = 30
+# Runs die seit mehr als dieser Zeit im Status "started" haengen, ohne
+# `sync_finished`, werden als "crashed" markiert — typischerweise Container-
+# Restart oder OOM-Kill mitten im Lauf.
+_MIRROR_STALE_RUNNING_AFTER_SECONDS = 60 * 60
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -684,6 +707,232 @@ async def delete_log(
     db.commit()
     return RedirectResponse(
         url="/admin/logs",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sync-Status (Impower-Nightly-Mirror)
+# ---------------------------------------------------------------------------
+
+def _load_recent_mirror_runs(
+    db: Session, *, job_name: str, limit: int = 10
+) -> list[dict]:
+    """Rekonstruiert die letzten `limit` Laeufe aus audit_log.
+
+    Zwei-stufig (AC9):
+      1. Sub-Query auf die letzten `limit` distinct `run_id`-Werte aus
+         audit_log, gefiltert auf job + sync_*-Actions.
+      2. Alle Audit-Rows zu diesen run_ids laden und in Python zu
+         Run-Tupeln gruppieren.
+
+    So fallen Laeufe mit vielen sync_failed-Rows nicht aus der Historie,
+    wenn ein einzelner Lauf ueber einem Heuristik-Limit liegt.
+    """
+    run_id_col = AuditLog.details_json["run_id"].as_string()
+    job_col = AuditLog.details_json["job"].as_string()
+    action_filter = AuditLog.action.in_(
+        ("sync_started", "sync_finished", "sync_failed")
+    )
+
+    # Stufe 1: letzte `limit` distinct run_ids (nach juengster created_at
+    # jedes Runs).
+    run_ids_subq = (
+        db.query(run_id_col.label("rid"))
+        .filter(action_filter)
+        .filter(job_col == job_name)
+        .group_by(run_id_col)
+        .order_by(func.max(AuditLog.created_at).desc())
+        .limit(limit)
+        .all()
+    )
+    ordered_ids = [row.rid for row in run_ids_subq if row.rid]
+    if not ordered_ids:
+        return []
+
+    # Stufe 2: alle Rows zu diesen run_ids.
+    rows = (
+        db.query(AuditLog)
+        .filter(action_filter)
+        .filter(run_id_col.in_(ordered_ids))
+        .order_by(AuditLog.created_at.desc())
+        .all()
+    )
+
+    runs_by_id: dict[str, dict] = {
+        rid: {"run_id": rid, "started": None, "finished": None, "failures": []}
+        for rid in ordered_ids
+    }
+    for row in rows:
+        details = row.details_json or {}
+        rid = details.get("run_id")
+        bucket = runs_by_id.get(rid)
+        if bucket is None:
+            continue
+        if row.action == "sync_started":
+            bucket["started"] = row
+        elif row.action == "sync_finished":
+            bucket["finished"] = row
+        elif row.action == "sync_failed":
+            bucket["failures"].append(row)
+
+    now = datetime.now(tz=timezone.utc)
+    out: list[dict] = []
+    for rid in ordered_ids:
+        bucket = runs_by_id[rid]
+        started = bucket["started"]
+        finished = bucket["finished"]
+        failures = bucket["failures"]
+
+        started_details = (started.details_json or {}) if started else {}
+        fin_details = (finished.details_json or {}) if finished else {}
+
+        fetch_failed = bool(fin_details.get("fetch_failed"))
+        if started_details.get("skipped"):
+            status_ = "skipped"
+        elif finished is None:
+            started_at_local = (
+                started.created_at if started else None
+            )
+            if (
+                started_at_local is not None
+                and (now - started_at_local).total_seconds()
+                > _MIRROR_STALE_RUNNING_AFTER_SECONDS
+            ):
+                status_ = "crashed"
+            else:
+                status_ = "running"
+        elif fetch_failed:
+            status_ = "failed"
+        else:
+            objects_failed = int(fin_details.get("objects_failed") or 0)
+            if objects_failed > 0:
+                status_ = "partial"
+            else:
+                status_ = "ok"
+
+        started_at = started.created_at if started else None
+        finished_at = finished.created_at if finished else None
+        if started_at is not None and finished_at is not None:
+            duration = (finished_at - started_at).total_seconds()
+        elif started_at is not None and finished is None:
+            # Running or crashed: Laufzeit-Timer live fuer die UI.
+            duration = (now - started_at).total_seconds()
+        else:
+            duration = None
+
+        counters = dict(fin_details) if fin_details else {}
+        if finished is None and started_details:
+            counters.update(
+                {
+                    k: v
+                    for k, v in started_details.items()
+                    if k
+                    in {
+                        "objects_ok",
+                        "objects_failed",
+                        "fields_updated",
+                        "skipped_user_edit_newer",
+                        "objects_skipped_no_impower_id",
+                        "objects_skipped_no_impower_data",
+                    }
+                }
+            )
+
+        out.append(
+            {
+                "run_id": rid,
+                "status": status_,
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "duration_seconds": duration,
+                "counters": counters,
+                "failures": [
+                    {
+                        "item_id": (f.details_json or {}).get("item_id"),
+                        "impower_property_id": (f.details_json or {}).get(
+                            "impower_property_id"
+                        ),
+                        "entity_id": (f.details_json or {}).get("entity_id"),
+                        "phase": (f.details_json or {}).get("phase"),
+                        "error": (f.details_json or {}).get("error"),
+                    }
+                    for f in failures
+                ],
+                "skip_reason": started_details.get("skip_reason"),
+            }
+        )
+    return out
+
+
+def _to_berlin(dt: datetime | None) -> datetime | None:
+    """Konvertiert tz-aware `datetime` nach Europe/Berlin. None bleibt None."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_BERLIN_TZ)
+
+
+def _localize_run(run: dict) -> dict:
+    """Rendert `started_at`/`finished_at` in Berlin-Zeit — im Template reicht
+    dann `strftime` ohne `astimezone()`, das sonst Container-UTC nimmt.
+    """
+    run = dict(run)
+    run["started_at"] = _to_berlin(run.get("started_at"))
+    run["finished_at"] = _to_berlin(run.get("finished_at"))
+    return run
+
+
+@router.get("/sync-status", response_class=HTMLResponse)
+async def sync_status_home(
+    request: Request,
+    triggered: int = Query(0),
+    user: User = Depends(require_permission("sync:admin")),
+    db: Session = Depends(get_db),
+):
+    raw_runs = _load_recent_mirror_runs(db, job_name=_MIRROR_JOB_NAME)
+    runs = [_localize_run(r) for r in raw_runs]
+    last_run = runs[0] if runs else None
+    next_run = next_daily_run_at(
+        datetime.now(tz=timezone.utc),
+        hour=_MIRROR_RUN_HOUR,
+        minute=_MIRROR_RUN_MINUTE,
+        tz=_BERLIN_TZ,
+    )
+    return templates.TemplateResponse(
+        request,
+        "admin/sync_status.html",
+        {
+            "title": "Sync-Status",
+            "user": user,
+            "last_run": last_run,
+            "runs": runs,
+            "next_run": next_run,
+            "triggered": bool(triggered),
+        },
+    )
+
+
+@router.post("/sync-status/run")
+async def trigger_mirror_run(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_permission("sync:admin")),
+):
+    # FastAPI BackgroundTasks fuehrt async-Callables auf dem Event-Loop aus —
+    # kein Sync-Shim noetig. Der Mirror-Lock verhindert Doppellaeufe.
+    background_tasks.add_task(run_impower_mirror)
+    target = "/admin/sync-status?triggered=1"
+    # HTMX-idiomatisch: bei HX-Request via `HX-Redirect`-Header umleiten.
+    # Ohne HTMX (Form-Fallback) weiterhin 303.
+    if request.headers.get("HX-Request") == "true":
+        return Response(
+            status_code=status.HTTP_200_OK,
+            headers={"HX-Redirect": target},
+        )
+    return RedirectResponse(
+        url=target,
         status_code=status.HTTP_303_SEE_OTHER,
     )
 

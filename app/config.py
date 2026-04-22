@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # ohne Rolle.
     initial_admin_emails: str = ""
 
+    # Nightly-Mirror-Schalter: in Tests + Dev auf False setzen, damit der
+    # Scheduler keinen echten Impower-Call ausloest. Prod default True.
+    impower_mirror_enabled: bool = True
+
     @property
     def initial_admin_email_set(self) -> set[str]:
         return {

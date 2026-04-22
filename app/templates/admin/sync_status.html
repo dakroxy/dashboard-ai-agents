@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-semibold">Sync-Status</h1>
+    <p class="text-sm text-slate-500 mt-1">
+        Impower-Nightly-Mirror fuer Cluster 1 + 6. Laeufe aus <code class="text-xs">audit_log</code> rekonstruiert.
+    </p>
+</div>
+
+{% if triggered %}
+<div class="rounded-md bg-emerald-50 border border-emerald-200 px-4 py-2 mb-4 text-sm text-emerald-900">
+    Lauf gestartet — Status aktualisiert sich beim naechsten Reload.
+</div>
+{% endif %}
+
+<!-- Letzter Lauf + Naechster Lauf -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div class="rounded-lg bg-white border border-slate-200 p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Letzter Lauf</div>
+        {% if last_run %}
+            <div class="flex items-center gap-2 mb-3">
+                {% set status = last_run.status %}
+                {% if status == "ok" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-900">OK</span>
+                {% elif status == "partial" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-900">Teilweise</span>
+                {% elif status == "skipped" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700">Uebersprungen</span>
+                {% elif status == "running" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-sky-100 text-sky-900">Laeuft</span>
+                {% elif status == "crashed" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-900">Abgebrochen</span>
+                {% elif status == "failed" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-900">Fehlgeschlagen</span>
+                {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-900">Fehler</span>
+                {% endif %}
+                {% if last_run.started_at %}
+                <span class="text-xs text-slate-500">
+                    {{ last_run.started_at.strftime("%Y-%m-%d %H:%M:%S") }} Uhr
+                </span>
+                {% endif %}
+            </div>
+            <dl class="grid grid-cols-2 gap-2 text-sm">
+                <dt class="text-slate-500">OK</dt>
+                <dd class="font-mono">{{ last_run.counters.get("objects_ok", 0) }}</dd>
+                <dt class="text-slate-500">Fehler</dt>
+                <dd class="font-mono">{{ last_run.counters.get("objects_failed", 0) }}</dd>
+                <dt class="text-slate-500">Felder aktualisiert</dt>
+                <dd class="font-mono">{{ last_run.counters.get("fields_updated", 0) }}</dd>
+                <dt class="text-slate-500">User-Edit Skips</dt>
+                <dd class="font-mono">{{ last_run.counters.get("skipped_user_edit_newer", 0) }}</dd>
+                <dt class="text-slate-500">Ohne Impower-ID</dt>
+                <dd class="font-mono">{{ last_run.counters.get("objects_skipped_no_impower_id", 0) }}</dd>
+                <dt class="text-slate-500">In Impower unbekannt</dt>
+                <dd class="font-mono">{{ last_run.counters.get("objects_skipped_no_impower_data", 0) }}</dd>
+                <dt class="text-slate-500">Dauer</dt>
+                <dd class="font-mono">
+                    {% if last_run.duration_seconds is not none %}
+                    {{ "%.1f"|format(last_run.duration_seconds) }} s
+                    {% else %}
+                    –
+                    {% endif %}
+                </dd>
+                {% if last_run.skip_reason %}
+                <dt class="text-slate-500">Skip-Grund</dt>
+                <dd class="font-mono text-xs">{{ last_run.skip_reason }}</dd>
+                {% endif %}
+            </dl>
+        {% else %}
+        <div class="text-sm text-slate-500">Noch keine Laeufe protokolliert.</div>
+        {% endif %}
+    </div>
+
+    <div class="rounded-lg bg-white border border-slate-200 p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Naechster geplanter Lauf</div>
+        <div class="text-2xl font-mono font-semibold">
+            {{ next_run.strftime("%Y-%m-%d %H:%M") }} Uhr
+        </div>
+        <div class="text-xs text-slate-500 mt-1">Europe/Berlin</div>
+
+        <form hx-post="/admin/sync-status/run" hx-swap="none" method="post" action="/admin/sync-status/run" class="mt-4">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors">
+                Jetzt ausfuehren
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Fehler-Details des letzten Laufs -->
+{% if last_run and last_run.failures %}
+<div class="rounded-lg bg-white border border-slate-200 overflow-hidden mb-6">
+    <div class="px-5 py-3 border-b border-slate-200">
+        <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Fehlgeschlagene Objekte (letzter Lauf)</h2>
+    </div>
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+            <tr>
+                <th class="px-5 py-2 text-left">Impower-ID</th>
+                <th class="px-5 py-2 text-left">Objekt-ID</th>
+                <th class="px-5 py-2 text-left">Phase</th>
+                <th class="px-5 py-2 text-left">Fehler</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fail in last_run.failures %}
+            <tr class="border-t border-slate-100">
+                <td class="px-5 py-2 font-mono text-xs">{{ fail.impower_property_id or fail.item_id or "—" }}</td>
+                <td class="px-5 py-2 font-mono text-xs">{{ fail.entity_id or "—" }}</td>
+                <td class="px-5 py-2 text-xs">{{ fail.phase or "—" }}</td>
+                <td class="px-5 py-2 text-xs text-slate-700">{{ fail.error or "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Historie -->
+{% if runs %}
+<div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-200">
+        <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Historie (letzte {{ runs|length }} Laeufe)</h2>
+    </div>
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+            <tr>
+                <th class="px-5 py-2 text-left">Start</th>
+                <th class="px-5 py-2 text-left">Status</th>
+                <th class="px-5 py-2 text-right">OK</th>
+                <th class="px-5 py-2 text-right">Fehler</th>
+                <th class="px-5 py-2 text-right">Felder</th>
+                <th class="px-5 py-2 text-right">Dauer</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr class="border-t border-slate-100">
+                <td class="px-5 py-2 text-xs text-slate-600 whitespace-nowrap">
+                    {% if run.started_at %}{{ run.started_at.strftime("%Y-%m-%d %H:%M:%S") }}{% else %}—{% endif %}
+                </td>
+                <td class="px-5 py-2 text-xs">{{ run.status }}</td>
+                <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("objects_ok", 0) }}</td>
+                <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("objects_failed", 0) }}</td>
+                <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("fields_updated", 0) }}</td>
+                <td class="px-5 py-2 text-xs text-right font-mono">
+                    {% if run.duration_seconds is not none %}{{ "%.1f"|format(run.duration_seconds) }} s{% else %}–{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

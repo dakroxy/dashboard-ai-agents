@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.db import SessionLocal
 from app.models import Case
@@ -114,8 +115,18 @@ def _log_error(ir: dict, step: str, message: str) -> None:
 
 
 def _commit_state(case: Case, ir: dict) -> None:
-    """Persistiert impower_result (Reassign damit JSONB dirty-flagged wird)."""
+    """Persistiert impower_result.
+
+    Reassign allein reicht NICHT: `_ensure_impower_result` baut `ir` als flachen
+    Shallow-Copy von `case.impower_result` (shared nested refs). Spaetere
+    In-Place-Mutationen an `ir["contacts"]` etc. mutieren damit auch das
+    bestehende `case.impower_result`-Dict. Beim zweiten Commit vergleicht
+    SQLAlchemy das alte Attribut gegen `dict(ir)` und sieht sie als gleich an
+    (Value-Equality ueber shared refs) → kein UPDATE. `flag_modified` erzwingt
+    den dirty-Flag.
+    """
     case.impower_result = dict(ir)
+    flag_modified(case, "impower_result")
 
 
 def _address_payload(

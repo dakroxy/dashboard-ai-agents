@@ -25,6 +25,13 @@
         <div class="mt-1 text-xs text-slate-400">einsehen &rarr;</div>
     </a>
     {% endif %}
+    {% if has_permission(user, "sync:admin") %}
+    <a href="/admin/sync-status" class="rounded-lg bg-white border border-slate-200 p-5 hover:border-slate-300 transition">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Sync-Status</div>
+        <div class="mt-1 text-sm text-slate-700">Impower-Nightly-Mirror</div>
+        <div class="mt-1 text-xs text-slate-400">Status + Manual-Trigger &rarr;</div>
+    </a>
+    {% endif %}
 </div>
 
 {% if has_permission(user, "audit_log:view") and recent_logs %}

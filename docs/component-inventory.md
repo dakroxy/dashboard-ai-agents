@@ -64,6 +64,7 @@ Feldlisten fuer `Object` + `Eigentuemer` stehen in `docs/data-models.md` (aus St
 | `admin/users_list.html` · `user_edit.html` | User-Verwaltung; `user_edit.html` hat Permission-Matrix (extras/denied) + Workflow-Override-Select (default/allow/deny). |
 | `admin/roles_list.html` · `role_edit.html` | Rollen-CRUD. |
 | `admin/logs.html` | Gefilterte Audit-Log-Ansicht. |
+| `admin/sync_status.html` | Sync-Status-Dashboard: letzter Lauf (Status + Counter + Dauer), naechster geplanter Lauf, Fehler-Tabelle, Historie, Manual-Trigger-Button (Story 1.4). |
 
 ## FastAPI-Router
 
@@ -78,7 +79,7 @@ Feldlisten fuer `Object` + `Eigentuemer` stehen in `docs/data-models.md` (aus St
 | `objects.py` | `/objects` | ~90 | Steckbrief-Liste + Detailseite (Cluster 1 Stammdaten, read-only) |
 | `workflows.py` | `/workflows` | 114 | Workflow-Edit |
 | `impower.py` | `/impower` | 124 | Debug: health, properties, contracts, match (JSON) |
-| `admin.py` | `/admin` | 698 | User/Roles CRUD + Audit-Log |
+| `admin.py` | `/admin` | ~850 | User/Roles CRUD + Audit-Log + Sync-Status (Story 1.4) |
 
 ## Services
 
@@ -93,6 +94,14 @@ Feldlisten fuer `Object` + `Eigentuemer` stehen in `docs/data-models.md` (aus St
 | `steckbrief.py` | ~140 | Read-only: `list_objects_with_unit_counts(db, accessible_ids)`, `get_object_detail(db, object_id, accessible_ids)`, `get_provenance_map(db, entity_type, entity_id, fields)` (mit LEFT JOIN auf `users.email` fuer Tooltip), `has_any_impower_provenance` (Stale-Banner-Heuristik). |
 | `steckbrief_write_gate.py` | ~540 | Zentrales Write-Gate: `write_field_human`, `write_field_ai_proposal`, `approve_review_entry`, `reject_review_entry` + `WriteResult`/`WriteGateError`. |
 | `impower.py` | 928 | Read: `load_properties`, `load_owner_contracts`, `load_all_contacts`, `load_unit_contract_mandates`, `health_check`; Matching: `match_property`, `match_contact_in_property`, `run_full_match`; Write: `write_sepa_mandate` + internals `_api_get/_api_post/_api_put`, `_ensure_bank_account`, `_normalize_iban`, `_derive_bic_from_iban`; Contact: `_build_contact_payload`, `check_contact_duplicates`, `create_contact` |
+| `_sync_common.py` | ~250 | Generischer Sync-Wrapper: `run_sync_job`, `SyncRunResult`, `ReconcileStats`, `strip_html_error`, `next_daily_run_at`. Keine Impower-Kenntnisse — wiederverwendbar fuer Facilioo-Poll (Story 4.3). |
+| `steckbrief_impower_mirror.py` | ~350 | Nightly-Mirror Cluster 1+6: `run_impower_mirror(db_factory, http_client_factory)`, internals `_build_full_address`, `_map_wirtschaftsplan_status`, `_normalize_mandate_refs`, `_normalize_voting_stake`, `_fetch_impower_snapshot`, `_fetch_owner_contracts_by_property`, `_reconcile_object`, `_reconcile_eigentuemer`. Lazy `_mirror_lock` pro Event-Loop. Test-Hook `_reset_mirror_lock_for_tests`. |
+
+### Steckbrief — Impower-Nightly-Mirror (Story 1.4)
+
+- **Scheduler-Verankerung**: `app/main.py:lifespan` legt bei `settings.impower_mirror_enabled=True` einen `asyncio.Task` mit Namen `steckbrief_impower_mirror_scheduler` an. `_mirror_scheduler_loop()` berechnet via `next_daily_run_at(..., hour=2, minute=30, tz=Europe/Berlin)` den naechsten Zeitpunkt und schlaeft bis dorthin. Beim Shutdown wird der Task gecancelt + await-d.
+- **Admin-Routen**: `GET /admin/sync-status` (Status-UI) + `POST /admin/sync-status/run` (Manual-Trigger via `BackgroundTasks.add_task(run_impower_mirror)`). Beide permission-gated auf `sync:admin`.
+- **Audit-Pipeline**: jeder Lauf erzeugt `sync_started` + `sync_finished` (+ ggf. `sync_failed` pro Item). `details_json` enthaelt `{"job": "steckbrief_impower_mirror", "run_id": <uuid>, ...}`. Die Status-UI rekonstruiert Laeufe aus `audit_log` (Gruppierung ueber `run_id`).
 
 ## Cross-Cutting-Module
 
