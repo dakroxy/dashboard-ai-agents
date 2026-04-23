@@ -1,0 +1,10 @@
+{# "Upload läuft..." Card mit HTMX-Polling. Erwartet: photo (SteckbriefPhoto).
+   Polling-Endpoint liefert dieses oder _obj_photo_card.html zurück je nach Status. #}
+<div id="photo-{{ photo.id }}"
+     hx-get="/objects/{{ photo.object_id }}/photos/{{ photo.id }}/status"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     class="w-24 h-24 rounded border border-slate-200 bg-slate-50
+            flex items-center justify-center text-xs text-slate-400 text-center px-1">
+    Upload<br>läuft...
+</div>

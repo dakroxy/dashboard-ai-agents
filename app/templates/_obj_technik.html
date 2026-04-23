@@ -46,4 +46,21 @@
             {% endfor %}
         </div>
     </div>
+
+    <div class="mt-6 pt-6 border-t border-slate-100">
+        <h3 class="text-sm font-semibold text-slate-800 mb-4">Fotos</h3>
+        {% for component_ref, label in photo_component_refs.items() %}
+            <div class="mb-5">
+                <div class="text-xs uppercase tracking-wider text-slate-500 mb-2">{{ label }}</div>
+                <div class="flex flex-wrap gap-3 items-start">
+                    {% for photo in photos_by_component.get(component_ref, []) %}
+                        {% include "_obj_photo_card.html" %}
+                    {% endfor %}
+                    {% if has_permission(user, "objects:edit") %}
+                        {% include "_obj_photo_upload_form.html" %}
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
 </section>

@@ -86,6 +86,9 @@ async def admin_home(
             "user": user,
             "counts": counts,
             "recent_logs": recent_logs,
+            "photo_backend_warning": getattr(
+                request.app.state, "photo_backend_warning", None
+            ),
         },
     )
 

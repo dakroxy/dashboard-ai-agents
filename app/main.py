@@ -39,6 +39,7 @@ from app.services.claude import (
     DEFAULT_MODEL,
     DEFAULT_SYSTEM_PROMPT,
 )
+from app.services.photo_store import LocalPhotoStore, create_photo_store
 from app.services.steckbrief_impower_mirror import run_impower_mirror
 from app.templating import templates
 
@@ -271,6 +272,27 @@ async def lifespan(app: FastAPI):
         _logger.info(
             "mirror_scheduler: disabled via settings.impower_mirror_enabled"
         )
+
+    # --- PhotoStore-Init (ID1) ---
+    _photo_store = await create_photo_store(settings)
+    if isinstance(_photo_store, LocalPhotoStore) and settings.photo_backend == "sharepoint":
+        _logger.warning("SharePoint-Init fehlgeschlagen — LocalPhotoStore aktiv")
+        _ls_db = SessionLocal()
+        try:
+            from app.services.audit import audit as _audit
+            _audit(
+                _ls_db, None, "sharepoint_init_failed",
+                details={"reason": "MSAL-Client-Credentials-Flow fehlgeschlagen"},
+            )
+            _ls_db.commit()
+        finally:
+            _ls_db.close()
+        app.state.photo_backend_warning = (
+            "SharePoint-Init fehlgeschlagen — Fotos werden lokal gespeichert."
+        )
+    else:
+        app.state.photo_backend_warning = None
+    app.state.photo_store = _photo_store
 
     try:
         yield

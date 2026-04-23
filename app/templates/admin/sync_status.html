@@ -54,6 +54,8 @@
                 <dd class="font-mono">{{ last_run.counters.get("objects_skipped_no_impower_id", 0) }}</dd>
                 <dt class="text-slate-500">In Impower unbekannt</dt>
                 <dd class="font-mono">{{ last_run.counters.get("objects_skipped_no_impower_data", 0) }}</dd>
+                <dt class="text-slate-500">Neu entdeckt</dt>
+                <dd class="font-mono">{{ last_run.counters.get("objects_discovered", 0) }}</dd>
                 <dt class="text-slate-500">Dauer</dt>
                 <dd class="font-mono">
                     {% if last_run.duration_seconds is not none %}
@@ -131,6 +133,7 @@
                 <th class="px-5 py-2 text-right">OK</th>
                 <th class="px-5 py-2 text-right">Fehler</th>
                 <th class="px-5 py-2 text-right">Felder</th>
+                <th class="px-5 py-2 text-right">Neu</th>
                 <th class="px-5 py-2 text-right">Dauer</th>
             </tr>
         </thead>
@@ -160,6 +163,7 @@
                 <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("objects_ok", 0) }}</td>
                 <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("objects_failed", 0) }}</td>
                 <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("fields_updated", 0) }}</td>
+                <td class="px-5 py-2 text-xs text-right font-mono">{{ run.counters.get("objects_discovered", 0) }}</td>
                 <td class="px-5 py-2 text-xs text-right font-mono">
                     {% if run.duration_seconds is not none %}{{ "%.1f"|format(run.duration_seconds) }} s{% else %}–{% endif %}
                 </td>

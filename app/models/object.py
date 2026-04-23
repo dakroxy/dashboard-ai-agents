@@ -177,6 +177,17 @@ class SteckbriefPhoto(Base):
         nullable=True,
         index=True,
     )
+    backend: Mapped[str] = mapped_column(String, nullable=False, default="local")
+    filename: Mapped[str] = mapped_column(String, nullable=False, default="")
+    component_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     drive_item_id: Mapped[str | None] = mapped_column(String, nullable=True)
     local_path: Mapped[str | None] = mapped_column(String, nullable=True)
     label: Mapped[str | None] = mapped_column(String, nullable=True)

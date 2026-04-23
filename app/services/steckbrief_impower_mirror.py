@@ -633,17 +633,51 @@ async def run_impower_mirror(
     snapshot: dict[str, dict[str, Any]] = {}
     owners_by_property: dict[str, list[dict[str, Any]]] = {}
 
-    async def fetch_items() -> list[uuid.UUID]:
+    async def fetch_items() -> tuple[list[uuid.UUID], int]:
         nonlocal snapshot, owners_by_property
         async with http_client_factory() as client:
             snapshot = await _fetch_impower_snapshot(client)
             owners_by_property = await _fetch_owner_contracts_by_property(client)
         db = db_factory()
         try:
+            # Discover: neue Impower-Properties als Object anlegen (AC8).
+            # Mapping bewusst minimal: nur impower_property_id + full_address —
+            # short_code/name werden im Reconcile-Pfad nicht gespiegelt
+            # (Task 12.5 Mapping-Konsistenz-Check). NULL bleibt NULL, der
+            # User pflegt diese Felder spaeter via Steckbrief-UI.
+            existing_pids: set[str] = set(
+                str(p) for p in db.execute(
+                    select(Object.impower_property_id).where(
+                        Object.impower_property_id.is_not(None)
+                    )
+                ).scalars().all()
+            )
+            discovered = 0
+            for pid_str, data in snapshot.items():
+                if pid_str in existing_pids:
+                    continue
+                prop = data.get("property") or {}
+                # short_code + name sind im ORM nullable=False, also
+                # zwingend — _reconcile_object spiegelt sie aber nicht
+                # (Task 12.5 Mapping-Konsistenz). Wir nutzen die garantiert
+                # eindeutige impower_property_id als Platzhalter mit "impw-"-
+                # Praefix, damit der User die Bootstrap-Eintraege sofort
+                # erkennt und via Steckbrief-UI umbenennen kann.
+                placeholder = f"impw-{pid_str}"
+                new_obj = Object(
+                    impower_property_id=pid_str,
+                    short_code=placeholder,
+                    name=placeholder,
+                    full_address=_build_full_address(prop),
+                )
+                db.add(new_obj)
+                discovered += 1
+            if discovered > 0:
+                db.commit()
             stmt = select(Object.id).where(
                 Object.impower_property_id.is_not(None)
             )
-            return list(db.execute(stmt).scalars().all())
+            return list(db.execute(stmt).scalars().all()), discovered
         finally:
             db.close()
 

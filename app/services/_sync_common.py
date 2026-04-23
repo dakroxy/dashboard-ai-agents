@@ -98,6 +98,7 @@ class SyncRunResult:
     items_failed: int = 0
     items_skipped_no_external_id: int = 0
     items_skipped_no_external_data: int = 0
+    items_discovered: int = 0
     fields_updated: int = 0
     skipped_user_edit_newer: int = 0
     eigentuemer_orphans: list[dict[str, Any]] = field(default_factory=list)
@@ -195,7 +196,7 @@ def _audit_sync(
 async def run_sync_job(
     *,
     job_name: str,
-    fetch_items: Callable[[], Awaitable[list[T]]],
+    fetch_items: Callable[[], Awaitable[list[T] | tuple[list[T], int]]],
     reconcile_item: Callable[[T, Session], Awaitable[ReconcileStats]],
     db_factory: Callable[[], Session],
     lock: asyncio.Lock,
@@ -268,7 +269,12 @@ async def run_sync_job(
 
         # --- fetch_items ---
         try:
-            items = await fetch_items()
+            fetched = await fetch_items()
+            if isinstance(fetched, tuple):
+                items, discovered = fetched
+                result.items_discovered = int(discovered)
+            else:
+                items = fetched
         except Exception as exc:
             err_msg = strip_html_error(f"{type(exc).__name__}: {exc}")
             result.items_failed = 1
@@ -428,6 +434,7 @@ def _finish_details(result: SyncRunResult) -> dict[str, Any]:
         "objects_failed": result.items_failed,
         "objects_skipped_no_impower_id": result.items_skipped_no_external_id,
         "objects_skipped_no_impower_data": result.items_skipped_no_external_data,
+        "objects_discovered": result.items_discovered,
         "fields_updated": result.fields_updated,
         "skipped_user_edit_newer": result.skipped_user_edit_newer,
         "eigentuemer_orphans": result.eigentuemer_orphans,

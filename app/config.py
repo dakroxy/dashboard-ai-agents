@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     # Leer = Fallback auf secret_key. Prod: eigenen Zufallsschluessel setzen.
     steckbrief_field_key: str = ""
 
+    # Foto-Backend (ID1 — Photo-Pipeline)
+    # Bewusste Abweichung von architecture.md §ID1 (Default "sharepoint"):
+    # Default "local" vermeidet M365-Admin-Ticket fuer lokale Entwicklung.
+    # Prod setzt PHOTO_BACKEND=sharepoint via Env-Override (Elestio).
+    photo_backend: str = "local"  # "sharepoint" | "local"
+    sharepoint_tenant_id: str = ""
+    sharepoint_client_id: str = ""
+    sharepoint_client_secret: str = ""
+    sharepoint_site_id: str = ""
+    sharepoint_drive_id: str = ""
+
     @property
     def initial_admin_email_set(self) -> set[str]:
         return {

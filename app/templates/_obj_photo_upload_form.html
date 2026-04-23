@@ -1,0 +1,22 @@
+{# Upload-Formular für eine Foto-Komponente. Erwartet: component_ref, obj, user.
+   hx-encoding="multipart/form-data" MUSS gesetzt sein (HTMX-Pflicht für File-Uploads). #}
+<div>
+    <form hx-post="/objects/{{ obj.id }}/photos"
+          hx-encoding="multipart/form-data"
+          hx-target="#photo-upload-result-{{ component_ref }}"
+          hx-swap="innerHTML">
+        <input type="hidden" name="component_ref" value="{{ component_ref }}">
+        <label class="cursor-pointer w-24 h-24 rounded border-2 border-dashed
+                      border-slate-300 hover:border-sky-400 flex flex-col items-center
+                      justify-center text-slate-400 hover:text-sky-500 transition">
+            <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 4v16m8-8H4"/>
+            </svg>
+            <span class="text-xs">Foto</span>
+            <input type="file" accept="image/jpeg,image/png" name="file" class="hidden"
+                   onchange="this.closest('form').requestSubmit()">
+        </label>
+    </form>
+    <div id="photo-upload-result-{{ component_ref }}"></div>
+</div>

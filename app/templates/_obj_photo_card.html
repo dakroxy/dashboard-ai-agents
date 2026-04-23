@@ -1,0 +1,28 @@
+{# Einzelnes Foto-Card (Done-State). Erwartet: photo (SteckbriefPhoto), obj (Object oder None), user.
+   Wird vom Polling-Endpoint (Task 7.6) gerendert, wenn status != "uploading". #}
+{% set _status = (photo.photo_metadata or {}).get("status", "done") %}
+{% set _obj_id = obj.id if obj else photo.object_id %}
+<div id="photo-{{ photo.id }}"
+     class="relative group w-24 h-24 rounded border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center text-xs">
+    {% if _status == "error" %}
+        <div class="text-rose-500 text-center px-1">Fehler beim<br>Upload</div>
+    {% else %}
+        {% if photo.backend == "local" and photo.local_path %}
+            <img src="/objects/{{ _obj_id }}/photos/{{ photo.id }}/file"
+                 alt="{{ photo.filename }}"
+                 class="w-full h-full object-cover">
+        {% else %}
+            <div class="text-slate-400 text-center px-1">{{ photo.filename }}</div>
+        {% endif %}
+        {% if has_permission(user, "objects:edit") %}
+            <button type="button"
+                    hx-delete="/objects/{{ _obj_id }}/photos/{{ photo.id }}"
+                    hx-target="#photo-{{ photo.id }}"
+                    hx-swap="outerHTML"
+                    hx-confirm="Foto löschen?"
+                    class="absolute top-1 right-1 hidden group-hover:flex items-center justify-center w-5 h-5 rounded-full bg-rose-600 text-white leading-none">
+                &times;
+            </button>
+        {% endif %}
+    {% endif %}
+</div>

@@ -819,3 +819,76 @@ def test_normalize_voting_stake_caps_float_drift():
     """
     out = _normalize_voting_stake(0.1)
     assert out == {"percent": 10.0}
+
+
+# ---------------------------------------------------------------------------
+# Discover-Phase (Story 1.8 / AC8) — fetch_items legt neue Object-Rows
+# fuer Impower-Properties ohne lokales Pendant an.
+# ---------------------------------------------------------------------------
+
+def test_mirror_discover_creates_objects_for_unknown_impower_pids(db):
+    """Leere Object-Tabelle + Snapshot mit 3 PIDs → 3 neue Objects + items_discovered=3."""
+    transport = _mock_transport(
+        properties=[
+            {"id": 1001, "addressStreet": "A 1", "addressZip": "10000",
+             "addressCity": "X"},
+            {"id": 1002, "addressStreet": "B 2", "addressZip": "20000",
+             "addressCity": "Y"},
+            {"id": 1003, "addressStreet": "C 3", "addressZip": "30000",
+             "addressCity": "Z"},
+        ],
+        mandates_by_pid={"1001": [], "1002": [], "1003": []},
+    )
+
+    result = asyncio.run(
+        run_impower_mirror(
+            db_factory=_TestSessionLocal,
+            http_client_factory=_client_factory_for(transport),
+        )
+    )
+
+    assert result.items_discovered == 3
+    db.expire_all()
+    pids = sorted(
+        str(o.impower_property_id)
+        for o in db.query(Object).all()
+    )
+    assert pids == ["1001", "1002", "1003"]
+    # Reconcile-Pfad lief in derselben Iteration und hat full_address gesetzt.
+    obj_1001 = (
+        db.query(Object)
+        .filter(Object.impower_property_id == "1001")
+        .one()
+    )
+    assert obj_1001.full_address == "A 1, 10000 X"
+
+
+def test_mirror_discover_is_idempotent_on_second_run(db):
+    """Zweiter Lauf mit gleichem Snapshot legt keine neuen Objects an."""
+    transport = _mock_transport(
+        properties=[
+            {"id": 2001, "addressStreet": "A 1", "addressZip": "10000",
+             "addressCity": "X"},
+            {"id": 2002, "addressStreet": "B 2", "addressZip": "20000",
+             "addressCity": "Y"},
+        ],
+        mandates_by_pid={"2001": [], "2002": []},
+    )
+
+    first = asyncio.run(
+        run_impower_mirror(
+            db_factory=_TestSessionLocal,
+            http_client_factory=_client_factory_for(transport),
+        )
+    )
+    assert first.items_discovered == 2
+
+    second = asyncio.run(
+        run_impower_mirror(
+            db_factory=_TestSessionLocal,
+            http_client_factory=_client_factory_for(transport),
+        )
+    )
+    assert second.items_discovered == 0
+    db.expire_all()
+    assert db.query(Object).count() == 2

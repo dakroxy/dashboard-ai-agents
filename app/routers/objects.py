@@ -7,21 +7,42 @@ Versicherungen etc. kommen mit Stories 1.6+.
 from __future__ import annotations
 
 import logging
+import pathlib
 import uuid
+from collections import defaultdict
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse, HTMLResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Object, User
+from app.models.object import SteckbriefPhoto
 from app.permissions import accessible_object_ids, require_permission
 from app.services.impower import get_bank_balance
 from app.services.audit import audit
 from app.services.field_encryption import DecryptionError, decrypt_field
+from app.services.photo_store import (
+    LARGE_UPLOAD_THRESHOLD,
+    PhotoRef,
+    PhotoValidationError,
+    validate_photo,
+)
 from app.services.steckbrief import (
+    PHOTO_COMPONENT_REFS,
     TECHNIK_ABSPERRPUNKTE,
     TECHNIK_FIELD_KEYS,
     TECHNIK_FIELDS,
@@ -250,6 +271,20 @@ async def object_detail(
         except Exception:
             pass  # Audit-Commit-Fehler darf Page-Render nicht blockieren
 
+    # --- Fotos pro Komponente (Story 1.8) ---
+    photos_raw = (
+        db.execute(
+            select(SteckbriefPhoto)
+            .where(SteckbriefPhoto.object_id == detail.obj.id)
+            .order_by(SteckbriefPhoto.captured_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    photos_by_component: dict[str, list] = defaultdict(list)
+    for _p in photos_raw:
+        photos_by_component[_p.component_ref or "sonstige"].append(_p)
+
     return templates.TemplateResponse(
         request,
         "object_detail.html",
@@ -270,6 +305,8 @@ async def object_detail(
             "tech_heizung": tech_heizung,
             "tech_historie": tech_historie,
             "tech_zugangscodes": tech_zugangscodes,
+            "photos_by_component": dict(photos_by_component),
+            "photo_component_refs": PHOTO_COMPONENT_REFS,
         },
     )
 
@@ -630,3 +667,275 @@ async def zugangscode_field_save(
             "user": user,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Foto-Endpoints (Story 1.8) — Upload (sync + BG), Status-Polling, Delete,
+# File-Serve. Backend-Auswahl via app.state.photo_store (Lifespan-Init).
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{object_id}/photos", response_class=HTMLResponse)
+async def photo_upload(
+    object_id: uuid.UUID,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    component_ref: str = Form(...),
+    file: UploadFile = File(...),
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    """Upload-Endpoint mit Validierung. Splittet nach Content-Groesse in
+    sync (<3 MB) oder BackgroundTask (>=3 MB). Rendert je nach Pfad
+    Card-Fragment, Pending-Card oder Fehlermeldung."""
+    if component_ref not in PHOTO_COMPONENT_REFS:
+        raise HTTPException(400, f"Unbekannte Komponente: {component_ref!r}")
+    accessible = accessible_object_ids(db, user)
+    detail = get_object_detail(db, object_id, accessible_ids=accessible)
+    if detail is None:
+        raise HTTPException(404, "Objekt nicht gefunden")
+
+    content = await file.read()
+    try:
+        validate_photo(content, file.content_type or "")
+    except PhotoValidationError as exc:
+        return templates.TemplateResponse(
+            request,
+            "_obj_photo_upload_result.html",
+            {"obj": detail.obj, "component_ref": component_ref,
+             "error": str(exc), "user": user},
+            status_code=400,
+        )
+
+    photo_store = request.app.state.photo_store
+    short_code = detail.obj.short_code
+
+    if len(content) >= LARGE_UPLOAD_THRESHOLD:
+        return await _photo_upload_bg_path(
+            db, request, background_tasks, detail, component_ref,
+            file, content, photo_store, short_code, object_id, user,
+        )
+    return await _photo_upload_sync_path(
+        db, request, detail, component_ref, file, content, photo_store,
+        short_code, object_id, user,
+    )
+
+
+async def _photo_upload_sync_path(
+    db, request, detail, component_ref, file, content, photo_store,
+    short_code, object_id, user,
+):
+    ref = await photo_store.upload(
+        object_short_code=short_code, category="technik",
+        filename=file.filename or "foto.jpg", content=content,
+        content_type=file.content_type or "image/jpeg",
+    )
+    photo = SteckbriefPhoto(
+        object_id=object_id,
+        backend=ref.backend,
+        drive_item_id=ref.drive_item_id,
+        local_path=ref.local_path,
+        filename=ref.filename,
+        component_ref=component_ref,
+        uploaded_by_user_id=user.id,
+    )
+    db.add(photo)
+    audit(
+        db, user, "object_photo_uploaded",
+        entity_type="object", entity_id=object_id,
+        details={"component_ref": component_ref, "filename": ref.filename,
+                 "backend": ref.backend},
+        request=request,
+    )
+    db.commit()
+    db.refresh(photo)
+    return templates.TemplateResponse(
+        request,
+        "_obj_photo_card.html",
+        {"photo": photo, "obj": detail.obj, "user": user},
+    )
+
+
+async def _photo_upload_bg_path(
+    db, request, background_tasks, detail, component_ref, file, content,
+    photo_store, short_code, object_id, user,
+):
+    photo = SteckbriefPhoto(
+        object_id=object_id,
+        backend=photo_store.backend_name,
+        filename=file.filename or "foto.jpg",
+        component_ref=component_ref,
+        uploaded_by_user_id=user.id,
+        photo_metadata={"status": "uploading"},
+    )
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+    background_tasks.add_task(
+        _run_photo_upload_bg,
+        photo_id=photo.id,
+        content=content,
+        content_type=file.content_type or "image/jpeg",
+        filename=file.filename or "foto.jpg",
+        short_code=short_code,
+        category="technik",
+        photo_store=photo_store,
+        user_id=user.id,
+        object_id=object_id,
+    )
+    return templates.TemplateResponse(
+        request,
+        "_obj_photo_pending.html",
+        {"photo": photo, "obj": detail.obj, "user": user},
+    )
+
+
+def _run_photo_upload_bg(
+    *, photo_id: uuid.UUID, content: bytes, content_type: str,
+    filename: str, short_code: str, category: str, photo_store,
+    user_id: uuid.UUID, object_id: uuid.UUID,
+) -> None:
+    """BackgroundTask: laedt Content via photo_store hoch und aktualisiert
+    die zuvor angelegte SteckbriefPhoto-Row. ``asyncio.run()`` ist hier OK
+    (sync BackgroundTask), AuditLog direkt via ``db.add(...)`` weil kein
+    Request fuer den ``audit()``-Helper verfuegbar ist.
+    """
+    import asyncio
+    from app.db import SessionLocal as _SL
+    from app.models import AuditLog
+    db = _SL()
+    try:
+        ref = asyncio.run(photo_store.upload(
+            object_short_code=short_code, category=category,
+            filename=filename, content=content, content_type=content_type,
+        ))
+        photo = db.get(SteckbriefPhoto, photo_id)
+        if photo is not None:
+            photo.backend = ref.backend
+            photo.drive_item_id = ref.drive_item_id
+            photo.local_path = ref.local_path
+            photo.filename = ref.filename
+            photo.photo_metadata = {"status": "done"}
+            db.add(AuditLog(
+                action="object_photo_uploaded",
+                user_id=user_id,
+                entity_type="object",
+                entity_id=object_id,
+                details_json={"component_ref": photo.component_ref,
+                              "filename": ref.filename, "backend": ref.backend},
+            ))
+            db.commit()
+    except Exception as exc:
+        _logger.exception("_run_photo_upload_bg: Upload fehlgeschlagen: %s", exc)
+        _db2 = _SL()
+        try:
+            p = _db2.get(SteckbriefPhoto, photo_id)
+            if p:
+                p.photo_metadata = {"status": "error"}
+                _db2.commit()
+        finally:
+            _db2.close()
+    finally:
+        db.close()
+
+
+@router.get("/{object_id}/photos/{photo_id}/status", response_class=HTMLResponse)
+async def photo_status(
+    object_id: uuid.UUID,
+    photo_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:view")),
+    db: Session = Depends(get_db),
+):
+    """Polling-Endpoint waehrend BG-Upload laeuft. Liefert je nach Status
+    Pending- oder Card-Fragment zurueck."""
+    accessible = accessible_object_ids(db, user)
+    if object_id not in accessible:
+        raise HTTPException(404)
+    photo = db.get(SteckbriefPhoto, photo_id)
+    if photo is None or photo.object_id != object_id:
+        raise HTTPException(404)
+    current = (photo.photo_metadata or {}).get("status", "done")
+    if current == "uploading":
+        return templates.TemplateResponse(
+            request,
+            "_obj_photo_pending.html",
+            {"photo": photo, "obj": None, "user": user},
+        )
+    return templates.TemplateResponse(
+        request,
+        "_obj_photo_card.html",
+        {"photo": photo, "obj": None, "user": user},
+    )
+
+
+@router.delete("/{object_id}/photos/{photo_id}", response_class=HTMLResponse)
+async def photo_delete(
+    object_id: uuid.UUID,
+    photo_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    """Loescht Foto aus Backend + DB-Row. Backend-Fehler sind nicht-blockierend
+    (Datei-Leichen sind ein kleineres Problem als ein nicht loeschbarer
+    DB-Eintrag im UI). Audit + DB-Commit erfolgen immer.
+    """
+    accessible = accessible_object_ids(db, user)
+    if object_id not in accessible:
+        raise HTTPException(404)
+    photo = db.get(SteckbriefPhoto, photo_id)
+    if photo is None or photo.object_id != object_id:
+        raise HTTPException(404)
+    photo_store = request.app.state.photo_store
+    ref = PhotoRef(
+        backend=photo.backend,
+        drive_item_id=photo.drive_item_id,
+        local_path=photo.local_path,
+        filename=photo.filename or "",
+    )
+    try:
+        await photo_store.delete(ref)
+    except Exception as exc:
+        _logger.warning(
+            "photo_delete: store.delete fehlgeschlagen (nicht blockierend): %s",
+            exc,
+        )
+    audit(
+        db, user, "object_photo_deleted",
+        entity_type="object", entity_id=object_id,
+        details={"component_ref": photo.component_ref, "filename": photo.filename},
+        request=request,
+    )
+    db.delete(photo)
+    db.commit()
+    return HTMLResponse("")
+
+
+@router.get("/{object_id}/photos/{photo_id}/file")
+async def photo_file_serve(
+    object_id: uuid.UUID,
+    photo_id: uuid.UUID,
+    user: User = Depends(require_permission("objects:view")),
+    db: Session = Depends(get_db),
+):
+    """Liefert lokal gespeicherte Foto-Dateien (backend='local') aus.
+    Path-Traversal-Schutz: ``local_path`` kommt aus DB, aber ``.resolve()``
+    + ``is_relative_to``-Check ist Defense-in-Depth gegen kompromittierte
+    DB-Werte.
+    """
+    accessible = accessible_object_ids(db, user)
+    if object_id not in accessible:
+        raise HTTPException(404)
+    photo = db.get(SteckbriefPhoto, photo_id)
+    if photo is None or photo.object_id != object_id:
+        raise HTTPException(404)
+    if photo.backend != "local" or not photo.local_path:
+        raise HTTPException(404)
+    safe = pathlib.Path(photo.local_path).resolve()
+    root = pathlib.Path("uploads").resolve()
+    if not safe.is_relative_to(root):
+        raise HTTPException(403, "Pfad außerhalb des Upload-Verzeichnisses")
+    if not safe.exists():
+        raise HTTPException(404)
+    return FileResponse(safe)

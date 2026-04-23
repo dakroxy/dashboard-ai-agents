@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "schwifty>=2024.1",
     "cryptography>=43",
+    "msal>=1.28",
 ]
 
 [project.optional-dependencies]

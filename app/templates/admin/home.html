@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
+{% if photo_backend_warning %}
+<div class="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+    <strong>Foto-Backend:</strong> {{ photo_backend_warning }}
+</div>
+{% endif %}
 <div class="mb-6">
     <h1 class="text-2xl font-semibold">Admin</h1>
     <p class="text-sm text-slate-500 mt-1">User-Verwaltung, Rollen und Audit-Log.</p>

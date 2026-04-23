@@ -354,6 +354,17 @@ ZUGANGSCODE_FIELD_KEYS: frozenset[str] = frozenset(
 _ZUGANGSCODE_MAX_LEN: int = 200
 
 
+# ---------------------------------------------------------------------------
+# Foto-Komponenten-Registry (Story 1.8)
+# ---------------------------------------------------------------------------
+PHOTO_COMPONENT_REFS: dict[str, str] = {
+    "absperrpunkt_wasser":  "Absperrpunkt Wasser",
+    "absperrpunkt_strom":   "Absperrpunkt Strom",
+    "absperrpunkt_gas":     "Absperrpunkt Gas",
+    "heizung_typenschild":  "Heizung / Typenschild",
+}
+
+
 def parse_zugangscode_value(
     field_key: str, raw: str
 ) -> tuple[str | None, str | None]:

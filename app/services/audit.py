@@ -74,6 +74,7 @@ KNOWN_AUDIT_ACTIONS: list[str] = sorted(
         "object_field_updated",
         "object_photo_uploaded",
         "object_photo_deleted",
+        "sharepoint_init_failed",
         "registry_entry_created",
         "registry_entry_updated",
         "review_queue_created",
