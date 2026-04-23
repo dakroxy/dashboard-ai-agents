@@ -239,8 +239,7 @@ def test_detail_renders_stammdaten_and_eigentuemer(
     assert "Bernd Muster" in body
     assert "50" in body and "25" in body
 
-    # Keine der noch nicht gebauten Sektionen
-    assert "Finanzen" not in body
+    # Keine der noch nicht gebauten Sektionen (Finanzen ist seit Story 1.5 da).
     assert "Technik" not in body
     assert "Review" not in body
 

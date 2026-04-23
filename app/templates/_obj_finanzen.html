@@ -1,0 +1,118 @@
+{# Finanzen-Sektion (Story 1.5):
+   - Saldo-Block: Live-Pull aus Impower ODER Fallback `last_known_balance` ODER
+     "Kein Impower-Objekt verknuepft".
+   - Mirror-Felder-Grid: reserve_current, reserve_target, wirtschaftsplan_status
+     mit Provenance-Pills (gleiches Muster wie _obj_stammdaten.html).
+   - SEPA-Mandate-Liste: sepa_mandate_refs aus dem JSONB-Mirror.
+   - Sparkline: Inline-SVG aus dem Service (build_sparkline_svg) ODER Placeholder.
+#}
+
+<section class="rounded-lg bg-white border border-slate-200 p-6 mb-6"
+         data-section="finanzen"
+         data-balance-error="{{ 'true' if balance_error else 'false' }}">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-slate-900">Finanzen</h2>
+    </div>
+
+    {# Saldo-Block #}
+    <div class="mb-6">
+        {% if not obj.impower_property_id %}
+            <p class="text-slate-400 text-sm">Kein Impower-Objekt verknuepft.</p>
+        {% elif live_balance is not none %}
+            <div class="text-2xl font-semibold tabular-nums text-slate-900">
+                {{ "%.2f"|format(live_balance) }} EUR
+            </div>
+            <p class="text-xs text-slate-500 mt-1">
+                Stand: {{ live_balance_at_local }} (Europe/Berlin)
+            </p>
+        {% else %}
+            <div class="text-slate-700 text-sm font-medium">
+                {% if obj.last_known_balance is not none %}
+                    Zuletzt: {{ "%.2f"|format(obj.last_known_balance) }} EUR
+                {% else %}
+                    &mdash;
+                {% endif %}
+            </div>
+            {% if balance_error %}
+                <p class="text-xs text-amber-600 mt-1">Saldo aktuell nicht verfuegbar</p>
+            {% endif %}
+        {% endif %}
+
+    </div>
+
+    {# Mirror-Felder #}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        {% for item in fin_mirror_fields %}
+            {% set pill = provenance_pill(item.prov) %}
+            <div>
+                <div class="text-xs uppercase tracking-wider text-slate-500 mb-1">{{ item.label }}</div>
+                <div class="flex items-center justify-between gap-3">
+                    <div class="text-sm text-slate-900 truncate">
+                        {% if item.value is not none and item.value != "" %}
+                            {% if item.format == "money" %}
+                                {{ "%.2f"|format(item.value) }} EUR
+                            {% else %}
+                                {{ item.value }}
+                            {% endif %}
+                        {% else %}
+                            <span class="text-slate-400">&mdash;</span>
+                        {% endif %}
+                    </div>
+                    <span data-source="{{ pill.source }}"
+                          data-field="{{ item.key }}"
+                          title="{{ pill.tooltip }}"
+                          class="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded {{ pill.color_class }}">
+                        {{ pill.label }}
+                    </span>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    {# SEPA-Mandate (read-only) #}
+    <div class="mt-6">
+        {% set sepa_pill = provenance_pill(sepa_mandate_refs_prov) %}
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-slate-800">SEPA-Mandate</h3>
+            <span data-source="{{ sepa_pill.source }}"
+                  data-field="sepa_mandate_refs"
+                  title="{{ sepa_pill.tooltip }}"
+                  class="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded {{ sepa_pill.color_class }}">
+                {{ sepa_pill.label }}
+            </span>
+        </div>
+        {% if obj.sepa_mandate_refs %}
+            <table class="w-full text-sm">
+                <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+                    <tr>
+                        <th class="text-left px-3 py-2 font-semibold">Mandat-ID</th>
+                        <th class="text-left px-3 py-2 font-semibold">Bank-Konto-ID</th>
+                        <th class="text-left px-3 py-2 font-semibold">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in obj.sepa_mandate_refs %}
+                        <tr class="border-t border-slate-100">
+                            <td class="px-3 py-2 text-slate-800 tabular-nums">{{ m.mandate_id }}</td>
+                            <td class="px-3 py-2 text-slate-700 tabular-nums">
+                                {% if m.bank_account_id is not none %}{{ m.bank_account_id }}{% else %}<span class="text-slate-400">&ndash;</span>{% endif %}
+                            </td>
+                            <td class="px-3 py-2 text-slate-700">{{ m.state }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="text-slate-400 text-sm">Keine SEPA-Mandate gespiegelt.</p>
+        {% endif %}
+    </div>
+
+    {# Sparkline (Ruecklage-Verlauf, 6 Monate) #}
+    {% if sparkline_svg %}
+        <div class="mt-6" aria-label="Ruecklage-Verlauf, letzte 6 Monate">
+            {{ sparkline_svg | safe }}
+        </div>
+    {% else %}
+        <div class="mt-6 text-slate-300 text-sm">&mdash;</div>
+    {% endif %}
+</section>

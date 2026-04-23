@@ -643,3 +643,179 @@ def test_mirror_item_failure_emits_sync_failed_with_cluster_phase(
         assert d.get("phase") == "cluster_1"
         assert d.get("impower_property_id") == "222"
         assert d.get("entity_id") == str(o_bad.id)
+
+
+# ---------------------------------------------------------------------------
+# Data-Safety: mandates_unavailable darf bestehende refs nicht ueberschreiben
+# ---------------------------------------------------------------------------
+
+def test_mirror_mandate_503_preserves_existing_sepa_refs(db, monkeypatch):
+    """AC6 / Data-Safety: wenn der Mandate-Fetch 503 wirft (mandates_unavailable),
+    darf `sepa_mandate_refs` NICHT auf [] ueberschrieben werden. Ein
+    bestehender Wert (z. B. aus einem frueheren Lauf) muss erhalten bleiben.
+
+    Ohne dieses Verhalten wuerde ein zeitweiser Impower-Ausfall stumm alle
+    gespiegelten SEPA-Refs loeschen, was die UI-Anzeige "keine Mandate" lieferte,
+    obwohl in Wahrheit welche existieren.
+    """
+    # Retry-Delays auf 0 — sonst haengt der Test 112 s am 503-Retry.
+    monkeypatch.setattr(
+        "app.services.impower._RETRY_DELAYS_5XX", (0, 0, 0, 0, 0)
+    )
+    obj = _seed_object(db)
+    # Vorherigen Mirror-Stand simulieren (via Write-Gate, damit Provenance
+    # "impower_mirror" vorhanden ist und der Guard nicht user_edit_newer wirft).
+    existing_refs = [
+        {"mandate_id": "42", "bank_account_id": 420, "state": "BOOKED"}
+    ]
+    write_field_human(
+        db,
+        entity=obj,
+        field="sepa_mandate_refs",
+        value=existing_refs,
+        source="impower_mirror",
+        user=None,
+        source_ref="12345",
+    )
+    db.commit()
+
+    transport = _mock_transport(
+        properties=[
+            {
+                "id": 12345,
+                "addressStreet": "Hausstr. 1",
+                "addressZip": "22769",
+                "addressCity": "Hamburg",
+            }
+        ],
+        mandates_by_pid={},
+        fail_pids={"12345"},
+    )
+
+    result = asyncio.run(
+        run_impower_mirror(
+            db_factory=_TestSessionLocal,
+            http_client_factory=_client_factory_for(transport),
+        )
+    )
+    assert result.items_ok == 1
+    assert result.items_failed == 0
+    db.expire_all()
+    refreshed = db.get(Object, obj.id)
+    # Bestehende Refs erhalten.
+    assert refreshed.sepa_mandate_refs == existing_refs
+
+
+# ---------------------------------------------------------------------------
+# Data-Safety: Eigentuemer ohne displayName wird NICHT eingefuegt
+# ---------------------------------------------------------------------------
+
+def test_mirror_eigentuemer_without_display_name_not_inserted(db):
+    """Wenn ein OWNER-Contract einen contactId referenziert, der im
+    contacts[]-Snapshot fehlt (Paging-Trunkation, Teilausfall), ist
+    `displayName=None`. Der Reconcile darf den Eigentuemer dann NICHT mit
+    numerischer ID als Name anlegen — lieber gar nicht, als Muell-Daten.
+    """
+    obj = _seed_object(db)
+    transport = _mock_transport(
+        properties=[
+            {
+                "id": 12345,
+                "addressStreet": "Hausstr. 1",
+                "addressZip": "22769",
+                "addressCity": "Hamburg",
+            }
+        ],
+        contracts=[
+            {
+                "id": 5001,
+                "propertyId": 12345,
+                "type": "OWNER",
+                "contacts": [{"id": 999}],  # 999 absichtlich fehlend.
+            }
+        ],
+        contacts=[],  # 999 ist hier NICHT drin.
+        mandates_by_pid={"12345": []},
+    )
+    result = asyncio.run(
+        run_impower_mirror(
+            db_factory=_TestSessionLocal,
+            http_client_factory=_client_factory_for(transport),
+        )
+    )
+    assert result.items_failed == 0
+    db.expire_all()
+    eigs = (
+        db.query(Eigentuemer).filter(Eigentuemer.object_id == obj.id).all()
+    )
+    # Kein Insert passiert — sonst stuende "#999" im Name.
+    assert eigs == []
+
+
+# ---------------------------------------------------------------------------
+# _normalize_mandate_refs: Dedup int/str + skip ohne id
+# ---------------------------------------------------------------------------
+
+def test_normalize_mandate_refs_deduplicates_mixed_int_str_ids():
+    """Impower liefert mandate_id teils als int, teils als str. Nach
+    str-Coercion waeren das Duplikate — mit stabiler Sortierung wuerden
+    sie zweimal in der Liste landen und bei jedem Lauf Provenance-Churn
+    ausloesen.
+    """
+    raw = [
+        {"id": 7, "bankAccountId": 70, "state": "BOOKED"},
+        {"id": "7", "bankAccountId": 70, "state": "BOOKED"},
+        {"id": 8, "bankAccountId": 80, "state": "BOOKED"},
+    ]
+    out = _normalize_mandate_refs(raw)
+    assert [m["mandate_id"] for m in out] == ["7", "8"]
+
+
+def test_normalize_mandate_refs_skips_items_without_id():
+    """BOOKED-Mandate ohne id-Feld sind unbrauchbar (koennen nicht referenziert
+    werden). Ein None-Eintrag darf den Sort nicht crashen lassen.
+    """
+    raw = [
+        {"id": None, "bankAccountId": 10, "state": "BOOKED"},
+        {"id": 1, "bankAccountId": 10, "state": "BOOKED"},
+        {"bankAccountId": 20, "state": "BOOKED"},  # id-Key fehlt ganz
+    ]
+    out = _normalize_mandate_refs(raw)
+    assert [m["mandate_id"] for m in out] == ["1"]
+
+
+# ---------------------------------------------------------------------------
+# _normalize_voting_stake: Edge-Cases (NaN/Inf/negativ/Boundary)
+# ---------------------------------------------------------------------------
+
+def test_normalize_voting_stake_nan_returns_empty():
+    assert _normalize_voting_stake(float("nan")) == {}
+
+
+def test_normalize_voting_stake_inf_returns_empty():
+    assert _normalize_voting_stake(float("inf")) == {}
+
+
+def test_normalize_voting_stake_negative_returns_empty():
+    assert _normalize_voting_stake(-0.1) == {}
+
+
+def test_normalize_voting_stake_boundary_zero_still_returns_percent():
+    """Grenzwert 0: Heuristik ambig (0 koennte '0 %' oder 'leer' bedeuten),
+    aber der Code gibt `{"percent": 0.0}` zurueck + WARNING. Der Test fixiert
+    das Verhalten, damit eine spaetere Aenderung der Grenzwert-Semantik
+    ueber den Test sichtbar wird.
+    """
+    assert _normalize_voting_stake(0) == {"percent": 0.0}
+
+
+def test_normalize_voting_stake_non_numeric_string_returns_empty():
+    assert _normalize_voting_stake("nicht-zahl") == {}
+
+
+def test_normalize_voting_stake_caps_float_drift():
+    """0.1*100 = 10.000000000000002 in Float. Die round(.., 4)-Kappung sorgt
+    dafuer, dass Folgelaeufe als No-Op erkannt werden.
+    """
+    out = _normalize_voting_stake(0.1)
+    assert out == {"percent": 10.0}

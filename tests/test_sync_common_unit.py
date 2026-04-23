@@ -199,3 +199,67 @@ def test_run_sync_job_lock_skips_second_call(db):
         db.query(AuditLog).filter(AuditLog.action == "sync_finished").all()
     )
     assert len(finished_rows) == 0
+
+
+def test_run_sync_job_fetch_items_error_sets_fetch_failed(db):
+    """Wenn fetch_items wirft, muss:
+      - result.fetch_failed == True
+      - result.items_failed == 1 (ein pseudo-Item fuer den Fetch-Fehler)
+      - Audit-Chain: sync_started + sync_failed(phase=fetch) + sync_finished
+
+    Damit kann die Admin-UI "failed" anzeigen statt "ok mit 0 Items".
+    """
+    async def fetch():
+        raise RuntimeError("<html>Gateway timeout</html>")
+
+    async def reconcile(item, session):  # pragma: no cover — nie aufgerufen
+        return _make_stats()
+
+    lock = asyncio.Lock()
+    def factory():
+        return _TestSessionLocal()
+
+    result = asyncio.run(
+        run_sync_job(
+            job_name="test_job",
+            fetch_items=fetch,
+            reconcile_item=reconcile,
+            db_factory=factory,
+            lock=lock,
+        )
+    )
+    assert result.fetch_failed is True
+    assert result.items_failed == 1
+    assert result.items_ok == 0
+    assert result.finished_at is not None
+    assert len(result.errors) == 1
+    err = result.errors[0]
+    assert err.get("phase") == "fetch"
+    # strip_html_error hat die HTML-Tags raus.
+    assert "<html>" not in err.get("error", "")
+    assert "Gateway timeout" in err.get("error", "")
+
+    db.expire_all()
+    actions = [a.action for a in db.query(AuditLog).order_by(AuditLog.created_at).all()]
+    assert "sync_started" in actions
+    assert "sync_failed" in actions
+    assert "sync_finished" in actions
+    failed_row = (
+        db.query(AuditLog).filter(AuditLog.action == "sync_failed").one()
+    )
+    assert (failed_row.details_json or {}).get("phase") == "fetch"
+
+
+def test_next_daily_run_at_dst_fall_back_returns_valid_instant():
+    """Am letzten Oktober-Sonntag 2026-10-25 faellt 03:00 → 02:00 zurueck; 02:30
+    existiert dann ZWEIMAL (fold=0 = frueherer Instant, fold=1 = spaeterer).
+    next_daily_run_at muss einen gueltigen, strikt in der Zukunft liegenden
+    Instant zurueckgeben — ohne Crash.
+    """
+    # Samstag vor der Zeitumstellung, 14:00 Berlin.
+    now = datetime(2026, 10, 24, 14, 0, tzinfo=_BERLIN)
+    result = next_daily_run_at(now, hour=2, minute=30, tz=_BERLIN)
+    assert result.tzinfo == _BERLIN
+    assert result > now
+    # Landet auf dem 25.10. oder spaeter (Fall-Back-Tag), 02:30.
+    assert result.hour == 2 and result.minute == 30

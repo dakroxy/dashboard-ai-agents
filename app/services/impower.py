@@ -13,8 +13,11 @@ import asyncio
 import time
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from difflib import SequenceMatcher
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from schwifty import IBAN as SchwiftyIBAN
@@ -27,6 +30,10 @@ _REQUEST_DELAY = 0.12
 # Timeout muss deutlich darueber liegen, sonst faengt der Nginx davor an,
 # 502 zu liefern und unser eigener Timeout reisst parallel die Verbindung ab.
 _TIMEOUT = 120.0
+# Eigener kurzer Timeout fuer den Live-Pull-Saldo (Story 1.5). Render-Pfad
+# darf nicht 120 s blockieren — 8 s ist das Worst-Case-Fenster aus AC6
+# (P95 < 2 s, einzelner Ausreisser bis 8 s ist akzeptabel).
+_LIVE_BALANCE_TIMEOUT = 8.0
 # Impower-Gateway drosselt sporadisch mit 503 (Instant-Response, Backend
 # kriegt nichts davon). Mehrere Versuche mit Exponential-Backoff.
 _MAX_RETRIES_5XX = 5
@@ -926,3 +933,72 @@ async def write_sepa_mandate(
         result.error = str(exc)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Live-Pull Bank-Saldo (Story 1.5)
+# ---------------------------------------------------------------------------
+
+async def get_bank_balance(property_id: str) -> dict | None:
+    """Holt den aktuellen Bank-Saldo einer Impower-Property fuer den Live-Pull
+    in der Finanzen-Sektion (Story 1.5).
+
+    Eigener `httpx.AsyncClient(timeout=8.0)` statt `_make_client()` —
+    `_api_get()` setzt auf jedem Call `timeout=_TIMEOUT (120 s)` per Kwarg
+    und wuerde den Client-Default ueberschreiben. Render-Handler darf nicht
+    2+ Minuten an einem Impower-Slowdown haengen (AC6: P95 < 2 s).
+
+    Rueckgabe:
+      * Erfolg: ``{"balance": Decimal, "currency": "EUR", "fetched_at": datetime}``
+        — `fetched_at` ist UTC-aware, der Router konvertiert nach Europe/Berlin.
+      * Fehler (Timeout, 4xx/5xx, kein Balance-Feld, parse-Fehler): ``None``.
+
+    Kein Retry — der 8-s-Timeout ist das einzige Fangnetz, sonst sprengt der
+    Live-Pull AC6.
+    """
+    if not property_id:
+        return None
+
+    try:
+        async with httpx.AsyncClient(
+            base_url=settings.impower_base_url,
+            headers={
+                "Authorization": f"Bearer {settings.impower_bearer_token}",
+                "Accept": "application/json",
+            },
+            timeout=_LIVE_BALANCE_TIMEOUT,
+        ) as client:
+            await _rate_limit_gate()
+            resp = await client.get(f"/v2/properties/{property_id}")
+            resp.raise_for_status()
+            data = resp.json()
+    except (
+        httpx.TimeoutException,
+        httpx.TransportError,
+        httpx.HTTPStatusError,
+        ImpowerError,
+        ValueError,  # json.JSONDecodeError extends ValueError — z. B. HTML-Antwort vom Gateway
+    ):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    raw = data.get("accountBalance")
+    if raw is None:
+        raw = data.get("currentBalance")
+    if raw is None:
+        raw = data.get("bankBalance")
+    if raw is None:
+        return None
+
+    try:
+        balance = Decimal(str(raw))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+    return {
+        "balance": balance,
+        "currency": "EUR",
+        "fetched_at": datetime.now(ZoneInfo("UTC")),
+    }

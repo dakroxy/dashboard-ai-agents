@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -170,3 +171,85 @@ def has_any_impower_provenance(
         .limit(1)
     )
     return db.execute(stmt).scalar_one_or_none() is not None
+
+
+# ---------------------------------------------------------------------------
+# Sparkline (Story 1.5 — Ruecklage-Historie in der Finanzen-Sektion)
+# ---------------------------------------------------------------------------
+
+def reserve_history_for_sparkline(
+    db: Session, object_id: uuid.UUID, months: int = 6
+) -> list[tuple[datetime, float]]:
+    """Liefert chronologisch sortierte (timestamp, value)-Tupel der
+    `reserve_current`-Mirror-Writes der letzten `months` Monate.
+
+    Wird in der Finanzen-Sektion fuer die Inline-SVG-Sparkline gebraucht.
+    JSONB-Lese-Falle: `value_snapshot["new"]` kann nach JSONB-Roundtrip
+    `str` (`"45000.00"`, da Write-Gate Decimal als String serialisiert),
+    `int` oder `float` sein — alle drei werden ueber `float(str(raw))`
+    einheitlich gemacht. Rows ohne `new` (oder leerem Wert) werden
+    uebersprungen, sonst verschleppen wir 0.0-Artefakte in die Kurve.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=months * 31)
+    stmt = (
+        select(FieldProvenance)
+        .where(
+            FieldProvenance.entity_type == "object",
+            FieldProvenance.entity_id == object_id,
+            FieldProvenance.field_name == "reserve_current",
+            FieldProvenance.source == "impower_mirror",
+            FieldProvenance.created_at >= cutoff,
+        )
+        .order_by(FieldProvenance.created_at.asc())
+    )
+    rows = db.execute(stmt).scalars().all()
+
+    points: list[tuple[datetime, float]] = []
+    for row in rows:
+        snapshot = row.value_snapshot or {}
+        raw = snapshot.get("new")
+        if raw is None or raw == "":
+            continue
+        try:
+            val = float(str(raw))
+        except (TypeError, ValueError):
+            continue
+        points.append((row.created_at, val))
+    return points
+
+
+def build_sparkline_svg(points: list[tuple[datetime, float]]) -> str | None:
+    """Liefert einen fertigen SVG-String fuer eine Sparkline oder ``None`` bei
+    weniger als 2 Datenpunkten (Template rendert dann den Placeholder).
+
+    Render-Logik komplett im Service, damit das Template nur ``{{ svg | safe }}``
+    macht und keine eigene Berechnung enthaelt. ViewBox 120x40 px,
+    Stroke-Farbe sky-500 (passt zu den Mirror-Pills).
+    """
+    if len(points) < 2:
+        return None
+
+    vals = [v for _, v in points]
+    min_v, max_v = min(vals), max(vals)
+    w, h = 120, 40
+    pad = 2
+
+    def to_xy(i: int, v: float) -> tuple[float, float]:
+        x = pad + i / (len(vals) - 1) * (w - 2 * pad)
+        if max_v == min_v:
+            y = h / 2
+        else:
+            y = h - pad - (v - min_v) / (max_v - min_v) * (h - 2 * pad)
+        return round(x, 1), round(y, 1)
+
+    coords = [to_xy(i, v) for i, v in enumerate(vals)]
+    path_d = " ".join(
+        f"{'M' if i == 0 else 'L'}{x},{y}"
+        for i, (x, y) in enumerate(coords)
+    )
+    return (
+        f'<svg viewBox="0 0 {w} {h}" width="{w}" height="{h}" '
+        f'xmlns="http://www.w3.org/2000/svg">'
+        f'<path d="{path_d}" stroke="#0ea5e9" stroke-width="1.5" fill="none"/>'
+        f'</svg>'
+    )
