@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -253,3 +254,84 @@ def build_sparkline_svg(points: list[tuple[datetime, float]]) -> str | None:
         f'<path d="{path_d}" stroke="#0ea5e9" stroke-width="1.5" fill="none"/>'
         f'</svg>'
     )
+
+
+# ---------------------------------------------------------------------------
+# Technik-Sektion (Story 1.6) — Feld-Registry + Validator
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class TechnikField:
+    """Deskriptor eines einzelnen Technik-Felds.
+
+    Wird vom Router (Feld-Whitelist + Label + Kind-Dispatch) und vom Template
+    (UI-Label + Render-Dispatch) gleichermassen konsumiert — Single Source of
+    Truth.
+    """
+    key: str          # Spalten-Name auf Object
+    label: str        # UI-Label (Deutsch)
+    kind: str         # "int_year" | "text"
+    max_len: int = 500
+
+
+TECHNIK_ABSPERRPUNKTE: tuple[TechnikField, ...] = (
+    TechnikField("shutoff_water_location", "Wasser-Absperrung", "text"),
+    TechnikField("shutoff_electricity_location", "Strom-Absperrung", "text"),
+    TechnikField("shutoff_gas_location", "Gas-Absperrung", "text"),
+)
+TECHNIK_HEIZUNG: tuple[TechnikField, ...] = (
+    TechnikField("heating_type", "Heizungs-Typ", "text"),
+    TechnikField("year_heating", "Baujahr Heizung", "int_year"),
+    TechnikField("heating_company", "Wartungsfirma", "text"),
+    TechnikField("heating_hotline", "Stoerungs-Hotline", "text"),
+)
+TECHNIK_HISTORIE: tuple[TechnikField, ...] = (
+    TechnikField("year_built", "Baujahr Gebaeude", "int_year"),
+    TechnikField("year_roof", "Jahr letzte Dach-Sanierung", "int_year"),
+    TechnikField("year_electrics", "Jahr Elektrik-Check", "int_year"),
+)
+TECHNIK_FIELDS: tuple[TechnikField, ...] = (
+    *TECHNIK_ABSPERRPUNKTE,
+    *TECHNIK_HEIZUNG,
+    *TECHNIK_HISTORIE,
+)
+TECHNIK_FIELD_KEYS: frozenset[str] = frozenset(f.key for f in TECHNIK_FIELDS)
+
+_TECHNIK_LOOKUP: dict[str, TechnikField] = {f.key: f for f in TECHNIK_FIELDS}
+
+
+def parse_technik_value(field_key: str, raw: str) -> tuple[Any | None, str | None]:
+    """Validiert und parst User-Input fuer Technik-Felder.
+
+    - Leerer Input → (None, None): bewusste Loeschung (Story 1.6 AC6).
+    - `int_year`: Integer zwischen 1800 und (aktuelles Jahr + 1). Alles
+      andere liefert einen deutschen Fehlertext.
+    - `text`: Laenge <= field.max_len. Nur leading/trailing Whitespace
+      wird gestript.
+
+    Unbekannter field_key → ValueError (Programmier-Guard, nie user-sichtbar;
+    der Router filtert ueber TECHNIK_FIELD_KEYS vorab).
+    """
+    field = _TECHNIK_LOOKUP.get(field_key)
+    if field is None:
+        raise ValueError(f"Unbekanntes Technik-Feld: {field_key!r}")
+    stripped = (raw or "").strip()
+    if stripped == "":
+        return None, None
+    if field.kind == "int_year":
+        try:
+            year_f = float(stripped)
+        except ValueError:
+            return None, "Bitte eine ganze Zahl (Jahr) eingeben."
+        if year_f != int(year_f):
+            return None, "Bitte eine ganze Zahl (Jahr) eingeben."
+        year = int(year_f)
+        current_year = datetime.now().year
+        if not (1800 <= year <= current_year + 1):
+            return None, f"Jahr muss zwischen 1800 und {current_year + 1} liegen."
+        return year, None
+    if field.kind == "text":
+        if len(stripped) > field.max_len:
+            return None, f"Maximal {field.max_len} Zeichen erlaubt."
+        return stripped, None
+    raise ValueError(f"Unbekannter Feld-Typ: {field.kind!r}")

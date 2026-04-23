@@ -483,7 +483,7 @@ damit ich Wissen aus Begehungen sofort dokumentieren kann.
 **When** die Form submitted
 **Then** laeuft der Write durch `write_field_human` mit `source="user_edit"`
 **And** die Sektion wird per HTMX-Fragment mit dem neuen Wert und Provenance-Pill `user_edit` geswapped
-**And** ein `AuditLog`-Eintrag `action="object_field_updated"` mit `details_json.field_name == "year_roof"` existiert
+**And** ein `AuditLog`-Eintrag `action="object_field_updated"` mit `details_json.field == "year_roof"` existiert
 
 **Given** ich bin eingeloggt, aber **ohne** `objects:edit`
 **When** ich auf die Technik-Sektion klicke

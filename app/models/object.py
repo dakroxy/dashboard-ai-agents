@@ -36,6 +36,17 @@ class Object(Base):
     year_built: Mapped[int | None] = mapped_column(Integer, nullable=True)
     year_roof: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Technik-Cluster (Story 1.6) — Absperrpunkte (Standortbeschreibung),
+    # Heizungs-Steckbrief, Jahr-Elektrik-Check.
+    shutoff_water_location: Mapped[str | None] = mapped_column(String, nullable=True)
+    shutoff_electricity_location: Mapped[str | None] = mapped_column(String, nullable=True)
+    shutoff_gas_location: Mapped[str | None] = mapped_column(String, nullable=True)
+    heating_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    year_heating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    heating_company: Mapped[str | None] = mapped_column(String, nullable=True)
+    heating_hotline: Mapped[str | None] = mapped_column(String, nullable=True)
+    year_electrics: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Ciphertext-Placeholder — Fernet-Encryption folgt mit Story 1.7.
     entry_code_main_door: Mapped[str | None] = mapped_column(String, nullable=True)
     entry_code_garage: Mapped[str | None] = mapped_column(String, nullable=True)

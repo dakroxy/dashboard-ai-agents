@@ -1,0 +1,40 @@
+{# Technik-Sektion (Story 1.6):
+   - Absperrpunkte (3 Text-Felder): Wasser / Strom / Gas mit Standortbeschreibung
+   - Heizung (4 Felder): Typ / Baujahr / Wartungsfirma / Hotline
+   - Objekt-Historie (3 Jahr-Felder): Baujahr / Dach / Elektrik
+   Alle Felder via Inline-Edit — Edit-Button nur wenn objects:edit.
+   Zugangscodes bleiben Story 1.7 (UI + Fernet gemeinsam). #}
+
+<section class="rounded-lg bg-white border border-slate-200 p-6 mb-6"
+         data-section="technik">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-slate-900">Technik</h2>
+    </div>
+
+    <div class="mb-6">
+        <h3 class="text-sm font-semibold text-slate-800 mb-3">Absperrpunkte</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
+            {% for field in tech_absperrpunkte %}
+                {% include "_obj_technik_field_view.html" %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="mb-6">
+        <h3 class="text-sm font-semibold text-slate-800 mb-3">Heizung</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            {% for field in tech_heizung %}
+                {% include "_obj_technik_field_view.html" %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <div>
+        <h3 class="text-sm font-semibold text-slate-800 mb-3">Objekt-Historie</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
+            {% for field in tech_historie %}
+                {% include "_obj_technik_field_view.html" %}
+            {% endfor %}
+        </div>
+    </div>
+</section>

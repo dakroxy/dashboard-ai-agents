@@ -239,8 +239,8 @@ def test_detail_renders_stammdaten_and_eigentuemer(
     assert "Bernd Muster" in body
     assert "50" in body and "25" in body
 
-    # Keine der noch nicht gebauten Sektionen (Finanzen ist seit Story 1.5 da).
-    assert "Technik" not in body
+    # Keine der noch nicht gebauten Sektionen (Finanzen ist seit Story 1.5,
+    # Technik seit Story 1.6 da).
     assert "Review" not in body
 
 
@@ -447,8 +447,9 @@ def test_detail_sql_statement_count(
         sa.event.remove(_TEST_ENGINE, "before_cursor_execute", counter)
 
     assert response.status_code == 200
-    # Erwartet: accessible_ids, Object, Eigentuemer, Provenance-Map, Stale-Check.
-    # Puffer fuer Framework-Setup -> max 7.
-    assert counter.count <= 7, (
+    # Erwartet: accessible_ids, Object, Eigentuemer, Stammdaten-Provenance-Map,
+    # Stale-Check, Finanzen-Provenance-Map, Sparkline-Rows, Technik-Provenance-Map.
+    # Puffer fuer Framework-Setup -> max 8.
+    assert counter.count <= 8, (
         f"Zu viele SQL-Statements auf Detailseite: {counter.count}"
     )
