@@ -1,0 +1,36 @@
+{# View-Fragment fuer ein einzelnes Zugangscode-Feld.
+   Container-ID = "field-<key>", HTMX-Target fuer Edit/Save-Swaps.
+   "value" ist der KLARTEXT (bereits decrypted); bei Fehler ist "error" gesetzt. #}
+{% set pill = provenance_pill(field.prov) %}
+<div id="field-{{ field.key }}" class="min-w-0">
+    <div class="text-xs uppercase tracking-wider text-slate-500 mb-1">{{ field.label }}</div>
+    <div class="flex items-center justify-between gap-3">
+        <div class="text-sm text-slate-900 truncate">
+            {% if field.error %}
+                <span class="text-amber-600 italic text-xs">{{ field.error }}</span>
+            {% elif field.value is not none and field.value != "" %}
+                <span class="font-mono">{{ field.value }}</span>
+            {% else %}
+                <span class="text-slate-400">&mdash;</span>
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            {% if not field.error %}
+                <span data-source="{{ pill.source }}"
+                      data-field="{{ field.key }}"
+                      title="{{ pill.tooltip }}"
+                      class="inline-flex items-center text-[11px] px-2 py-0.5 rounded {{ pill.color_class }}">
+                    {{ pill.label }}
+                </span>
+            {% endif %}
+            {% if has_permission(user, "objects:edit") %}
+                <button type="button"
+                        data-edit-field="{{ field.key }}"
+                        hx-get="/objects/{{ obj.id }}/zugangscodes/edit?field={{ field.key }}"
+                        hx-target="#field-{{ field.key }}"
+                        hx-swap="outerHTML"
+                        class="text-xs text-sky-600 hover:text-sky-900">Edit</button>
+            {% endif %}
+        </div>
+    </div>
+</div>

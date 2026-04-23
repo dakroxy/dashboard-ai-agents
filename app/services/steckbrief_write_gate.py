@@ -232,6 +232,17 @@ def write_field_human(
             "einen User traegt."
         )
 
+    # --- Feld-Encryption (entry_code_* und andere _ENCRYPTED_FIELDS) ---
+    # Fernet hat Random-IV → jedes Encrypt ergibt ein neues Token; der
+    # No-Op-Vergleich unten vergleicht darum alten Ciphertext gegen neuen
+    # Ciphertext und schlaegt immer durch. Absicht fuer v1.
+    if field in _ENCRYPTED_FIELDS.get(entity_type, frozenset()):
+        if value is not None and isinstance(value, str) and value.strip():
+            from app.services.field_encryption import encrypt_field as _enc
+            value = _enc(value, entity_type=entity_type, field=field)
+        else:
+            value = None
+
     entity_id = entity.id
     if entity_id is None:
         raise WriteGateError(

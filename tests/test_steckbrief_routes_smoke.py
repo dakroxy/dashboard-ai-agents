@@ -448,8 +448,8 @@ def test_detail_sql_statement_count(
 
     assert response.status_code == 200
     # Erwartet: accessible_ids, Object, Eigentuemer, Stammdaten-Provenance-Map,
-    # Stale-Check, Finanzen-Provenance-Map, Sparkline-Rows, Technik-Provenance-Map.
-    # Puffer fuer Framework-Setup -> max 8.
-    assert counter.count <= 8, (
+    # Stale-Check, Finanzen-Provenance-Map, Sparkline-Rows, Technik-Provenance-Map,
+    # Zugangscode-Provenance-Map (Story 1.7). Puffer fuer Framework-Setup -> max 9.
+    assert counter.count <= 9, (
         f"Zu viele SQL-Statements auf Detailseite: {counter.count}"
     )

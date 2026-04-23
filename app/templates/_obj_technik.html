@@ -3,7 +3,7 @@
    - Heizung (4 Felder): Typ / Baujahr / Wartungsfirma / Hotline
    - Objekt-Historie (3 Jahr-Felder): Baujahr / Dach / Elektrik
    Alle Felder via Inline-Edit — Edit-Button nur wenn objects:edit.
-   Zugangscodes bleiben Story 1.7 (UI + Fernet gemeinsam). #}
+   Zugangscodes: Story 1.7 (Fernet-verschluesselt, eigene Endpoints). #}
 
 <section class="rounded-lg bg-white border border-slate-200 p-6 mb-6"
          data-section="technik">
@@ -34,6 +34,15 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
             {% for field in tech_historie %}
                 {% include "_obj_technik_field_view.html" %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="mt-6 pt-6 border-t border-slate-100">
+        <h3 class="text-sm font-semibold text-slate-800 mb-3">Zugangscodes</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
+            {% for field in tech_zugangscodes %}
+                {% include "_obj_zugangscode_view.html" %}
             {% endfor %}
         </div>
     </div>

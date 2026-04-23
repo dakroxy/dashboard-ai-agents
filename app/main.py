@@ -256,6 +256,12 @@ async def lifespan(app: FastAPI):
     _seed_default_roles()
     _seed_default_workflow_access()
 
+    if not settings.steckbrief_field_key:
+        _logger.warning(
+            "STECKBRIEF_FIELD_KEY ist nicht gesetzt — Fallback auf SECRET_KEY "
+            "fuer Field-Level-Encryption. Fuer Prod eigenen Schluessel setzen."
+        )
+
     scheduler_task: asyncio.Task | None = None
     if settings.impower_mirror_enabled:
         scheduler_task = asyncio.create_task(

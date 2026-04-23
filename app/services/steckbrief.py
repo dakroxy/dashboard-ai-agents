@@ -335,3 +335,41 @@ def parse_technik_value(field_key: str, raw: str) -> tuple[Any | None, str | Non
             return None, f"Maximal {field.max_len} Zeichen erlaubt."
         return stripped, None
     raise ValueError(f"Unbekannter Feld-Typ: {field.kind!r}")
+
+
+# ---------------------------------------------------------------------------
+# Zugangscode-Registry (Story 1.7 — separate von TECHNIK_FIELDS, da
+# Encrypt/Decrypt-Logik eigene Endpoints erfordert)
+# ---------------------------------------------------------------------------
+
+ZUGANGSCODE_FIELDS: tuple[TechnikField, ...] = (
+    TechnikField("entry_code_main_door", "Haustuer-Code", "code"),
+    TechnikField("entry_code_garage", "Garage-Code", "code"),
+    TechnikField("entry_code_technical_room", "Technikraum-Code", "code"),
+)
+ZUGANGSCODE_FIELD_KEYS: frozenset[str] = frozenset(
+    f.key for f in ZUGANGSCODE_FIELDS
+)
+
+_ZUGANGSCODE_MAX_LEN: int = 200
+
+
+def parse_zugangscode_value(
+    field_key: str, raw: str
+) -> tuple[str | None, str | None]:
+    """Validiert User-Input fuer Zugangscode-Felder.
+
+    - Leerer Input → (None, None): bewusste Loeschung (AC4).
+    - Nicht-leer: Whitespace strippen, Laenge pruefen.
+    - Unbekannter field_key → ValueError (Programmier-Guard).
+
+    Rueckgabe: (wert, fehlermeldung) — exakt eines davon ist None.
+    """
+    if field_key not in ZUGANGSCODE_FIELD_KEYS:
+        raise ValueError(f"Unbekanntes Zugangscode-Feld: {field_key!r}")
+    stripped = (raw or "").strip()
+    if not stripped:
+        return None, None
+    if len(stripped) > _ZUGANGSCODE_MAX_LEN:
+        return None, f"Maximal {_ZUGANGSCODE_MAX_LEN} Zeichen erlaubt."
+    return stripped, None

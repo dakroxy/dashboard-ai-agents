@@ -1,0 +1,40 @@
+{# Edit-Fragment fuer ein einzelnes Zugangscode-Feld.
+   POST geht an zugangscodes/field — nicht an technik/field.
+   "submitted_value" nur beim Validierungsfehler gesetzt. #}
+<div id="field-{{ field.key }}" class="min-w-0"
+     data-edit-field="{{ field.key }}"
+     data-error="{{ 'true' if error else 'false' }}">
+    <form hx-post="/objects/{{ obj.id }}/zugangscodes/field"
+          hx-target="#field-{{ field.key }}"
+          hx-swap="outerHTML"
+          class="flex flex-col gap-1">
+        <label class="text-xs uppercase tracking-wider text-slate-500"
+               for="input-{{ field.key }}">{{ field.label }}</label>
+        <input type="hidden" name="field_name" value="{{ field.key }}">
+        {% set current_value =
+            submitted_value if submitted_value is defined and submitted_value is not none
+            else (field.value if field.value is not none else "") %}
+        <input id="input-{{ field.key }}"
+               name="value"
+               type="text"
+               value="{{ current_value }}"
+               autocomplete="off"
+               class="block w-full rounded border {{ 'border-rose-300' if error else 'border-slate-300' }} px-2 py-1 text-sm font-mono">
+        {% if error %}
+            <p class="text-xs text-rose-600 mt-0.5">{{ error }}</p>
+        {% endif %}
+        <div class="flex items-center gap-2 mt-1">
+            <button type="submit"
+                    class="text-xs px-2 py-0.5 rounded bg-sky-600 text-white hover:bg-sky-700">
+                Speichern
+            </button>
+            <button type="button"
+                    hx-get="/objects/{{ obj.id }}/zugangscodes/view?field={{ field.key }}"
+                    hx-target="#field-{{ field.key }}"
+                    hx-swap="outerHTML"
+                    class="text-xs text-slate-500 hover:text-slate-900">
+                Abbrechen
+            </button>
+        </div>
+    </form>
+</div>

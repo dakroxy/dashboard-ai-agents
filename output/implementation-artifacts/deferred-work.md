@@ -23,8 +23,8 @@ Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werd
 - **Combined-Index `field_provenance(entity_type, entity_id, field_name, created_at DESC)`** [`migrations/versions/0011_steckbrief_governance.py`] — Aktueller `ix_field_provenance_entity_field` deckt Filter, nicht die ORDER BY. Bei 10k+ Provenance-Rows pro Object (Story 1.4 Nightly-Mirror) wird `_latest_provenance` langsam. Defer, sobald Volumen sichtbar.
 - **FK-Semantik (`ON DELETE SET NULL`) nur metadata-getestet** [`tests/conftest.py`] — SQLite ohne `PRAGMA foreign_keys=ON` ignoriert FKs, `test_review_queue_source_doc_fk_on_delete_set_null` prueft nur Metadata-Ebene. Integration gegen echte Postgres via Testcontainer waere sauberer; groesserer Infrastruktur-Schritt.
 - **`proposed_value`-Typ-Roundtrip fuer Decimal/Date** [`app/services/steckbrief_write_gate.py:1779`] — `_json_safe` serialisiert `Decimal` → String; beim Approve landet der String in der `Numeric`-Spalte. Ab Story 1.5 (Finanzen-KI-Proposals) relevant. Fix-Skizze: typisiertes Envelope `{"value": ..., "type": "decimal"}` + Parser im `approve_review_entry`.
-- **Entry-Code `String`-Spalten ohne Length-Limit** [`migrations/versions/0010_steckbrief_core.py:132`] — wird mit Story 1.7 (Fernet-Encryption) umgebaut, dann max. 512 Zeichen.
-- **`_ENCRYPTED_FIELDS` nur fuer `"object"`** [`app/services/steckbrief_write_gate.py:1573`] — Erweiterung auf `Unit`/`Mieter` in Story 1.7 muss diese Konstante nachziehen, sonst stille Klartext-Leaks in Provenance/Audit. Silent-Fail-Risiko, Memo als Docstring-Erinnerung reicht.
+- ~~**Entry-Code `String`-Spalten ohne Length-Limit**~~ — Kein ALTER COLUMN noetig: Fernet-Output fuer Codes bis 200 Zeichen Plaintext ist ~120 Zeichen lang, passt problemlos in unbeschraenktes `TEXT`. Closed in Story 1.7.
+- **`_ENCRYPTED_FIELDS` nur fuer `"object"`** [`app/services/steckbrief_write_gate.py`] — Erweiterung auf `Unit`/`Mieter` bleibt v1.1; Story 1.7 hat nur die Encryption-Logik ergaenzt, nicht das Feld-Set erweitert. Kein neues Silent-Fail-Risiko (aktuell keine encrypted Felder auf Unit/Mieter-Ebene).
 - **`docs/architecture.md` §8 Audit-Actions-Liste dupliziert gegen `KNOWN_AUDIT_ACTIONS`** [`docs/architecture.md`] — Langfristig auf Backlink umstellen. Nit.
 
 ## Deferred from: code review of story-1.3 (2026-04-22)
@@ -46,6 +46,12 @@ Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werd
 
 - **Index-Name-Widerspruch Spec AC8 vs Task 1.3** [`migrations/versions/0012_steckbrief_finance_mirror_fields.py:62-66`] — Migration erstellt `ix_eigentuemer_impower_contact` (ohne `_id`-Suffix). AC8 nennt `ix_eigentuemer_impower_contact_id`, Task 1.3 nennt `ix_eigentuemer_impower_contact`. Spec-interner Widerspruch; Rename-Migration in v1.1 einplanen falls konsistenter Name gewuenscht.
 - **`_audit_sync` Session-Convention undokumentiert** [`app/services/_sync_common.py:127-144`] — Wrapper oeffnet eigene Session via `db_factory()` und committet. Bei Tests mit transactional-scope-Pattern koennte das Savepoints zerreissen; aktuell Tests gruen (347/347). Docstring + Contract formalisieren, sobald Convention projektweit festgezogen wird.
+
+## Deferred from: code review of 1-7-zugangscodes-mit-field-level-encryption (2026-04-23)
+
+- **`key_id`-Rotation-Illusion** [`app/services/field_encryption.py`] — Format `v1:<token>` verspricht Rotation-Fähigkeit, aber beim echten Master-Key-Wechsel werden alle vorhandenen `v1:`-Blobs unentschlüsselbar (kein Multi-Key-Lookup, kein Key-Ring). Rotation-Job in v1.1 muss Migration aller Ciphertexts über `decrypt(old_key) → encrypt(new_key)` enthalten, bevor der neue Key aktiviert wird.
+- **`objects:view_confidential` nicht für Entry-Codes** — Physische Zugangsdaten (Haustür, Garage, Technikraum) haben dasselbe Permission-Level wie normale Objektfelder (`objects:view`). Design-intentional per Spec AC2/AC5, aber vor Prod-Rollout evaluieren ob ein separates `objects:view_confidential`-Gate nötig ist (vgl. Story-1.3-Defer "Kein Field-Level-Redaction").
+- **Double-Encrypt-Risiko für zukünftige Write-Pfade** [`app/services/steckbrief_write_gate.py`] — `write_field_human` hat keinen Guard gegen bereits verschlüsselte `v1:...`-Werte; ein zukünftiger Write-Pfad (z.B. Nightly-Mirror v1.1, der Ciphertexts aus DB liest und zurückschreibt) würde silent doppelt verschlüsseln. Vor Implementierung neuer Write-Pfade für `_ENCRYPTED_FIELDS`: Guard `if value and value.startswith("v1:"): raise WriteGateError(...)` ergänzen.
 
 ## Deferred from: code review of 1-6-technik-sektion-mit-inline-edit (2026-04-23)
 

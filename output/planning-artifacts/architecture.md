@@ -351,7 +351,10 @@ Alle ueber `audit()`-Helper (`app/services/audit.py`), in derselben Transaktion 
 
 ```python
 def encrypt_field(plaintext: str, *, entity_type: str, field: str, key_id: str = "v1") -> str: ...
-def decrypt_field(ciphertext: str, *, entity_type: str, field: str, key_id: str = "v1") -> str: ...
+def decrypt_field(ciphertext: str, *, entity_type: str, field: str) -> str: ...
+# Hinweis: decrypt_field hat keinen key_id-Parameter — die key_id wird aus dem
+# Ciphertext-Praefix gelesen (ciphertext.partition(":")), aber v1 nutzt immer
+# denselben abgeleiteten Schluessel. Rotation (v1.1) erfordert einen Key-Ring-Lookup.
 ```
 
 **Rotations-Vorbereitung:** Jede verschluesselte Zelle speichert das Ciphertext-Format `v1:<base64>` — Praefix ist die `key_id`. Rotation bedeutet: neue `key_id="v2"` aktiv machen, Re-Encrypt-Job schreibt alle Felder neu (Admin-Tool). In v1 kein Job implementiert, aber Format vorbereitet.

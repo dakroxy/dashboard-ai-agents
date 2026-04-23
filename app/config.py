@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # Scheduler keinen echten Impower-Call ausloest. Prod default True.
     impower_mirror_enabled: bool = True
 
+    # Optional: separater Encryption-Key fuer Steckbrief-Felder (entry_code_*).
+    # Leer = Fallback auf secret_key. Prod: eigenen Zufallsschluessel setzen.
+    steckbrief_field_key: str = ""
+
     @property
     def initial_admin_email_set(self) -> set[str]:
         return {

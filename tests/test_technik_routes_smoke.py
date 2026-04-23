@@ -118,10 +118,11 @@ def test_technik_section_rendered_with_all_fields_and_edit_buttons_for_editor(
         assert f'data-field="{key}"' in body, f"Feld {key} fehlt im Render"
         assert f'data-edit-field="{key}"' in body, f"Edit-Button fuer {key} fehlt"
 
-    # Scope-Boundary: Zugangscodes bleiben Story 1.7 → KEIN entry_code_* im HTML
-    assert "entry_code_main_door" not in body
-    assert "entry_code_garage" not in body
-    assert "entry_code_technical_room" not in body
+    # Story 1.7: Zugangscodes erscheinen jetzt im Render — aber unter eigenen
+    # Endpoints. Der Technik-Endpoint muss sie weiter ablehnen
+    # (siehe test_technik_save_rejects_entry_code_field).
+    for key in ("entry_code_main_door", "entry_code_garage", "entry_code_technical_room"):
+        assert f'data-field="{key}"' in body, f"Zugangscode {key} fehlt im Render"
 
 
 def test_technik_section_labels_in_german(steckbrief_admin_client, make_object):
