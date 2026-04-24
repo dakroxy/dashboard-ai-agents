@@ -1,0 +1,34 @@
+{# Inline-Formular fuer neuen Dienstleister (Story 2.2).
+   Antwortet mit OOB-Swaps: Dropdown-Update + Container-Reset. #}
+
+{% if error %}
+<div class="mb-2 text-xs text-red-600">{{ error }}</div>
+{% endif %}
+
+<form hx-post="/registries/dienstleister"
+      class="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-2 mt-1">
+    <input type="hidden" name="policy_id" value="{{ policy_id }}">
+    <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Name *</label>
+        <input type="text" name="name" required
+               class="w-full p-1.5 border border-slate-300 rounded text-sm">
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">
+            Gewerke (komma-getrennt, optional)
+        </label>
+        <input type="text" name="gewerke_tags_raw" placeholder="z.B. Sanitär, Elektro"
+               class="w-full p-1.5 border border-slate-300 rounded text-sm">
+    </div>
+    <div class="flex gap-2">
+        <button type="submit"
+                class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+            Speichern
+        </button>
+        <button type="button"
+                onclick="document.getElementById('new-dienstleister-inline-{{ policy_id }}').innerHTML=''"
+                class="px-3 py-1.5 border border-slate-300 text-slate-600 text-sm rounded hover:bg-slate-100">
+            Abbrechen
+        </button>
+    </div>
+</form>

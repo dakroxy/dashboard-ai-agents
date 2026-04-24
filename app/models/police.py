@@ -66,6 +66,13 @@ class InsurancePolicy(Base):
     versicherer: Mapped["Versicherer | None"] = relationship(  # noqa: F821
         "Versicherer", foreign_keys=[versicherer_id]
     )
+    wartungspflichten: Mapped[list["Wartungspflicht"]] = relationship(
+        "Wartungspflicht",
+        back_populates="policy",
+        foreign_keys="[Wartungspflicht.policy_id]",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class Wartungspflicht(Base):
@@ -89,8 +96,15 @@ class Wartungspflicht(Base):
         nullable=True,
         index=True,
     )
+    object_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("objects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     bezeichnung: Mapped[str] = mapped_column(String, nullable=False)
     intervall_monate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    letzte_wartung: Mapped[date | None] = mapped_column(Date, nullable=True)
     next_due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     notes: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
@@ -104,6 +118,16 @@ class Wartungspflicht(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    policy: Mapped["InsurancePolicy | None"] = relationship(
+        "InsurancePolicy", back_populates="wartungspflichten", foreign_keys=[policy_id]
+    )
+    object: Mapped["Object"] = relationship(  # noqa: F821
+        "Object", back_populates="wartungspflichten", foreign_keys=[object_id]
+    )
+    dienstleister: Mapped["Dienstleister | None"] = relationship(  # noqa: F821
+        "Dienstleister", foreign_keys=[dienstleister_id]
     )
 
 

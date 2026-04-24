@@ -1,0 +1,13 @@
+{# OOB-Swap: aktualisiert den Dienstleister-Dropdown nach Neuanlage (Story 2.2).
+   Erwartet: target_dropdown_id, all_dienstleister, selected_id. #}
+
+<select id="{{ target_dropdown_id }}" name="dienstleister_id"
+        class="flex-1 p-1.5 border border-slate-300 rounded text-sm"
+        hx-swap-oob="true">
+    <option value="">— Dienstleister —</option>
+    {% for d in all_dienstleister %}
+    <option value="{{ d.id }}"{% if selected_id and selected_id == d.id|string %} selected{% endif %}>
+        {{ d.name }}
+    </option>
+    {% endfor %}
+</select>

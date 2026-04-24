@@ -105,6 +105,13 @@ class Object(Base):
     policen: Mapped[list["InsurancePolicy"]] = relationship(  # noqa: F821
         "InsurancePolicy", back_populates="object", cascade="all, delete-orphan"
     )
+    wartungspflichten: Mapped[list["Wartungspflicht"]] = relationship(  # noqa: F821
+        "Wartungspflicht",
+        back_populates="object",
+        foreign_keys="[Wartungspflicht.object_id]",
+        cascade="all, delete-orphan",
+        lazy="noload",
+    )
 
 
 class Unit(Base):

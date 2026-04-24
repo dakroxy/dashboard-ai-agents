@@ -1,7 +1,9 @@
 """Registry-Routen — Versicherer, Dienstleister etc. (Story 2.1+)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request, status
+import uuid
+
+from fastapi import APIRouter, Depends, Form, Query, Request, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,7 @@ from app.db import get_db
 from app.models import User
 from app.permissions import require_permission
 from app.services.steckbrief_policen import create_versicherer, get_all_versicherer
+from app.services.steckbrief_wartungen import create_dienstleister, get_all_dienstleister
 from app.templating import templates
 
 router = APIRouter(prefix="/registries", tags=["registries"])
@@ -68,3 +71,65 @@ async def versicherer_create(
     )
     oob_clear = '<div id="new-versicherer-inline" hx-swap-oob="true"></div>'
     return HTMLResponse(content=dropdown_html + "\n" + oob_clear)
+
+
+@router.get("/dienstleister/new-form", response_class=HTMLResponse)
+async def dienstleister_new_form(
+    request: Request,
+    policy_id: uuid.UUID | None = Query(None),
+    user: User = Depends(require_permission("registries:edit")),
+    db: Session = Depends(get_db),
+):
+    return templates.TemplateResponse(
+        request,
+        "_registries_dienstleister_form.html",
+        {"user": user, "policy_id": policy_id, "error": None},
+    )
+
+
+@router.post("/dienstleister", response_class=HTMLResponse)
+async def dienstleister_create(
+    request: Request,
+    name: str = Form(...),
+    gewerke_tags_raw: str | None = Form(None),
+    policy_id: uuid.UUID | None = Form(None),
+    user: User = Depends(require_permission("registries:edit")),
+    db: Session = Depends(get_db),
+):
+    if not name.strip():
+        return templates.TemplateResponse(
+            request,
+            "_registries_dienstleister_form.html",
+            {"user": user, "policy_id": policy_id, "error": "Name ist Pflichtfeld"},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    gewerke_tags = (
+        [t.strip() for t in gewerke_tags_raw.split(",") if t.strip()]
+        if gewerke_tags_raw
+        else []
+    )
+    new_d = create_dienstleister(db, user, request, name=name.strip(), gewerke_tags=gewerke_tags)
+    db.commit()
+    db.refresh(new_d)
+
+    all_dienstleister = get_all_dienstleister(db)
+
+    if policy_id is not None:
+        target_id = f"dienstleister-dropdown-{policy_id}"
+        dropdown_html = templates.get_template("_registries_dienstleister_options.html").render(
+            target_dropdown_id=target_id,
+            all_dienstleister=all_dienstleister,
+            selected_id=str(new_d.id),
+            request=request,
+        )
+        oob_clear = f'<div id="new-dienstleister-inline-{policy_id}" hx-swap-oob="true"></div>'
+        return HTMLResponse(content=dropdown_html + "\n" + oob_clear)
+    else:
+        dropdown_html = templates.get_template("_registries_dienstleister_options.html").render(
+            target_dropdown_id="dienstleister-dropdown",
+            all_dienstleister=all_dienstleister,
+            selected_id=str(new_d.id),
+            request=request,
+        )
+        return HTMLResponse(content=dropdown_html)

@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import InsurancePolicy, Object, User
+from app.models import InsurancePolicy, Object, User, Wartungspflicht
 from app.models.object import SteckbriefPhoto
 from app.permissions import accessible_object_ids, has_permission, require_permission
 from app.services.impower import get_bank_balance
@@ -68,6 +68,13 @@ from app.services.steckbrief_policen import (
     get_policen_for_object,
     update_police,
     validate_police_dates,
+)
+from app.services.steckbrief_wartungen import (
+    create_wartungspflicht,
+    delete_wartungspflicht,
+    get_all_dienstleister,
+    get_due_severity,
+    validate_wartung_dates,
 )
 from app.services.steckbrief_write_gate import write_field_human
 from app.templating import templates
@@ -281,9 +288,10 @@ async def object_detail(
             except Exception:
                 pass  # Audit-Commit-Fehler darf Page-Render nicht blockieren
 
-    # ---- Versicherungs-Sektion (Story 2.1) ----
+    # ---- Versicherungs-Sektion (Story 2.1+2.2) ----
     policen = get_policen_for_object(db, detail.obj.id)
     versicherer_list = get_all_versicherer(db)
+    dienstleister_list = get_all_dienstleister(db)
 
     # --- Fotos pro Komponente (Story 1.8) ---
     photos_raw = (
@@ -323,6 +331,8 @@ async def object_detail(
             "photo_component_refs": PHOTO_COMPONENT_REFS,
             "policen": policen,
             "versicherer_list": versicherer_list,
+            "dienstleister_list": dienstleister_list,
+            "get_due_severity": get_due_severity,
         },
     )
 
@@ -1008,10 +1018,18 @@ def _render_versicherungen(
 ):
     policen = get_policen_for_object(db, obj.id)
     versicherer_list = get_all_versicherer(db)
+    dienstleister_list = get_all_dienstleister(db)
     return templates.TemplateResponse(
         request,
         "_obj_versicherungen.html",
-        {"obj": obj, "policen": policen, "versicherer_list": versicherer_list, "user": user},
+        {
+            "obj": obj,
+            "policen": policen,
+            "versicherer_list": versicherer_list,
+            "dienstleister_list": dienstleister_list,
+            "get_due_severity": get_due_severity,
+            "user": user,
+        },
     )
 
 
@@ -1199,3 +1217,129 @@ async def police_delete(
     delete_police(db, policy, user, request)
     db.commit()
     return _render_versicherungen(request, obj, db, user)
+
+
+# ---------------------------------------------------------------------------
+# Wartungspflichten (Story 2.2)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{object_id}/policen/{policy_id}/wartungspflichten",
+    response_class=HTMLResponse,
+)
+async def wartungspflicht_create(
+    object_id: uuid.UUID,
+    policy_id: uuid.UUID,
+    request: Request,
+    bezeichnung: str = Form(""),
+    dienstleister_id: str | None = Form(None),
+    intervall_monate: str | None = Form(None),
+    letzte_wartung: str | None = Form(None),
+    next_due_date: str | None = Form(None),
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    obj = _load_accessible_object(db, object_id, user)
+    policy = db.get(InsurancePolicy, policy_id)
+    if policy is None or policy.object_id != obj.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
+
+    if not bezeichnung.strip():
+        return HTMLResponse(
+            content="<p class='text-red-600 text-sm p-2'>Bezeichnung ist Pflichtfeld.</p>",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    parsed_dienstleister_id: uuid.UUID | None = None
+    if dienstleister_id and dienstleister_id.strip():
+        try:
+            parsed_dienstleister_id = uuid.UUID(dienstleister_id.strip())
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Ungueltige Dienstleister-ID")
+
+    parsed_intervall: int | None = None
+    if intervall_monate and intervall_monate.strip():
+        try:
+            parsed_intervall = int(intervall_monate.strip())
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Ungueltige Intervall-Angabe")
+
+    parsed_letzte = _parse_date(letzte_wartung)
+    parsed_next = _parse_date(next_due_date)
+
+    warn = validate_wartung_dates(parsed_letzte, parsed_intervall, parsed_next)
+    if warn and "muss nach" in warn:
+        return HTMLResponse(
+            content=f"<p class='text-red-600 text-sm p-2'>{warn}</p>",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    wart = create_wartungspflicht(
+        db,
+        policy,
+        user,
+        request,
+        bezeichnung=bezeichnung.strip(),
+        dienstleister_id=parsed_dienstleister_id,
+        intervall_monate=parsed_intervall,
+        letzte_wartung=parsed_letzte,
+        next_due_date=parsed_next,
+    )
+    db.commit()
+    db.refresh(wart)
+    db.refresh(policy)
+
+    dienstleister_list = get_all_dienstleister(db)
+    ctx = {
+        "obj": obj,
+        "policy": policy,
+        "dienstleister_list": dienstleister_list,
+        "get_due_severity": get_due_severity,
+        "user": user,
+    }
+    if warn:
+        ctx["soft_warn"] = warn
+    return templates.TemplateResponse(request, "_obj_versicherungen_row.html", ctx)
+
+
+@router.delete(
+    "/{object_id}/wartungspflichten/{wart_id}",
+    response_class=HTMLResponse,
+)
+async def wartungspflicht_delete(
+    object_id: uuid.UUID,
+    wart_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    obj = _load_accessible_object(db, object_id, user)
+    wart = db.get(Wartungspflicht, wart_id)
+    if wart is None or wart.object_id != obj.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wartungspflicht nicht gefunden")
+
+    # Cross-Police-Guard: defense in depth gegen manipulierte Daten
+    if wart.policy and wart.policy.object_id != obj.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wartungspflicht nicht gefunden")
+
+    policy = wart.policy
+    delete_wartungspflicht(db, wart, user, request)
+    db.commit()
+
+    if policy is None:
+        return _render_versicherungen(request, obj, db, user)
+
+    db.refresh(policy)
+    dienstleister_list = get_all_dienstleister(db)
+    return templates.TemplateResponse(
+        request,
+        "_obj_versicherungen_row.html",
+        {
+            "obj": obj,
+            "policy": policy,
+            "dienstleister_list": dienstleister_list,
+            "get_due_severity": get_due_severity,
+            "user": user,
+        },
+    )

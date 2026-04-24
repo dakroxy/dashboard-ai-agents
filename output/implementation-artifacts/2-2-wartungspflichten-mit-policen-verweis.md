@@ -1,6 +1,6 @@
 # Story 2.2: Wartungspflichten mit Policen-Verweis
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -73,16 +73,16 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0 — Precheck: Story 2.1 abgeschlossen** (Voraussetzung für alle weiteren Tasks)
-  - [ ] 0.1 `ls app/routers/registries.py app/templates/_obj_versicherungen.html migrations/versions/0015_*.py` → alle drei müssen existieren. Wenn nicht: **STOP**, Story 2.1 ist nicht implementiert, Story 2.2 ist nicht ausführbar.
-  - [ ] 0.2 `grep -q "_load_accessible_object" app/routers/objects.py` → muss Match geben.
-  - [ ] 0.3 `grep -q "entity_type=\"police\"" app/services/steckbrief_policen.py` → bestätigt Write-Gate-Pattern aus Story 2.1 steht.
-  - [ ] 0.4 `grep -q "action=\"registry_entry_updated\"" app/services/steckbrief_policen.py` → bestätigt Delete-Audit-Muster aus Story 2.1.
-  - [ ] 0.5 Bekannte Audit-Actions prüfen: `grep -n "KNOWN_AUDIT_ACTIONS" app/services/audit.py` — sicherstellen, dass `object_field_updated` + `registry_entry_created` enthalten sind. Beides für Story 2.2 nötig.
+- [x] **Task 0 — Precheck: Story 2.1 abgeschlossen** (Voraussetzung für alle weiteren Tasks)
+  - [x] 0.1 `ls app/routers/registries.py app/templates/_obj_versicherungen.html migrations/versions/0015_*.py` → alle drei müssen existieren. Wenn nicht: **STOP**, Story 2.1 ist nicht implementiert, Story 2.2 ist nicht ausführbar.
+  - [x] 0.2 `grep -q "_load_accessible_object" app/routers/objects.py` → muss Match geben.
+  - [x] 0.3 `grep -q "entity_type=\"police\"" app/services/steckbrief_policen.py` → bestätigt Write-Gate-Pattern aus Story 2.1 steht.
+  - [x] 0.4 `grep -q "action=\"registry_entry_updated\"" app/services/steckbrief_policen.py` → bestätigt Delete-Audit-Muster aus Story 2.1.
+  - [x] 0.5 Bekannte Audit-Actions prüfen: `grep -n "KNOWN_AUDIT_ACTIONS" app/services/audit.py` — sicherstellen, dass `object_field_updated` + `registry_entry_created` enthalten sind. Beides für Story 2.2 nötig.
 
-- [ ] **Task 1 — Migration 0016: Wartungspflicht-Felder** (AC1)
-  - [ ] 1.1 `ls migrations/versions/` — neueste Revision nach Story 2.1 ist `0015_policen_missing_fields.py`. `down_revision="0015"` setzen.
-  - [ ] 1.2 Neue Datei `migrations/versions/0016_wartungspflichten_missing_fields.py`:
+- [x] **Task 1 — Migration 0016: Wartungspflicht-Felder** (AC1)
+  - [x] 1.1 `ls migrations/versions/` — neueste Revision nach Story 2.1 ist `0015_policen_missing_fields.py`. `down_revision="0015"` setzen.
+  - [x] 1.2 Neue Datei `migrations/versions/0016_wartungspflichten_missing_fields.py`:
     ```python
     """wartungspflichten: object_id FK (NOT NULL) + letzte_wartung"""
     from typing import Sequence, Union
@@ -132,10 +132,10 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
         op.drop_constraint("fk_wartungspflichten_object_id", "wartungspflichten", type_="foreignkey")
         op.drop_column("wartungspflichten", "object_id")
     ```
-  - [ ] 1.3 `next_due_date`-Index existiert bereits aus Migration 0010 — nicht erneut anlegen.
+  - [x] 1.3 `next_due_date`-Index existiert bereits aus Migration 0010 — nicht erneut anlegen.
 
-- [ ] **Task 2 — ORM: `Wartungspflicht` erweitern + Relationships beidseitig** (AC1, AC2)
-  - [ ] 2.1 `app/models/police.py` — `Wartungspflicht`-Klasse nach `dienstleister_id` ergänzen:
+- [x] **Task 2 — ORM: `Wartungspflicht` erweitern + Relationships beidseitig** (AC1, AC2)
+  - [x] 2.1 `app/models/police.py` — `Wartungspflicht`-Klasse nach `dienstleister_id` ergänzen:
     ```python
     object_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -146,7 +146,7 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     letzte_wartung: Mapped[date | None] = mapped_column(Date, nullable=True)
     ```
     Imports: `date` und `Date` sind bereits im Modul.
-  - [ ] 2.2 Relationships auf `Wartungspflicht` (nach `notes`, vor Timestamps):
+  - [x] 2.2 Relationships auf `Wartungspflicht` (nach `notes`, vor Timestamps):
     ```python
     policy: Mapped["InsurancePolicy | None"] = relationship(
         "InsurancePolicy", back_populates="wartungspflichten", foreign_keys=[policy_id]
@@ -158,7 +158,7 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
         "Dienstleister", foreign_keys=[dienstleister_id]
     )
     ```
-  - [ ] 2.3 `InsurancePolicy` — Relationship ergänzen (nach `object`-Relationship):
+  - [x] 2.3 `InsurancePolicy` — Relationship ergänzen (nach `object`-Relationship):
     ```python
     wartungspflichten: Mapped[list["Wartungspflicht"]] = relationship(
         "Wartungspflicht",
@@ -168,7 +168,7 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
         lazy="selectin",
     )
     ```
-  - [ ] 2.4 `app/models/object.py` — `Object`-Klasse: Backref für Due-Radar (Story 2.5):
+  - [x] 2.4 `app/models/object.py` — `Object`-Klasse: Backref für Due-Radar (Story 2.5):
     ```python
     wartungspflichten: Mapped[list["Wartungspflicht"]] = relationship(
         "Wartungspflicht",
@@ -180,8 +180,8 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     ```
     `lazy="noload"` — standardmäßig wird die Collection nicht geladen; Due-Radar holt sie per expliziter Query. Verhindert `DetachedInstanceError` in Jinja2 wenn Session geschlossen ist.
 
-- [ ] **Task 3 — Neuer Service `app/services/steckbrief_wartungen.py`** (AC1, AC3, AC4)
-  - [ ] 3.1 Datei anlegen:
+- [x] **Task 3 — Neuer Service `app/services/steckbrief_wartungen.py`** (AC1, AC3, AC4)
+  - [x] 3.1 Datei anlegen:
     ```python
     """Service-Helfer für Wartungspflichten und Dienstleister-Registry (Story 2.2)."""
     from __future__ import annotations
@@ -199,32 +199,32 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     from app.services.audit import audit
     from app.services.steckbrief_write_gate import write_field_human
     ```
-  - [ ] 3.2 `get_all_dienstleister(db) -> list[Dienstleister]` — alphabetisch nach `name` für Dropdown.
-  - [ ] 3.3 `get_wartungspflichten_for_policy(db, policy_id) -> list[Wartungspflicht]` — Fallback mit `joinedload(dienstleister)`, gefiltert auf `policy_id`, sortiert `next_due_date ASC NULLS LAST`, `created_at ASC`. Für Template-Nutzung reicht `policy.wartungspflichten` (`lazy="selectin"`).
-  - [ ] 3.4 `get_due_severity(next_due_date: date | None) -> str | None` — Return `"critical"` wenn `<= today + 30d`, `"warning"` wenn `<= today + 90d`, sonst `None`. `None` wenn Input `None`.
+  - [x] 3.2 `get_all_dienstleister(db) -> list[Dienstleister]` — alphabetisch nach `name` für Dropdown.
+  - [x] 3.3 `get_wartungspflichten_for_policy(db, policy_id) -> list[Wartungspflicht]` — Fallback mit `joinedload(dienstleister)`, gefiltert auf `policy_id`, sortiert `next_due_date ASC NULLS LAST`, `created_at ASC`. Für Template-Nutzung reicht `policy.wartungspflichten` (`lazy="selectin"`).
+  - [x] 3.4 `get_due_severity(next_due_date: date | None) -> str | None` — Return `"critical"` wenn `<= today + 30d`, `"warning"` wenn `<= today + 90d`, sonst `None`. `None` wenn Input `None`.
     > **Dev-Note**: Diese Funktion wird in Story 2.5 nach `app/services/due_radar.py` migriert als Cross-Cutting-Helper für Due-Radar-View. In Story 2.2 bewusst lokal gehalten, damit der Scope klein bleibt.
-  - [ ] 3.5 `validate_wartung_dates(letzte_wartung, intervall_monate, next_due_date) -> str | None`:
+  - [x] 3.5 `validate_wartung_dates(letzte_wartung, intervall_monate, next_due_date) -> str | None`:
     - Wenn `letzte_wartung` und `next_due_date` beide gesetzt und `next_due_date <= letzte_wartung`: `"Nächste Fälligkeit muss nach Letzter Wartung liegen."`
     - Wenn alle drei gesetzt und `abs((next_due_date - letzte_wartung).days - intervall_monate * 30) > 45`: `"Hinweis: Intervall und Datumsabstand weichen stark voneinander ab."` (Soft-Hint, nicht blockend — Render als Gelber Warnbanner)
     - Sonst `None`
-  - [ ] 3.6 `create_wartungspflicht(db, policy, user, request, *, bezeichnung, dienstleister_id, intervall_monate, letzte_wartung, next_due_date) -> Wartungspflicht`:
+  - [x] 3.6 `create_wartungspflicht(db, policy, user, request, *, bezeichnung, dienstleister_id, intervall_monate, letzte_wartung, next_due_date) -> Wartungspflicht`:
     - Row-Create minimal: `wart = Wartungspflicht(policy_id=policy.id, object_id=policy.object_id); db.add(wart); db.flush()`
     - Für jedes nicht-None Feld (`bezeichnung`, `dienstleister_id`, `intervall_monate`, `letzte_wartung`, `next_due_date`): `write_field_human(...)`
     - Entity-Type wird vom Gate via `Wartungspflicht.__tablename__ == "wartungspflichten"` → `"wartung"` abgeleitet.
     - Kein `db.commit()` — Caller committed.
-  - [ ] 3.7 `delete_wartungspflicht(db, wart, user, request) -> None`:
+  - [x] 3.7 `delete_wartungspflicht(db, wart, user, request) -> None`:
     - `audit(db, user, "object_field_updated", entity_type="wartung", entity_id=wart.id, details={"action": "delete", "bezeichnung": wart.bezeichnung, "policy_id": str(wart.policy_id)}, request=request)`
     - **Begründung**: `object_field_updated` wird genutzt, weil `"wartung"` nicht in `_REGISTRY_ENTITY_TYPES` ist. Story 2.1 nutzt `registry_entry_updated` für Police-Delete — das ist dort auch nicht ganz sauber, aber wir folgen nicht dem inkonsistenten Muster. Falls der Task-0-Precheck zeigt, dass `KNOWN_AUDIT_ACTIONS` das ablehnt: Action hinzufügen in `app/services/audit.py`.
     - `db.delete(wart)` — kein commit.
-  - [ ] 3.8 `create_dienstleister(db, user, request, *, name, gewerke_tags) -> Dienstleister`:
+  - [x] 3.8 `create_dienstleister(db, user, request, *, name, gewerke_tags) -> Dienstleister`:
     - `d = Dienstleister(name=name, gewerke_tags=gewerke_tags); db.add(d); db.flush()`
     - `audit(db, user, "registry_entry_created", entity_type="dienstleister", entity_id=d.id, details={"name": name}, request=request)`
     - Kein commit.
 
-- [ ] **Task 4 — `registries.py` erweitern: Dienstleister-Route** (AC4, AC5)
-  - [ ] 4.1 `app/routers/registries.py` EXISTIERT bereits (aus Story 2.1) — NUR ERWEITERN.
-  - [ ] 4.2 Import: `from app.services.steckbrief_wartungen import create_dienstleister, get_all_dienstleister`
-  - [ ] 4.3 `POST /registries/dienstleister`:
+- [x] **Task 4 — `registries.py` erweitern: Dienstleister-Route** (AC4, AC5)
+  - [x] 4.1 `app/routers/registries.py` EXISTIERT bereits (aus Story 2.1) — NUR ERWEITERN.
+  - [x] 4.2 Import: `from app.services.steckbrief_wartungen import create_dienstleister, get_all_dienstleister`
+  - [x] 4.3 `POST /registries/dienstleister`:
     - Permission: `Depends(require_permission("registries:edit"))`
     - Form-Felder: `name: str = Form(...)`, `gewerke_tags_raw: str | None = Form(None)`, `policy_id: uuid.UUID | None = Form(None)` (optional, für OOB-Target-Disambig; leer bei späteren standalone-Nutzungen).
     - Validierung: `if not name.strip():` → 422 mit Fragment `_registries_dienstleister_form.html` + `error="Name ist Pflichtfeld"`.
@@ -236,8 +236,8 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
         2. `<div id="new-dienstleister-inline-{{policy_id}}" hx-swap-oob="true"></div>` — räumt das Sub-Formular ab.
       - Wenn `policy_id` None: nur `_registries_dienstleister_options.html` mit `target_dropdown_id="dienstleister-dropdown"` (standalone-Fall für spätere Stories).
 
-- [ ] **Task 5 — Wartungspflicht-Routen in `app/routers/objects.py`** (AC1, AC3, AC5, AC6)
-  - [ ] 5.1 Imports:
+- [x] **Task 5 — Wartungspflicht-Routen in `app/routers/objects.py`** (AC1, AC3, AC5, AC6)
+  - [x] 5.1 Imports:
     ```python
     from app.models import InsurancePolicy, Wartungspflicht
     from app.services.steckbrief_wartungen import (
@@ -247,7 +247,7 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     )
     ```
     **`_parse_date` NICHT neu definieren** — wurde in Story 2.1 in `objects.py` (Modul-Level) angelegt. Bei Fehlen: als Fehler markieren und Story 2.1 nachbessern, nicht duplizieren.
-  - [ ] 5.2 `POST /objects/{object_id}/policen/{policy_id}/wartungspflichten` — Neue Wartungspflicht (AC1, AC5, AC6):
+  - [x] 5.2 `POST /objects/{object_id}/policen/{policy_id}/wartungspflichten` — Neue Wartungspflicht (AC1, AC5, AC6):
     - Permission: `Depends(require_permission("objects:edit"))`
     - **ERSTER Aufruf**: `obj = _load_accessible_object(db, object_id, user)` — bricht mit 404 ab wenn kein Zugriff (AC6)
     - `policy = db.get(InsurancePolicy, policy_id)` + `if policy is None or policy.object_id != obj.id:` → 404 (kein 500)
@@ -256,7 +256,7 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     - `warn = validate_wartung_dates(letzte_wartung, intervall_monate, next_due_date)` → wenn `warn` den `"muss nach"`-Text enthält: 422-Fragment (Blocker). Bei "Hinweis: Intervall ..."-Text: persistieren und Hinweis im Response-Fragment mit-rendern (Soft-Warn).
     - `create_wartungspflicht(db, policy, user, request, ...)` + `db.commit()`
     - **Rückgabe**: frisches Per-Police-Fragment `_obj_versicherungen_row.html` mit aktualisierter Police-Zeile (siehe Task 6.1 für Fragment-Granularität).
-  - [ ] 5.3 `DELETE /objects/{object_id}/wartungspflichten/{wart_id}` — Wartungspflicht löschen (AC3, AC5, AC6):
+  - [x] 5.3 `DELETE /objects/{object_id}/wartungspflichten/{wart_id}` — Wartungspflicht löschen (AC3, AC5, AC6):
     - Permission: `Depends(require_permission("objects:edit"))`
     - **ERSTER Aufruf**: `obj = _load_accessible_object(db, object_id, user)` (AC6)
     - `wart = db.get(Wartungspflicht, wart_id)` + `if wart is None or wart.object_id != obj.id:` → 404
@@ -264,14 +264,14 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     - `policy = wart.policy`  # vor `db.delete` merken für Response-Rendering
     - `delete_wartungspflicht(db, wart, user, request)` + `db.commit()`
     - **Rückgabe**: `_obj_versicherungen_row.html` für die betroffene `policy` — nicht die ganze Sektion.
-  - [ ] 5.4 `GET /objects/{object_id}/sections/versicherungen` (existiert aus Story 2.1) — Context erweitern:
+  - [x] 5.4 `GET /objects/{object_id}/sections/versicherungen` (existiert aus Story 2.1) — Context erweitern:
     - `dienstleister_list = get_all_dienstleister(db)` hinzufügen
     - `get_due_severity` als Callable im Context übergeben (Template: `{% set sev = get_due_severity(w.next_due_date) %}`)
-  - [ ] 5.5 `object_detail`-Handler (bestehend): gleiche zwei Context-Keys ergänzen (`dienstleister_list`, `get_due_severity`) — konsistent mit Sektion-Route.
+  - [x] 5.5 `object_detail`-Handler (bestehend): gleiche zwei Context-Keys ergänzen (`dienstleister_list`, `get_due_severity`) — konsistent mit Sektion-Route.
 
-- [ ] **Task 6 — Templates (Per-Police-Fragment-Granularität)** (AC1, AC2, AC3, AC4)
-  - [ ] 6.1 `app/templates/_obj_versicherungen.html` ERWEITERN — Markup-Granularität: **jede Police wird zu einem `<article data-policy-id="{{ policy.id }}">`-Block**, nicht mehr eine einzelne `<tr>`. Gesamt-Sektion-Wrapper bleibt `<section data-section="versicherungen">`. Inhalt jedes Artikels: Policen-Header (Versicherer, Nr., Fälligkeit, Prämie, Edit/Delete-Buttons) + `<details>`-Sub-Block für Wartungspflichten. Das erlaubt Per-Police-Swap statt Whole-Section-Swap.
-  - [ ] 6.2 Neue Datei `app/templates/_obj_versicherungen_row.html` — rendert **einen** `<article data-policy-id>`-Block:
+- [x] **Task 6 — Templates (Per-Police-Fragment-Granularität)** (AC1, AC2, AC3, AC4)
+  - [x] 6.1 `app/templates/_obj_versicherungen.html` ERWEITERN — Markup-Granularität: **jede Police wird zu einem `<article data-policy-id="{{ policy.id }}">`-Block**, nicht mehr eine einzelne `<tr>`. Gesamt-Sektion-Wrapper bleibt `<section data-section="versicherungen">`. Inhalt jedes Artikels: Policen-Header (Versicherer, Nr., Fälligkeit, Prämie, Edit/Delete-Buttons) + `<details>`-Sub-Block für Wartungspflichten. Das erlaubt Per-Police-Swap statt Whole-Section-Swap.
+  - [x] 6.2 Neue Datei `app/templates/_obj_versicherungen_row.html` — rendert **einen** `<article data-policy-id>`-Block:
     ```jinja
     {# Fragment für Single-Police-Swap nach Wartungspflicht-CRUD #}
     <article data-policy-id="{{ policy.id }}" class="mb-4 p-3 border rounded">
@@ -351,13 +351,13 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     </article>
     ```
     In `_obj_versicherungen.html`: statt Inline-Rendering pro Police die Iteration auf `{% include "_obj_versicherungen_row.html" %}` umstellen — Single-Source-of-Truth für Police-Markup.
-  - [ ] 6.3 Neue Datei `app/templates/_registries_dienstleister_form.html` (analog zu `_registries_versicherer_form.html` aus Story 2.1):
+  - [x] 6.3 Neue Datei `app/templates/_registries_dienstleister_form.html` (analog zu `_registries_versicherer_form.html` aus Story 2.1):
     - Pflichtfeld Name, optional gewerke_tags (Freitext, komma-sep.)
     - Hidden-Input: `<input type="hidden" name="policy_id" value="{{ policy_id }}">` — wird vom Server für OOB-Target-Disambig genutzt.
     - `hx-post="/registries/dienstleister"`, **kein `hx-target`** — Server antwortet mit OOB-Swaps auf den Dropdown und den Container.
     - Abbrechen-Button: `onclick="document.getElementById('new-dienstleister-inline-{{ policy_id }}').innerHTML=''"`
-  - [ ] 6.4 Neue Route `GET /registries/dienstleister/new-form` in `registries.py` — liefert `_registries_dienstleister_form.html` mit `policy_id` aus Query-Param (Permission `registries:edit`).
-  - [ ] 6.5 Neue Datei `app/templates/_registries_dienstleister_options.html`:
+  - [x] 6.4 Neue Route `GET /registries/dienstleister/new-form` in `registries.py` — liefert `_registries_dienstleister_form.html` mit `policy_id` aus Query-Param (Permission `registries:edit`).
+  - [x] 6.5 Neue Datei `app/templates/_registries_dienstleister_options.html`:
     ```jinja
     <select id="{{ target_dropdown_id }}" name="dienstleister_id" class="flex-1 p-1 border rounded" hx-swap-oob="true">
       <option value="">— Dienstleister wählen —</option>
@@ -368,8 +368,8 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     ```
     Wird vom POST `/registries/dienstleister` als erster OOB-Block gerendert, gefolgt vom Container-Reset-OOB (siehe Task 4.3).
 
-- [ ] **Task 7 — Tests** (AC1, AC3, AC6, AC7)
-  - [ ] 7.1 Neue Datei `tests/test_wartungspflichten_unit.py` — reine Service-Unit-Tests:
+- [x] **Task 7 — Tests** (AC1, AC3, AC6, AC7)
+  - [x] 7.1 Neue Datei `tests/test_wartungspflichten_unit.py` — reine Service-Unit-Tests:
     - `test_get_due_severity_critical`: `today + 15d` → `"critical"`
     - `test_get_due_severity_warning`: `today + 60d` → `"warning"`
     - `test_get_due_severity_far_future`: `today + 365d` → `None`
@@ -384,7 +384,7 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     - `test_create_dienstleister_writes_audit`: `AuditLog action="registry_entry_created"`, `entity_type="dienstleister"`.
     - `test_delete_policy_cascades_wartungspflichten`: Police mit 2 Wartungspflichten; `db.delete(policy); db.flush()` → beide Wartungspflicht-Rows weg (Cascade).
     - `test_get_policen_loads_wartungspflichten_without_n_plus_1`: mit `sqlalchemy.event.listen`-Query-Counter: 3 Policen mit je 2 Wartungspflichten → Query-Count ≤ 3 (selectin lädt alle Wartungspflichten in einem SELECT IN).
-  - [ ] 7.2 Neue Datei `tests/test_wartungspflichten_routes_smoke.py` — TestClient-basiert:
+  - [x] 7.2 Neue Datei `tests/test_wartungspflichten_routes_smoke.py` — TestClient-basiert:
     - **AC1 (Create)**:
       - `test_post_wartungspflicht_creates_with_all_fields`: 200, neue Zeile im Response-Fragment, DB-Row mit allen Werten.
       - `test_post_wartungspflicht_with_empty_dienstleister`: `dienstleister_id=""` → 200, `wart.dienstleister_id IS NULL`.
@@ -416,10 +416,10 @@ damit Deckungsbedingungen sichtbar werden und Due-Radar später daraus ziehen ka
     - **Regression**:
       - `test_write_gate_coverage_still_green`: `from tests.test_write_gate_coverage import test_no_direct_writes_to_cd1_entities_textscan; test_no_direct_writes_to_cd1_entities_textscan()` — muss nach neuen Services/Routern grün bleiben.
 
-- [ ] **Task 8 — Regression + manueller Test** (AC7)
-  - [ ] 8.1 `pytest -x` im Container — alle Tests grün.
-  - [ ] 8.2 `test_write_gate_coverage` prüfen — kein direktes `wart.<attr> = value` außerhalb Row-Creation.
-  - [ ] 8.3 Manueller Test (Edge-Cases):
+- [x] **Task 8 — Regression + manueller Test** (AC7)
+  - [x] 8.1 `pytest -x` im Container — alle Tests grün.
+  - [x] 8.2 `test_write_gate_coverage` prüfen — kein direktes `wart.<attr> = value` außerhalb Row-Creation.
+  - [x] 8.3 Manueller Test (Edge-Cases):
     - Wartungspflicht anlegen **ohne** `dienstleister_id` (optional) → persistiert, Dropdown zeigt "—".
     - Wartungspflicht anlegen **ohne** `next_due_date` → kein Badge, Spalte zeigt "—".
     - Wartungspflicht mit Datum 15 Tage in Zukunft → roter Badge "fällig".
@@ -472,12 +472,44 @@ Keine neuen Deferred-Items aus Story 2.2. Bestehende Items in `deferred-work.md`
 
 ## Dev Agent Record
 
-_Wird vom Dev-Agenten nach Implementierung ausgefüllt._
-
 ### Agent Model Used
+
+claude-sonnet-4-6 (1M context)
 
 ### Debug Log References
 
+- `write_field_human` erfordert alle Parameter nach `db` als Keyword-Argumente (Signatur `def write_field_human(db, *, entity, field, ...)`).
+- `Wartungspflicht.bezeichnung` ist NOT NULL → Row-Create mit Placeholder `""` damit `write_field_human` anschließend den echten Wert schreibt (Write-Gate No-Op greift sonst bei old==new && last is None).
+- SQLAlchemy Identity-Map: Wartungspflichten via `policy_id` direkt angelegt (nicht via `policy.wartungspflichten.append()`) → `policy.wartungspflichten` ist "unloaded" bis `db.expire(policy)` + Access. Tests brauchen `db.expire_all()` vor HTTP-Request wenn Relationship-Content geprüft wird.
+- ORM-Cascade `delete-orphan` auf `InsurancePolicy.wartungspflichten` benötigt geladene Collection — Test nutzt `db.expire(policy); _ = policy.wartungspflichten` vor `db.delete(policy)`.
+- Bestehendes `test_get_versicherungen_section_shows_existing_policies` prüfte `data-police-id` (altes Attribut) — nach Template-Umbau auf `data-policy-id` (Story-Spec) angepasst.
+
 ### Completion Notes List
 
+- **Migration 0016** (`migrations/versions/0016_wartungspflichten_missing_fields.py`): `object_id` UUID NOT NULL mit FK auf `objects.id` (CASCADE) + Index + Backfill-Script; `letzte_wartung` Date nullable.
+- **ORM** (`app/models/police.py`): `Wartungspflicht` um `object_id` + `letzte_wartung` + Relationships `policy`/`object`/`dienstleister` erweitert. `InsurancePolicy` um `wartungspflichten` mit `cascade="all, delete-orphan"` + `lazy="selectin"`. `app/models/object.py`: `Object` um `wartungspflichten` mit `lazy="noload"` für Due-Radar (Story 2.5).
+- **Service** (`app/services/steckbrief_wartungen.py`): `get_all_dienstleister`, `get_wartungspflichten_for_policy`, `get_due_severity`, `validate_wartung_dates`, `create_wartungspflicht`, `delete_wartungspflicht`, `create_dienstleister` — alle mit Write-Gate-Provenance und Audit.
+- **Router Registries** (`app/routers/registries.py`): `GET /registries/dienstleister/new-form` + `POST /registries/dienstleister` mit OOB-Response-Logik (policy-spezifischer Dropdown + Container-Reset).
+- **Router Objects** (`app/routers/objects.py`): `POST /{object_id}/policen/{policy_id}/wartungspflichten` + `DELETE /{object_id}/wartungspflichten/{wart_id}` mit `_load_accessible_object` + Cross-Police-Guard. `_render_versicherungen` + `object_detail` um `dienstleister_list` + `get_due_severity` erweitert.
+- **Templates**: `_obj_versicherungen.html` auf `<article data-policy-id>`-Struktur umgebaut; neues `_obj_versicherungen_row.html` (Per-Police-Fragment); `_registries_dienstleister_form.html` + `_registries_dienstleister_options.html` für Inline-Anlage.
+- **Tests**: 21 Unit-Tests + 23 Route-Smoke-Tests; alle 581 Tests grün (keine Regressionen).
+
 ### File List
+
+- `migrations/versions/0016_wartungspflichten_missing_fields.py` (neu)
+- `app/models/police.py` (geändert — `Wartungspflicht` + `InsurancePolicy`)
+- `app/models/object.py` (geändert — `Object.wartungspflichten`)
+- `app/services/steckbrief_wartungen.py` (neu)
+- `app/routers/registries.py` (geändert — Dienstleister-Routen)
+- `app/routers/objects.py` (geändert — Wartungspflicht-Routen + Context-Keys)
+- `app/templates/_obj_versicherungen.html` (geändert — article-Struktur + include)
+- `app/templates/_obj_versicherungen_row.html` (neu)
+- `app/templates/_registries_dienstleister_form.html` (neu)
+- `app/templates/_registries_dienstleister_options.html` (neu)
+- `tests/test_wartungspflichten_unit.py` (neu)
+- `tests/test_wartungspflichten_routes_smoke.py` (neu)
+- `tests/test_policen_routes_smoke.py` (geändert — `data-police-id` → `data-policy-id`)
+
+## Change Log
+
+- 2026-04-24: Story 2.2 implementiert — Wartungspflichten mit Policen-Verweis (Migration 0016, Service, Routen, Templates, Tests). 581 Tests grün.

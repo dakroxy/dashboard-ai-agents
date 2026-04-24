@@ -1,7 +1,7 @@
-{# Versicherungs-Sektion (Story 2.1): Policen-Liste + Neu/Edit/Delete.
-   Whole-Section-Swap nach jedem CRUD-Event (hx-target="[data-section='versicherungen']").
-   Article-Wrapper pro Police traegt id="policy-{p.id}" (Deep-Link Story 2.6)
-   und data-police-id="{p.id}" (Wartungs-Sub-Block Story 2.2). #}
+{# Versicherungs-Sektion (Story 2.1+2.2): Policen-Liste + Neu/Edit/Delete.
+   Jede Police ist ein <article data-policy-id>-Block — Per-Police-HTMX-Swap
+   fuer Wartungspflicht-CRUD; Police-CRUD swappt die ganze Section.
+   Article-Wrapper traegt data-policy-id="{p.id}" (Story 2.6 Deep-Link). #}
 
 <section class="rounded-lg bg-white border border-slate-200 p-6 mb-6"
          data-section="versicherungen">
@@ -102,80 +102,10 @@
     {% endif %}
 
     {% if policen %}
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-                    <th class="text-left py-2 pr-4">Versicherer</th>
-                    <th class="text-left py-2 pr-4">Policen-Nr.</th>
-                    <th class="text-left py-2 pr-4">Produkt-Typ</th>
-                    <th class="text-left py-2 pr-4">Laufzeit</th>
-                    <th class="text-left py-2 pr-4">Ablauf</th>
-                    <th class="text-left py-2 pr-4">Kündigung</th>
-                    <th class="text-right py-2 pr-4">Prämie p.a.</th>
-                    {% if has_permission(user, "objects:edit") %}
-                    <th class="py-2"></th>
-                    {% endif %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for p in policen %}
-                <tr id="policy-{{ p.id }}" data-police-id="{{ p.id }}"
-                    class="border-b border-slate-100 hover:bg-slate-50">
-                    <td class="py-2 pr-4 font-medium">
-                        {{ p.versicherer.name if p.versicherer else "—" }}
-                    </td>
-                    <td class="py-2 pr-4 text-slate-600">{{ p.police_number or "—" }}</td>
-                    <td class="py-2 pr-4 text-slate-600">{{ p.produkt_typ or "—" }}</td>
-                    <td class="py-2 pr-4 text-slate-600">
-                        {% if p.start_date and p.end_date %}
-                            {{ p.start_date.strftime("%d.%m.%Y") }} – {{ p.end_date.strftime("%d.%m.%Y") }}
-                        {% elif p.start_date %}
-                            ab {{ p.start_date.strftime("%d.%m.%Y") }}
-                        {% else %}
-                            —
-                        {% endif %}
-                    </td>
-                    <td class="py-2 pr-4 text-slate-600">
-                        {{ p.next_main_due.strftime("%d.%m.%Y") if p.next_main_due else "—" }}
-                    </td>
-                    <td class="py-2 pr-4 text-slate-600">
-                        {% if p.notice_period_months is not none %}
-                            {{ p.notice_period_months }} Mo.
-                        {% else %}
-                            —
-                        {% endif %}
-                    </td>
-                    <td class="py-2 pr-4 text-right text-slate-600">
-                        {% if p.praemie is not none %}
-                            {{ "%.2f"|format(p.praemie|float) }} €
-                        {% else %}
-                            —
-                        {% endif %}
-                    </td>
-                    {% if has_permission(user, "objects:edit") %}
-                    <td class="py-2 text-right whitespace-nowrap">
-                        <button type="button"
-                                hx-get="/objects/{{ obj.id }}/policen/{{ p.id }}/edit-form"
-                                hx-target="[data-section='versicherungen']"
-                                hx-swap="outerHTML"
-                                class="text-xs px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 mr-1">
-                            Bearbeiten
-                        </button>
-                        <button type="button"
-                                hx-delete="/objects/{{ obj.id }}/policen/{{ p.id }}"
-                                hx-target="[data-section='versicherungen']"
-                                hx-swap="outerHTML"
-                                hx-confirm="Police wirklich löschen?"
-                                class="text-xs px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50">
-                            Löschen
-                        </button>
-                    </td>
-                    {% endif %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="space-y-3">
+        {% for policy in policen %}
+        {% include "_obj_versicherungen_row.html" %}
+        {% endfor %}
     </div>
     {% else %}
     <p class="text-sm text-slate-400 italic">

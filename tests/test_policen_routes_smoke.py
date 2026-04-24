@@ -228,9 +228,9 @@ def test_get_versicherungen_section_shows_existing_policies(
     assert "P002" in body
     # AC2 + Deep-Link (Story 2.6) + Wartungs-Sub-Block (Story 2.2)
     assert f'id="policy-{p1.id}"' in body
-    assert f'data-police-id="{p1.id}"' in body
+    assert f'data-policy-id="{p1.id}"' in body
     assert f'id="policy-{p2.id}"' in body
-    assert f'data-police-id="{p2.id}"' in body
+    assert f'data-policy-id="{p2.id}"' in body
     # Edit + Delete-Buttons (Admin hat objects:edit)
     assert "Bearbeiten" in body
     assert "Löschen" in body
