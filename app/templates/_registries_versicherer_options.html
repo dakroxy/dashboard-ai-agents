@@ -1,0 +1,14 @@
+{# OOB-Dropdown nach Versicherer-Anlage (Story 2.1 AC3).
+   Wird als Teil des POST /registries/versicherer Responses zurueckgegeben,
+   mit hx-swap-oob="true" damit HTMX den bestehenden Select-Container tauscht.
+   Der neu erstellte Versicherer ist selected. #}
+
+<select id="versicherer-dropdown" name="versicherer_id" hx-swap-oob="true"
+        class="flex-1 border border-slate-300 rounded px-2 py-1.5 text-sm">
+    <option value="">— kein Versicherer —</option>
+    {% for v in versicherer_list %}
+    <option value="{{ v.id }}"{% if selected_id and selected_id == v.id|string %} selected{% endif %}>
+        {{ v.name }}
+    </option>
+    {% endfor %}
+</select>

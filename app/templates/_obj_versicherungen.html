@@ -1,0 +1,193 @@
+{# Versicherungs-Sektion (Story 2.1): Policen-Liste + Neu/Edit/Delete.
+   Whole-Section-Swap nach jedem CRUD-Event (hx-target="[data-section='versicherungen']").
+   Article-Wrapper pro Police traegt id="policy-{p.id}" (Deep-Link Story 2.6)
+   und data-police-id="{p.id}" (Wartungs-Sub-Block Story 2.2). #}
+
+<section class="rounded-lg bg-white border border-slate-200 p-6 mb-6"
+         data-section="versicherungen">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-slate-900">Versicherungen</h2>
+        {% if has_permission(user, "objects:edit") %}
+        <button type="button"
+                onclick="document.getElementById('neue-police-form').classList.toggle('hidden')"
+                class="text-sm px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700">
+            + Neue Police
+        </button>
+        {% endif %}
+    </div>
+
+    {% if form_error is defined and form_error %}
+    <div class="mb-4 rounded bg-red-50 border border-red-200 text-red-700 text-sm p-3">
+        {{ form_error }}
+    </div>
+    {% endif %}
+
+    {% if has_permission(user, "objects:edit") %}
+    {# Neue Police — ausklappbares Formular #}
+    <div id="neue-police-form" class="hidden mb-6 border border-slate-200 rounded-lg p-4 bg-slate-50">
+        <h3 class="text-sm font-semibold text-slate-700 mb-3">Neue Police anlegen</h3>
+        <form hx-post="/objects/{{ obj.id }}/policen"
+              hx-target="[data-section='versicherungen']"
+              hx-swap="outerHTML">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Versicherer</label>
+                    <div class="flex gap-2 items-center">
+                        <select id="versicherer-dropdown" name="versicherer_id"
+                                class="flex-1 border border-slate-300 rounded px-2 py-1.5 text-sm">
+                            <option value="">— kein Versicherer —</option>
+                            {% for v in versicherer_list %}
+                            <option value="{{ v.id }}">{{ v.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button"
+                                hx-get="/registries/versicherer/new-form"
+                                hx-target="#new-versicherer-inline"
+                                hx-swap="innerHTML"
+                                class="text-xs px-2 py-1.5 border border-slate-300 rounded hover:bg-slate-100 whitespace-nowrap">
+                            + Neuer Versicherer
+                        </button>
+                    </div>
+                    <div id="new-versicherer-inline" class="mt-2"></div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Policen-Nr.</label>
+                    <input type="text" name="police_number"
+                           class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Produkt-Typ</label>
+                    <input type="text" name="produkt_typ"
+                           class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Start</label>
+                    <input type="date" name="start_date"
+                           class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Ende</label>
+                    <input type="date" name="end_date"
+                           class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Ablauf (next_main_due)</label>
+                    <input type="date" name="next_main_due"
+                           class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Kündigungsfrist (Monate)</label>
+                    <input type="number" name="notice_period_months" min="0"
+                           class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Prämie p.a. (€)</label>
+                    <input type="number" name="praemie" step="0.01" min="0"
+                           class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button type="submit"
+                        class="px-4 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+                    Speichern
+                </button>
+                <button type="button"
+                        onclick="document.getElementById('neue-police-form').classList.add('hidden')"
+                        class="px-4 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-100">
+                    Abbrechen
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if policen %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                    <th class="text-left py-2 pr-4">Versicherer</th>
+                    <th class="text-left py-2 pr-4">Policen-Nr.</th>
+                    <th class="text-left py-2 pr-4">Produkt-Typ</th>
+                    <th class="text-left py-2 pr-4">Laufzeit</th>
+                    <th class="text-left py-2 pr-4">Ablauf</th>
+                    <th class="text-left py-2 pr-4">Kündigung</th>
+                    <th class="text-right py-2 pr-4">Prämie p.a.</th>
+                    {% if has_permission(user, "objects:edit") %}
+                    <th class="py-2"></th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in policen %}
+                <tr id="policy-{{ p.id }}" data-police-id="{{ p.id }}"
+                    class="border-b border-slate-100 hover:bg-slate-50">
+                    <td class="py-2 pr-4 font-medium">
+                        {{ p.versicherer.name if p.versicherer else "—" }}
+                    </td>
+                    <td class="py-2 pr-4 text-slate-600">{{ p.police_number or "—" }}</td>
+                    <td class="py-2 pr-4 text-slate-600">{{ p.produkt_typ or "—" }}</td>
+                    <td class="py-2 pr-4 text-slate-600">
+                        {% if p.start_date and p.end_date %}
+                            {{ p.start_date.strftime("%d.%m.%Y") }} – {{ p.end_date.strftime("%d.%m.%Y") }}
+                        {% elif p.start_date %}
+                            ab {{ p.start_date.strftime("%d.%m.%Y") }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-slate-600">
+                        {{ p.next_main_due.strftime("%d.%m.%Y") if p.next_main_due else "—" }}
+                    </td>
+                    <td class="py-2 pr-4 text-slate-600">
+                        {% if p.notice_period_months is not none %}
+                            {{ p.notice_period_months }} Mo.
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-right text-slate-600">
+                        {% if p.praemie is not none %}
+                            {{ "%.2f"|format(p.praemie|float) }} €
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    {% if has_permission(user, "objects:edit") %}
+                    <td class="py-2 text-right whitespace-nowrap">
+                        <button type="button"
+                                hx-get="/objects/{{ obj.id }}/policen/{{ p.id }}/edit-form"
+                                hx-target="[data-section='versicherungen']"
+                                hx-swap="outerHTML"
+                                class="text-xs px-2 py-1 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 mr-1">
+                            Bearbeiten
+                        </button>
+                        <button type="button"
+                                hx-delete="/objects/{{ obj.id }}/policen/{{ p.id }}"
+                                hx-target="[data-section='versicherungen']"
+                                hx-swap="outerHTML"
+                                hx-confirm="Police wirklich löschen?"
+                                class="text-xs px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50">
+                            Löschen
+                        </button>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-slate-400 italic">
+        Keine Policen angelegt.
+        {% if has_permission(user, "objects:edit") %}
+        Erste Police anlegen →
+        <button type="button"
+                onclick="document.getElementById('neue-police-form').classList.remove('hidden')"
+                class="underline text-indigo-600">
+            Neue Police
+        </button>
+        {% endif %}
+    </p>
+    {% endif %}
+</section>

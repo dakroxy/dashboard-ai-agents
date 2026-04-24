@@ -1,0 +1,87 @@
+{# Vorausgefuelltes Edit-Formular fuer eine bestehende Police (Story 2.1 Task 7).
+   Wird via hx-get /objects/{id}/policen/{pid}/edit-form in die Versicherungs-Sektion
+   geladen (whole-section swap). #}
+
+<section class="rounded-lg bg-white border border-slate-200 p-6 mb-6"
+         data-section="versicherungen">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-slate-900">Police bearbeiten</h2>
+    </div>
+
+    <form hx-put="/objects/{{ obj.id }}/policen/{{ policy.id }}"
+          hx-target="[data-section='versicherungen']"
+          hx-swap="outerHTML">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Versicherer</label>
+                <select name="versicherer_id"
+                        class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+                    <option value="">— kein Versicherer —</option>
+                    {% for v in versicherer_list %}
+                    <option value="{{ v.id }}"
+                        {% if policy.versicherer_id and policy.versicherer_id|string == v.id|string %}
+                        selected
+                        {% endif %}>
+                        {{ v.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Policen-Nr.</label>
+                <input type="text" name="police_number"
+                       value="{{ policy.police_number or '' }}"
+                       class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Produkt-Typ</label>
+                <input type="text" name="produkt_typ"
+                       value="{{ policy.produkt_typ or '' }}"
+                       class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Start</label>
+                <input type="date" name="start_date"
+                       value="{{ policy.start_date.isoformat() if policy.start_date else '' }}"
+                       class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Ende</label>
+                <input type="date" name="end_date"
+                       value="{{ policy.end_date.isoformat() if policy.end_date else '' }}"
+                       class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Ablauf (next_main_due)</label>
+                <input type="date" name="next_main_due"
+                       value="{{ policy.next_main_due.isoformat() if policy.next_main_due else '' }}"
+                       class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Kündigungsfrist (Monate)</label>
+                <input type="number" name="notice_period_months" min="0"
+                       value="{{ policy.notice_period_months if policy.notice_period_months is not none else '' }}"
+                       class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Prämie p.a. (€)</label>
+                <input type="number" name="praemie" step="0.01" min="0"
+                       value="{{ "%.2f"|format(policy.praemie|float) if policy.praemie is not none else '' }}"
+                       class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm">
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button type="submit"
+                    class="px-4 py-1.5 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+                Speichern
+            </button>
+            <button type="button"
+                    hx-get="/objects/{{ obj.id }}/sections/versicherungen"
+                    hx-target="[data-section='versicherungen']"
+                    hx-swap="outerHTML"
+                    class="px-4 py-1.5 rounded border border-slate-300 text-slate-600 text-sm hover:bg-slate-100">
+                Abbrechen
+            </button>
+        </div>
+    </form>
+</section>

@@ -55,7 +55,7 @@ PERMISSIONS: list[Permission] = [
     Permission("objects:approve_ki", "KI-Vorschlaege freigeben", "Objekte"),
     Permission(
         "objects:view_confidential",
-        "Vertrauliche Notizen lesen",
+        "Vertrauliche Felder lesen",
         "Objekte",
     ),
     # Registries (Versicherer, Dienstleister, ...)

@@ -322,7 +322,7 @@ async def run_sync_job(
 - `objects:view` — Objekt-Liste + Detailseite.
 - `objects:edit` — Steckbrief-spezifische Felder (Cluster 4/6/8) schreiben.
 - `objects:approve_ki` — Review-Queue approve/reject.
-- `objects:view_confidential` — Menschen-Notizen lesen (admin-only default, NFR-S5, FR8).
+- `objects:view_confidential` — Vertrauliche Felder lesen — Zugangscodes (Story 1.7 + 2.0) und Menschen-Notizen (Story 2.4), admin-only default, NFR-S5, FR8.
 - `registries:view` — Versicherer/Dienstleister/...-Liste.
 - `registries:edit` — Registry-Entitaeten schreiben.
 - `due_radar:view` — Due-Radar-View.

@@ -35,6 +35,10 @@ class InsurancePolicy(Base):
         index=True,
     )
     police_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    produkt_typ: Mapped[str | None] = mapped_column(String, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notice_period_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     main_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     next_main_due: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     praemie: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
@@ -58,6 +62,9 @@ class InsurancePolicy(Base):
 
     object: Mapped["Object"] = relationship(  # noqa: F821
         "Object", back_populates="policen"
+    )
+    versicherer: Mapped["Versicherer | None"] = relationship(  # noqa: F821
+        "Versicherer", foreign_keys=[versicherer_id]
     )
 
 

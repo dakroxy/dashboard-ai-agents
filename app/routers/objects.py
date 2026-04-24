@@ -10,7 +10,8 @@ import logging
 import pathlib
 import uuid
 from collections import defaultdict
-from decimal import Decimal
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
 from fastapi import (
@@ -29,9 +30,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Object, User
+from app.models import InsurancePolicy, Object, User
 from app.models.object import SteckbriefPhoto
-from app.permissions import accessible_object_ids, require_permission
+from app.permissions import accessible_object_ids, has_permission, require_permission
 from app.services.impower import get_bank_balance
 from app.services.audit import audit
 from app.services.field_encryption import DecryptionError, decrypt_field
@@ -59,6 +60,14 @@ from app.services.steckbrief import (
     parse_technik_value,
     parse_zugangscode_value,
     reserve_history_for_sparkline,
+)
+from app.services.steckbrief_policen import (
+    create_police,
+    delete_police,
+    get_all_versicherer,
+    get_policen_for_object,
+    update_police,
+    validate_police_dates,
 )
 from app.services.steckbrief_write_gate import write_field_human
 from app.templating import templates
@@ -225,51 +234,56 @@ async def object_detail(
     tech_heizung = _build_section(TECHNIK_HEIZUNG)
     tech_historie = _build_section(TECHNIK_HISTORIE)
 
-    # --- Zugangscodes (Fernet-decrypted, AC2/AC3) ---
-    zug_prov_map = get_provenance_map(
-        db, "object", detail.obj.id,
-        tuple(f.key for f in ZUGANGSCODE_FIELDS),
-    )
+    # --- Zugangscodes (Fernet-decrypted, nur fuer view_confidential, Story 2.0) ---
     tech_zugangscodes: list[dict] = []
-    _zug_decrypt_failed = False
-    for _zf in ZUGANGSCODE_FIELDS:
-        _raw = getattr(detail.obj, _zf.key)
-        if _raw is None:
-            _dec_value, _dec_error = None, None
-        else:
+    if has_permission(user, "objects:view_confidential"):
+        zug_prov_map = get_provenance_map(
+            db, "object", detail.obj.id,
+            tuple(f.key for f in ZUGANGSCODE_FIELDS),
+        )
+        _zug_decrypt_failed = False
+        for _zf in ZUGANGSCODE_FIELDS:
+            _raw = getattr(detail.obj, _zf.key)
+            if _raw is None:
+                _dec_value, _dec_error = None, None
+            else:
+                try:
+                    _dec_value = decrypt_field(
+                        _raw, entity_type="object", field=_zf.key
+                    )
+                    _dec_error = None
+                except DecryptionError:
+                    _dec_value = None
+                    _dec_error = (
+                        "Code nicht verfuegbar — Schluessel-Konfiguration pruefen"
+                    )
+                    _zug_decrypt_failed = True
+                    audit(
+                        db,
+                        user,
+                        "encryption_key_missing",
+                        entity_type="object",
+                        entity_id=detail.obj.id,
+                        details={"field": _zf.key},
+                        request=request,
+                    )
+            tech_zugangscodes.append({
+                "key": _zf.key,
+                "label": _zf.label,
+                "kind": _zf.kind,
+                "value": _dec_value,
+                "error": _dec_error,
+                "prov": zug_prov_map.get(_zf.key),
+            })
+        if _zug_decrypt_failed:
             try:
-                _dec_value = decrypt_field(
-                    _raw, entity_type="object", field=_zf.key
-                )
-                _dec_error = None
-            except DecryptionError:
-                _dec_value = None
-                _dec_error = (
-                    "Code nicht verfuegbar — Schluessel-Konfiguration pruefen"
-                )
-                _zug_decrypt_failed = True
-                audit(
-                    db,
-                    user,
-                    "encryption_key_missing",
-                    entity_type="object",
-                    entity_id=detail.obj.id,
-                    details={"field": _zf.key},
-                    request=request,
-                )
-        tech_zugangscodes.append({
-            "key": _zf.key,
-            "label": _zf.label,
-            "kind": _zf.kind,
-            "value": _dec_value,
-            "error": _dec_error,
-            "prov": zug_prov_map.get(_zf.key),
-        })
-    if _zug_decrypt_failed:
-        try:
-            db.commit()
-        except Exception:
-            pass  # Audit-Commit-Fehler darf Page-Render nicht blockieren
+                db.commit()
+            except Exception:
+                pass  # Audit-Commit-Fehler darf Page-Render nicht blockieren
+
+    # ---- Versicherungs-Sektion (Story 2.1) ----
+    policen = get_policen_for_object(db, detail.obj.id)
+    versicherer_list = get_all_versicherer(db)
 
     # --- Fotos pro Komponente (Story 1.8) ---
     photos_raw = (
@@ -307,6 +321,8 @@ async def object_detail(
             "tech_zugangscodes": tech_zugangscodes,
             "photos_by_component": dict(photos_by_component),
             "photo_component_refs": PHOTO_COMPONENT_REFS,
+            "policen": policen,
+            "versicherer_list": versicherer_list,
         },
     )
 
@@ -522,7 +538,7 @@ async def zugangscode_field_view(
     object_id: uuid.UUID,
     request: Request,
     field: str,
-    user: User = Depends(require_permission("objects:view")),
+    user: User = Depends(require_permission("objects:view_confidential")),
     db: Session = Depends(get_db),
 ):
     if field not in ZUGANGSCODE_FIELD_KEYS:
@@ -562,6 +578,11 @@ async def zugangscode_field_edit(
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
+    if not has_permission(user, "objects:view_confidential"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung fuer Zugangscodes",
+        )
     if field not in ZUGANGSCODE_FIELD_KEYS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -601,6 +622,11 @@ async def zugangscode_field_save(
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
+    if not has_permission(user, "objects:view_confidential"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung fuer Zugangscodes",
+        )
     if field_name not in ZUGANGSCODE_FIELD_KEYS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -939,3 +965,237 @@ async def photo_file_serve(
     if not safe.exists():
         raise HTTPException(404)
     return FileResponse(safe)
+
+
+# ---------------------------------------------------------------------------
+# Versicherungs-Sektion (Story 2.1) — Policen-CRUD
+# ---------------------------------------------------------------------------
+
+def _load_accessible_object(
+    db: Session, object_id: uuid.UUID, user: User
+) -> Object:
+    """Laedt Object oder wirft 404 — prueft accessible_object_ids."""
+    accessible = accessible_object_ids(db, user)
+    detail = get_object_detail(db, object_id, accessible_ids=accessible)
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Objekt nicht gefunden",
+        )
+    return detail.obj
+
+
+def _parse_date(val: str | None) -> date | None:
+    if not val or not val.strip():
+        return None
+    try:
+        return date.fromisoformat(val.strip())
+    except ValueError:
+        raise HTTPException(422, detail=f"Ungueltiges Datum: {val!r}")
+
+
+def _parse_decimal(val: str | None) -> Decimal | None:
+    if not val or not val.strip():
+        return None
+    try:
+        return Decimal(val.strip().replace(",", "."))
+    except InvalidOperation:
+        raise HTTPException(422, detail=f"Ungueltige Zahl: {val!r}")
+
+
+def _render_versicherungen(
+    request: Request, obj: Object, db: Session, user: User
+):
+    policen = get_policen_for_object(db, obj.id)
+    versicherer_list = get_all_versicherer(db)
+    return templates.TemplateResponse(
+        request,
+        "_obj_versicherungen.html",
+        {"obj": obj, "policen": policen, "versicherer_list": versicherer_list, "user": user},
+    )
+
+
+@router.get("/{object_id}/sections/versicherungen", response_class=HTMLResponse)
+async def versicherungen_section(
+    object_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:view")),
+    db: Session = Depends(get_db),
+):
+    obj = _load_accessible_object(db, object_id, user)
+    return _render_versicherungen(request, obj, db, user)
+
+
+@router.post("/{object_id}/policen", response_class=HTMLResponse)
+async def police_create(
+    object_id: uuid.UUID,
+    request: Request,
+    versicherer_id: str | None = Form(None),
+    police_number: str | None = Form(None),
+    produkt_typ: str | None = Form(None),
+    start_date: str | None = Form(None),
+    end_date: str | None = Form(None),
+    next_main_due: str | None = Form(None),
+    notice_period_months: str | None = Form(None),
+    praemie: str | None = Form(None),
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    obj = _load_accessible_object(db, object_id, user)
+
+    parsed_versicherer_id: uuid.UUID | None = None
+    if versicherer_id and versicherer_id.strip():
+        try:
+            parsed_versicherer_id = uuid.UUID(versicherer_id.strip())
+        except ValueError:
+            raise HTTPException(422, detail="Ungueltige Versicherer-ID")
+
+    parsed_start = _parse_date(start_date)
+    parsed_end = _parse_date(end_date)
+    parsed_due = _parse_date(next_main_due)
+    parsed_months: int | None = None
+    if notice_period_months and notice_period_months.strip():
+        try:
+            parsed_months = int(notice_period_months.strip())
+        except ValueError:
+            raise HTTPException(422, detail="Ungueltige Monatsangabe")
+    parsed_praemie = _parse_decimal(praemie)
+
+    err = validate_police_dates(parsed_start, parsed_end, parsed_due)
+    if err:
+        policen = get_policen_for_object(db, obj.id)
+        versicherer_list = get_all_versicherer(db)
+        return templates.TemplateResponse(
+            request,
+            "_obj_versicherungen.html",
+            {
+                "obj": obj,
+                "policen": policen,
+                "versicherer_list": versicherer_list,
+                "user": user,
+                "form_error": err,
+            },
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    create_police(
+        db, obj, user, request,
+        versicherer_id=parsed_versicherer_id,
+        police_number=police_number or None,
+        produkt_typ=produkt_typ or None,
+        start_date=parsed_start,
+        end_date=parsed_end,
+        next_main_due=parsed_due,
+        notice_period_months=parsed_months,
+        praemie=parsed_praemie,
+    )
+    db.commit()
+    return _render_versicherungen(request, obj, db, user)
+
+
+@router.get("/{object_id}/policen/{policy_id}/edit-form", response_class=HTMLResponse)
+async def police_edit_form(
+    object_id: uuid.UUID,
+    policy_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    obj = _load_accessible_object(db, object_id, user)
+    policy = db.get(InsurancePolicy, policy_id)
+    if policy is None or policy.object_id != obj.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
+    versicherer_list = get_all_versicherer(db)
+    return templates.TemplateResponse(
+        request,
+        "_obj_policen_edit_form.html",
+        {"obj": obj, "policy": policy, "versicherer_list": versicherer_list, "user": user},
+    )
+
+
+@router.put("/{object_id}/policen/{policy_id}", response_class=HTMLResponse)
+async def police_update(
+    object_id: uuid.UUID,
+    policy_id: uuid.UUID,
+    request: Request,
+    versicherer_id: str | None = Form(None),
+    police_number: str | None = Form(None),
+    produkt_typ: str | None = Form(None),
+    start_date: str | None = Form(None),
+    end_date: str | None = Form(None),
+    next_main_due: str | None = Form(None),
+    notice_period_months: str | None = Form(None),
+    praemie: str | None = Form(None),
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    obj = _load_accessible_object(db, object_id, user)
+    policy = db.get(InsurancePolicy, policy_id)
+    if policy is None or policy.object_id != obj.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
+
+    parsed_versicherer_id: uuid.UUID | None = None
+    if versicherer_id and versicherer_id.strip():
+        try:
+            parsed_versicherer_id = uuid.UUID(versicherer_id.strip())
+        except ValueError:
+            raise HTTPException(422, detail="Ungueltige Versicherer-ID")
+
+    parsed_start = _parse_date(start_date)
+    parsed_end = _parse_date(end_date)
+    parsed_due = _parse_date(next_main_due)
+    parsed_months: int | None = None
+    if notice_period_months and notice_period_months.strip():
+        try:
+            parsed_months = int(notice_period_months.strip())
+        except ValueError:
+            raise HTTPException(422, detail="Ungueltige Monatsangabe")
+    parsed_praemie = _parse_decimal(praemie)
+
+    err = validate_police_dates(parsed_start, parsed_end, parsed_due)
+    if err:
+        policen = get_policen_for_object(db, obj.id)
+        versicherer_list = get_all_versicherer(db)
+        return templates.TemplateResponse(
+            request,
+            "_obj_versicherungen.html",
+            {
+                "obj": obj,
+                "policen": policen,
+                "versicherer_list": versicherer_list,
+                "user": user,
+                "form_error": err,
+            },
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    changed_fields: dict = {
+        "versicherer_id": parsed_versicherer_id,
+        "police_number": police_number or None,
+        "produkt_typ": produkt_typ or None,
+        "start_date": parsed_start,
+        "end_date": parsed_end,
+        "next_main_due": parsed_due,
+        "notice_period_months": parsed_months,
+        "praemie": parsed_praemie,
+    }
+    update_police(db, policy, user, request, **changed_fields)
+    db.commit()
+    return _render_versicherungen(request, obj, db, user)
+
+
+@router.delete("/{object_id}/policen/{policy_id}", response_class=HTMLResponse)
+async def police_delete(
+    object_id: uuid.UUID,
+    policy_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    obj = _load_accessible_object(db, object_id, user)
+    policy = db.get(InsurancePolicy, policy_id)
+    if policy is None or policy.object_id != obj.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
+    delete_police(db, policy, user, request)
+    db.commit()
+    return _render_versicherungen(request, obj, db, user)

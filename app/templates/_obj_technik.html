@@ -38,6 +38,7 @@
         </div>
     </div>
 
+    {% if has_permission(user, "objects:view_confidential") %}
     <div class="mt-6 pt-6 border-t border-slate-100">
         <h3 class="text-sm font-semibold text-slate-800 mb-3">Zugangscodes</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
@@ -46,6 +47,7 @@
             {% endfor %}
         </div>
     </div>
+    {% endif %}
 
     <div class="mt-6 pt-6 border-t border-slate-100">
         <h3 class="text-sm font-semibold text-slate-800 mb-4">Fotos</h3>

@@ -109,6 +109,40 @@ def viewer_zug_client(db):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture
+def zug_editor_no_confidential_client(db):
+    """User mit objects:view + objects:edit, aber OHNE view_confidential.
+
+    Deckt die Luecke zwischen viewer_zug_client (kein edit) und
+    zug_admin_client (alle Rechte) fuer die Story-2.0-403-Pfade auf den
+    edit/save-Endpoints. Hier greift nicht die Dependency, sondern der
+    In-Handler-Check auf view_confidential.
+    """
+    user = User(
+        id=uuid.uuid4(),
+        google_sub="google-sub-zug-editor-noconf",
+        email="zug-editor-noconf@dbshome.de",
+        name="Zug Editor No Confidential",
+        permissions_extra=["objects:view", "objects:edit"],
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    def override_db():
+        yield db
+
+    def override_user():
+        return user
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = override_user
+    app.dependency_overrides[get_optional_user] = override_user
+    with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
 # ---------------------------------------------------------------------------
 # AC1 + AC2 — Write verschluesselt, Render decrypted
 # ---------------------------------------------------------------------------
@@ -246,33 +280,13 @@ def test_zugangscode_save_empty_deletes_code(
 
 
 # ---------------------------------------------------------------------------
-# AC5 — Viewer darf sehen, aber weder Edit noch Save
+# AC5 / Story 2.0 — view_confidential Enforcement
+# Viewer ohne objects:edit bekommt 403 auf edit/save (Dependency-Ebene).
+# User mit objects:edit aber ohne view_confidential bekommt 403 auf alle
+# Zugangscode-Endpoints (In-Handler-Check bzw. view-Dependency).
+# Detailseite versteckt die gesamte Sektion fuer jeden User ohne
+# view_confidential.
 # ---------------------------------------------------------------------------
-
-def test_zugangscode_edit_button_not_shown_for_viewer(
-    db, viewer_zug_client, zug_admin_user, make_zug_object
-):
-    obj = make_zug_object("ZUG5")
-    write_field_human(
-        db,
-        entity=obj,
-        field="entry_code_main_door",
-        value="VIEWER-CODE",
-        source="user_edit",
-        user=zug_admin_user,
-    )
-    db.commit()
-
-    resp = viewer_zug_client.get(f"/objects/{obj.id}")
-    assert resp.status_code == 200
-    body = resp.text
-    # Decrypted Code sichtbar
-    assert "VIEWER-CODE" in body
-    # Aber keine Edit-Buttons fuer die Zugangscode-Felder.
-    assert 'data-edit-field="entry_code_main_door"' not in body
-    assert 'data-edit-field="entry_code_garage"' not in body
-    assert 'data-edit-field="entry_code_technical_room"' not in body
-
 
 def test_zugangscode_post_returns_403_for_viewer(
     db, viewer_zug_client, make_zug_object
@@ -300,16 +314,125 @@ def test_zugangscode_edit_get_returns_403_for_viewer(
     assert resp.status_code == 403
 
 
-def test_zugangscode_view_get_accessible_for_viewer(
+def test_zugangscode_view_blocked_without_view_confidential(
+    db, zug_editor_no_confidential_client, zug_admin_user, make_zug_object
+):
+    """Story 2.0: View-Endpoint ist jetzt hinter view_confidential — ein User
+    mit objects:view + objects:edit aber OHNE view_confidential bekommt 403."""
+    obj = make_zug_object("ZUG-VC1")
+    write_field_human(
+        db,
+        entity=obj,
+        field="entry_code_main_door",
+        value="SHOULD-NOT-LEAK",
+        source="user_edit",
+        user=zug_admin_user,
+    )
+    db.commit()
+
+    resp = zug_editor_no_confidential_client.get(
+        f"/objects/{obj.id}/zugangscodes/view",
+        params={"field": "entry_code_main_door"},
+    )
+    assert resp.status_code == 403
+    assert "SHOULD-NOT-LEAK" not in resp.text
+
+
+def test_zugangscode_edit_blocked_without_view_confidential(
+    zug_editor_no_confidential_client, make_zug_object
+):
+    """Story 2.0: Edit-Endpoint hat objects:edit-Dependency, der In-Handler-
+    Check greift nach und liefert 403 fuer User ohne view_confidential."""
+    obj = make_zug_object("ZUG-VC2")
+    resp = zug_editor_no_confidential_client.get(
+        f"/objects/{obj.id}/zugangscodes/edit",
+        params={"field": "entry_code_main_door"},
+    )
+    assert resp.status_code == 403
+
+
+def test_zugangscode_save_blocked_without_view_confidential(
+    db, zug_editor_no_confidential_client, make_zug_object
+):
+    """Story 2.0: Save-Endpoint ebenfalls; der 403 greift VOR der Parse-
+    Validierung — kein 422."""
+    obj = make_zug_object("ZUG-VC3")
+    resp = zug_editor_no_confidential_client.post(
+        f"/objects/{obj.id}/zugangscodes/field",
+        data={"field_name": "entry_code_main_door", "value": "1234"},
+    )
+    assert resp.status_code == 403
+
+    db.expire_all()
+    refreshed = db.get(Object, obj.id)
+    assert refreshed.entry_code_main_door is None
+
+
+def test_detail_page_hides_zugangscodes_section_without_view_confidential(
+    db, viewer_zug_client, zug_admin_user, make_zug_object
+):
+    """Story 2.0 (AC4): Auf der Detailseite fehlt die komplette Zugangscodes-
+    Sektion — nicht nur die Edit-Buttons, auch die Ueberschrift + Platzhalter-
+    Container sind weg. Klartextcode wird im Handler gar nicht erst decrypted."""
+    obj = make_zug_object("ZUG-VC4")
+    write_field_human(
+        db,
+        entity=obj,
+        field="entry_code_main_door",
+        value="HIDDEN-CODE",
+        source="user_edit",
+        user=zug_admin_user,
+    )
+    db.commit()
+
+    resp = viewer_zug_client.get(f"/objects/{obj.id}")
+    assert resp.status_code == 200
+    body = resp.text
+    # Technik-Sektion bleibt sichtbar (Absperrpunkte, Heizung, Historie).
+    assert 'data-section="technik"' in body
+    # Aber die Zugangscodes-Sektion (Headline + Felder) ist komplett weg.
+    assert "Zugangscodes" not in body
+    assert 'id="field-entry_code_main_door"' not in body
+    assert 'id="field-entry_code_garage"' not in body
+    assert 'id="field-entry_code_technical_room"' not in body
+    # Und die dekryptete Klartext-Form taucht nirgends auf.
+    assert "HIDDEN-CODE" not in body
+
+
+def test_zugangscode_view_blocked_for_pure_viewer(
     viewer_zug_client, make_zug_object
 ):
-    """Der View-Endpoint ist hinter `objects:view` — der Cancel-Flow auf der
-    Detailseite wuerde sonst fuer Viewer zwar die Edit-Buttons nicht zeigen,
-    aber das View-Fragment ist grundsaetzlich zugaenglich (gleiche Sichtbarkeit
-    wie die Detailseite selbst)."""
-    obj = make_zug_object("ZUG8")
+    """Story 2.0 (P1): Reiner objects:view-User (kein edit, kein view_confidential)
+    bekommt 403 auf dem View-Endpoint — View-Dependency greift."""
+    obj = make_zug_object("ZUG-VC5")
     resp = viewer_zug_client.get(
         f"/objects/{obj.id}/zugangscodes/view",
+        params={"field": "entry_code_main_door"},
+    )
+    assert resp.status_code == 403
+
+
+def test_zugangscode_view_accessible_for_view_confidential_user(
+    zug_admin_client, make_zug_object
+):
+    """Story 2.0 (P2a): Positiv-Pfad — User MIT view_confidential erhaelt 200
+    auf dem View-Endpoint (Fragment wird gerendert)."""
+    obj = make_zug_object("ZUG-VC6")
+    resp = zug_admin_client.get(
+        f"/objects/{obj.id}/zugangscodes/view",
+        params={"field": "entry_code_main_door"},
+    )
+    assert resp.status_code == 200
+
+
+def test_zugangscode_edit_accessible_for_view_confidential_user(
+    zug_admin_client, make_zug_object
+):
+    """Story 2.0 (P2b): Positiv-Pfad — User MIT view_confidential + objects:edit
+    erhaelt 200 auf dem Edit-Endpoint (Formular wird gerendert)."""
+    obj = make_zug_object("ZUG-VC7")
+    resp = zug_admin_client.get(
+        f"/objects/{obj.id}/zugangscodes/edit",
         params={"field": "entry_code_main_door"},
     )
     assert resp.status_code == 200
