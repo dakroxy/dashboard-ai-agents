@@ -15,12 +15,10 @@ build/
 .mypy_cache/
 .ruff_cache/
 
-# Environment
+# Environment — nichts davon committen, auch keine Templates
 .env
-.env.local
+.env.*
 *.env
-!.env.example
-!.env.op
 
 # Docker
 docker-compose.override.yml
