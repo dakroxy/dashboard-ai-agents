@@ -7,7 +7,9 @@
 
 <form hx-post="/registries/dienstleister"
       class="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-2 mt-1">
+    {% if policy_id %}
     <input type="hidden" name="policy_id" value="{{ policy_id }}">
+    {% endif %}
     <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">Name *</label>
         <input type="text" name="name" required
@@ -25,10 +27,12 @@
                 class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
             Speichern
         </button>
+        {% if policy_id %}
         <button type="button"
                 onclick="document.getElementById('new-dienstleister-inline-{{ policy_id }}').innerHTML=''"
                 class="px-3 py-1.5 border border-slate-300 text-slate-600 text-sm rounded hover:bg-slate-100">
             Abbrechen
         </button>
+        {% endif %}
     </div>
 </form>

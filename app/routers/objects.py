@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import InsurancePolicy, Object, User, Wartungspflicht
 from app.models.object import SteckbriefPhoto
+from app.models.registry import Dienstleister
 from app.permissions import accessible_object_ids, has_permission, require_permission
 from app.services.impower import get_bank_balance
 from app.services.audit import audit
@@ -1083,6 +1084,7 @@ async def police_create(
     if err:
         policen = get_policen_for_object(db, obj.id)
         versicherer_list = get_all_versicherer(db)
+        dienstleister_list = get_all_dienstleister(db)
         return templates.TemplateResponse(
             request,
             "_obj_versicherungen.html",
@@ -1090,6 +1092,8 @@ async def police_create(
                 "obj": obj,
                 "policen": policen,
                 "versicherer_list": versicherer_list,
+                "dienstleister_list": dienstleister_list,
+                "get_due_severity": get_due_severity,
                 "user": user,
                 "form_error": err,
             },
@@ -1174,6 +1178,7 @@ async def police_update(
     if err:
         policen = get_policen_for_object(db, obj.id)
         versicherer_list = get_all_versicherer(db)
+        dienstleister_list = get_all_dienstleister(db)
         return templates.TemplateResponse(
             request,
             "_obj_versicherungen.html",
@@ -1181,6 +1186,8 @@ async def police_update(
                 "obj": obj,
                 "policen": policen,
                 "versicherer_list": versicherer_list,
+                "dienstleister_list": dienstleister_list,
+                "get_due_severity": get_due_severity,
                 "user": user,
                 "form_error": err,
             },
@@ -1257,6 +1264,11 @@ async def wartungspflicht_create(
             parsed_dienstleister_id = uuid.UUID(dienstleister_id.strip())
         except ValueError:
             raise HTTPException(status_code=422, detail="Ungueltige Dienstleister-ID")
+        if db.get(Dienstleister, parsed_dienstleister_id) is None:
+            return HTMLResponse(
+                content="<p class='text-red-600 text-sm p-2'>Dienstleister nicht gefunden.</p>",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
     parsed_intervall: int | None = None
     if intervall_monate and intervall_monate.strip():
@@ -1264,6 +1276,11 @@ async def wartungspflicht_create(
             parsed_intervall = int(intervall_monate.strip())
         except ValueError:
             raise HTTPException(status_code=422, detail="Ungueltige Intervall-Angabe")
+        if parsed_intervall is not None and parsed_intervall < 1:
+            return HTMLResponse(
+                content="<p class='text-red-600 text-sm p-2'>Intervall muss mindestens 1 Monat sein.</p>",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
     parsed_letzte = _parse_date(letzte_wartung)
     parsed_next = _parse_date(next_due_date)

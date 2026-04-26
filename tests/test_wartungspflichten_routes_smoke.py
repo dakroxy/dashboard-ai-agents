@@ -568,6 +568,169 @@ def test_wartungspflicht_post_404_when_policy_belongs_to_other_object(
     assert db.query(Wartungspflicht).filter(Wartungspflicht.policy_id == policy_b.id).count() == 0
 
 
+def test_wartungspflicht_delete_404_when_wart_object_id_diverges_from_policy(
+    db, steckbrief_admin_client, make_object
+):
+    """Cross-Police-Guard: wart.object_id=A, policy.object_id=B (Daten-Manipulation) → 404.
+
+    Spec Task 7.2 verlangt diese Variante zusaetzlich zur einfachen Path-Mismatch-Variante:
+    der zweite Guard (`wart.policy.object_id != obj.id`) muss greifen, selbst wenn
+    der erste Guard (`wart.object_id != obj.id`) durchgelassen haette.
+    """
+    obj_a = make_object("WRT-F5A")
+    obj_b = make_object("WRT-F5B")
+    policy_b = _make_policy(db, obj_b.id)
+    wart = _make_wartung(db, policy_b, "Manipuliert")
+    # Daten-Inkonsistenz simulieren: wart.object_id manuell auf obj_a setzen,
+    # waehrend policy noch auf obj_b zeigt.
+    wart.object_id = obj_a.id
+    db.commit()
+    db.expire_all()
+
+    resp = steckbrief_admin_client.delete(
+        f"/objects/{obj_a.id}/wartungspflichten/{wart.id}"
+    )
+    # Erster Guard (wart.object_id != obj.id) lasst durch — Cross-Police-Guard fangt ab.
+    assert resp.status_code == 404
+    db.expire_all()
+    assert db.get(Wartungspflicht, wart.id) is not None
+
+
+# ---------------------------------------------------------------------------
+# Patch-Coverage aus Code-Review 2026-04-26
+# ---------------------------------------------------------------------------
+
+def test_post_wartungspflicht_with_nonexistent_dienstleister_returns_422(
+    db, steckbrief_admin_client, make_object
+):
+    """Syntaktisch valide UUID, die nicht in dienstleister-Tabelle existiert → 422 statt 500."""
+    obj = make_object("WRT-G1")
+    policy = _make_policy(db, obj.id)
+    ghost_id = uuid.uuid4()
+
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen/{policy.id}/wartungspflichten",
+        data={
+            "bezeichnung": "Reinigung",
+            "dienstleister_id": str(ghost_id),
+        },
+    )
+    assert resp.status_code == 422
+    assert "Dienstleister" in resp.text
+    assert db.query(Wartungspflicht).filter(Wartungspflicht.policy_id == policy.id).count() == 0
+
+
+def test_post_wartungspflicht_with_zero_intervall_returns_422(
+    db, steckbrief_admin_client, make_object
+):
+    """intervall_monate=0 oder negativ wird server-seitig abgelehnt (HTML min='1' ist nur client-side)."""
+    obj = make_object("WRT-G2")
+    policy = _make_policy(db, obj.id)
+
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen/{policy.id}/wartungspflichten",
+        data={"bezeichnung": "Wartung", "intervall_monate": "0"},
+    )
+    assert resp.status_code == 422
+    assert "Intervall" in resp.text
+    assert db.query(Wartungspflicht).filter(Wartungspflicht.policy_id == policy.id).count() == 0
+
+
+def test_post_wartungspflicht_with_negative_intervall_returns_422(
+    db, steckbrief_admin_client, make_object
+):
+    obj = make_object("WRT-G3")
+    policy = _make_policy(db, obj.id)
+
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen/{policy.id}/wartungspflichten",
+        data={"bezeichnung": "Wartung", "intervall_monate": "-12"},
+    )
+    assert resp.status_code == 422
+    assert db.query(Wartungspflicht).filter(Wartungspflicht.policy_id == policy.id).count() == 0
+
+
+def test_get_dienstleister_new_form_without_policy_id_renders_no_hidden_input(
+    steckbrief_admin_client,
+):
+    """Standalone-Pfad (ohne policy_id) darf nicht 'value=\"None\"' rendern."""
+    resp = steckbrief_admin_client.get("/registries/dienstleister/new-form")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'value="None"' not in body
+    # Hidden-Input soll bei fehlendem policy_id komplett wegfallen
+    assert 'name="policy_id"' not in body
+
+
+def test_police_update_validation_error_with_existing_wartung_does_not_crash(
+    db, steckbrief_admin_client, make_object
+):
+    """Regression: Police-Edit mit invaliden Daten + bestehender Wartungspflicht.
+
+    police_update rendert bei Date-Validation-Error _obj_versicherungen.html, das via
+    Include _obj_versicherungen_row.html Wartungen rendert und get_due_severity()
+    aufruft. Vor dem Fix fehlten dienstleister_list + get_due_severity im 422-Context
+    → TypeError: 'Undefined' object is not callable.
+    """
+    obj = make_object("WRT-PR1")
+    policy = _make_policy(db, obj.id)
+    _make_wartung(db, policy, "Vorhandene Wartung")
+    db.expire_all()  # erzwingt selectin-Reload beim Server-Side Template-Render
+
+    # Date-Validation-Fehler erzwingen: end_date < start_date
+    resp = steckbrief_admin_client.put(
+        f"/objects/{obj.id}/policen/{policy.id}",
+        data={
+            "start_date": "2025-12-31",
+            "end_date": "2024-01-01",
+        },
+    )
+    assert resp.status_code == 422
+    # Wenn der Fix greift, rendert der Body die Wartung weiter — kein Crash.
+    # (Vor dem Fix: Crash wegen `get_due_severity` Undefined.)
+    assert "Vorhandene Wartung" in resp.text
+
+
+def test_police_create_validation_error_with_existing_wartung_does_not_crash(
+    db, steckbrief_admin_client, make_object
+):
+    """Selbe Regression wie oben, aber fuer die Create-Route: invaliden POST waehrend
+    bereits eine Police mit Wartungspflicht existiert.
+    """
+    obj = make_object("WRT-PR2")
+    existing = _make_policy(db, obj.id)
+    _make_wartung(db, existing, "Schon vorhandene Wartung")
+    db.expire_all()
+
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen",
+        data={
+            "start_date": "2025-12-31",
+            "end_date": "2024-01-01",
+        },
+    )
+    assert resp.status_code == 422
+    assert "Schon vorhandene Wartung" in resp.text
+
+
+def test_versicherungen_section_hides_wartung_delete_button_for_viewer(
+    db, viewer_client, make_object
+):
+    """AC5: Loeschen-Button auf bestehenden Wartungspflichten ist fuer Viewer unsichtbar."""
+    obj = make_object("WRT-E5")
+    policy = _make_policy(db, obj.id)
+    _make_wartung(db, policy, "Sichtbar als Viewer")
+    db.expire_all()
+
+    resp = viewer_client.get(f"/objects/{obj.id}/sections/versicherungen")
+    assert resp.status_code == 200
+    body = resp.text
+    # Wartung wird angezeigt
+    assert "Sichtbar als Viewer" in body
+    # Aber kein Loeschen-Button (HTMX-DELETE auf wartungspflichten-Pfad)
+    assert "/wartungspflichten/" not in body
+
+
 # ---------------------------------------------------------------------------
 # Regression — write_gate_coverage weiter gruen
 # ---------------------------------------------------------------------------

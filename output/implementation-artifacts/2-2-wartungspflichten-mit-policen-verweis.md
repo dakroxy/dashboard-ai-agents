@@ -1,6 +1,6 @@
 # Story 2.2: Wartungspflichten mit Policen-Verweis
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -510,6 +510,26 @@ claude-sonnet-4-6 (1M context)
 - `tests/test_wartungspflichten_routes_smoke.py` (neu)
 - `tests/test_policen_routes_smoke.py` (geändert — `data-police-id` → `data-policy-id`)
 
+### Review Findings
+
+Code-Review 2026-04-26 (3-Layer adversarial: Blind Hunter, Edge Case Hunter, Acceptance Auditor).
+
+- [x] [Review][Patch] Migration 0016: orphan-rows blockieren `alter_column NOT NULL` [`migrations/versions/0016_wartungspflichten_missing_fields.py:25-42`] — Backfill `WHERE w.policy_id = p.id` skipt rows mit `policy_id IS NULL` (Migration 0010 hat `ondelete="SET NULL"`). `alter_column` crashed dann mit `NotNullViolation`. Fix: orphan rows + rows mit nicht-backfillbarer policy.object_id vor dem ALTER löschen.
+- [x] [Review][Patch] `police_create`/`police_update` 422-Renderer fehlen `dienstleister_list` + `get_due_severity` [`app/routers/objects.py:1086-1097, 1177-1188`] — `_obj_versicherungen.html:107` includiert `_obj_versicherungen_row.html`; rendert dort `get_due_severity(...)` wenn Wartungen existieren → `TypeError: 'Undefined' object is not callable` bei Police-Datums-Validierungs-Fehler auf Objekten mit Wartungspflichten.
+- [x] [Review][Patch] Nicht-existente `dienstleister_id` → IntegrityError → 500 [`app/routers/objects.py:1254-1259`] — UUID wird syntaktisch geparst, Existenz nicht. FK-Violation bei `db.commit()` → unhandled 500. Fix: `db.get(Dienstleister, ...)`-Check vor `create_wartungspflicht`, sonst 422.
+- [x] [Review][Patch] `_registries_dienstleister_form.html` rendert `value="None"` als policy_id [`app/templates/_registries_dienstleister_form.html:10,29`] — Wenn `policy_id` None (Standalone-Pfad), rendert Jinja `value="None"`; FastAPI `uuid.UUID | None = Form(None)` parst das als 422. cancel-onclick crasht analog (`getElementById('new-dienstleister-inline-None')` → null). Fix: Hidden-Input + cancel-onclick nur wenn `policy_id` gesetzt.
+- [x] [Review][Patch] Cross-Police-Guard-Test fehlt für Daten-Manipulations-Variante [`tests/test_wartungspflichten_routes_smoke.py`] — Spec Task 7.2 verlangt explizit `test_wartungspflicht_delete_404_when_policy_belongs_to_other_object` (wart.object_id=A, policy.object_id=B). Vorhandener Test prüft nur ersten Guard. Fix: Test ergänzen, der den zweiten Guard via Daten-Manipulation auslöst.
+- [x] [Review][Patch] Permission-Test deckt Wartung-Lösch-Button-Sichtbarkeit nicht ab [`tests/test_wartungspflichten_routes_smoke.py`] — AC5 verlangt "Lösch-Buttons nicht sichtbar" für Viewer; Test prüft nur "+ Wartungspflicht". Fix: Wartung anlegen, dann Section als Viewer abrufen → Lösch-Button-Markup nicht im Body.
+- [x] [Review][Patch] `intervall_monate < 1` server-seitig nicht abgelehnt [`app/routers/objects.py:1261-1266`] — HTML `min="1"` ist client-side only; `parsed_intervall = -12` oder `0` persistiert. Fix: nach `int()`-Cast `if parsed_intervall is not None and parsed_intervall < 1: raise HTTPException(422, ...)`.
+- [x] [Review][Defer] DELETE retourniert full section bei `wart.policy is None` [`app/routers/objects.py:1330-1331`] — deferred, edge-case nicht über regulären Pfad reachable (orphan-wart entsteht nur via raw SQL).
+- [x] [Review][Defer] Audit `delete` action nutzt `object_field_updated` semantisch verwirrend [`app/services/steckbrief_wartungen.py:90-103`] — deferred, in Story-Spec Task 3.7 bewusst entschieden (`"wartung"` nicht in `_REGISTRY_ENTITY_TYPES`).
+- [x] [Review][Defer] ORM cascade `delete-orphan` mit unloaded `lazy="selectin"`-Collection in Story-2.1-`delete_police`-Pfad [`app/services/steckbrief_policen.py`] — deferred, Story 2.2 nicht im Scope; Tests grün.
+- [x] [Review][Defer] `letzte_wartung` in Zukunft / `next_due_date` in Past nicht geflaggt [`app/services/steckbrief_wartungen.py:33-49`] — deferred, Use-case-Frage (z.B. "verspätet eingetragene Wartung mit erfasstem next_due in Vergangenheit").
+- [x] [Review][Defer] `intervall_monate` int32-Overflow → 500 [`app/routers/objects.py:1261-1266`] — deferred, exotischer Edge-Case; P7 deckt negative/0 ab.
+- [x] [Review][Defer] NBSP-only-bezeichnung umgeht `strip()`-Check via Zero-Width-Space [`app/routers/objects.py:1248-1252`] — deferred, Echte User tippen kein ZWSP; Patch wäre Unicode-Whitespace-Awareness.
+- [x] [Review][Defer] Stale Dropdown bei multiplen Policies nach Dienstleister-Add [`app/routers/registries.py:118-127`] — deferred, OOB-Swap zielt nur auf eine Police; UX-Verbesserung Future-Story.
+
 ## Change Log
 
 - 2026-04-24: Story 2.2 implementiert — Wartungspflichten mit Policen-Verweis (Migration 0016, Service, Routen, Templates, Tests). 581 Tests grün.
+- 2026-04-26: Code-Review (3 Layer). 7 Patches, 7 Defer, ~22 Dismiss.

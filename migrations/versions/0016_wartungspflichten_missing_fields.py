@@ -38,6 +38,13 @@ def upgrade() -> None:
         FROM policen p
         WHERE w.policy_id = p.id AND w.object_id IS NULL
     """)
+    # Orphan-Rows aufraeumen, bevor NOT NULL erzwungen wird:
+    # 0010 hat policy_id mit ondelete=SET NULL angelegt — historische Police-Loeschungen
+    # koennen wartungspflichten ohne policy_id zurueckgelassen haben. Diese Rows sind
+    # ohne Policy-Verweis fachlich wertlos und blockieren das ALTER NOT NULL sonst.
+    op.execute(
+        "DELETE FROM wartungspflichten WHERE policy_id IS NULL OR object_id IS NULL"
+    )
     # NOT NULL erzwingen
     op.alter_column("wartungspflichten", "object_id", nullable=False)
 
