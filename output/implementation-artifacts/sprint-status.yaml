@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-27 (Story 2.3 code review fixes → done)
+# last_updated: 2026-04-27 (Story 2.4 Menschen-Notizen → review)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-27 (Story 2.3 code review fixes → done)
+last_updated: 2026-04-27 (Story 2.4 Menschen-Notizen → review)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -60,7 +60,7 @@ development_status:
   2-1-policen-pro-objekt-pflegen: done
   2-2-wartungspflichten-mit-policen-verweis: done
   2-3-schadensfall-direkt-aus-objekt-anlegen: done
-  2-4-menschen-notizen-admin-only: ready-for-dev
+  2-4-menschen-notizen-admin-only: review
   2-5-due-radar-global-view: ready-for-dev
   2-6-due-radar-filter-deep-links: ready-for-dev
   2-7-versicherer-listenansicht-mit-aggregationen: ready-for-dev

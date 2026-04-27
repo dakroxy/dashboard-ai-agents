@@ -1,6 +1,6 @@
 # Story 2.4: Menschen-Notizen admin-only
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -56,7 +56,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Keine Migration** (Vorab-Check)
+- [x] **Task 1 — Keine Migration** (Vorab-Check)
 
   > `notes_owners` ist bereits als JSONB-Spalte auf `Object` definiert:
   > `app/models/object.py` Zeile 88–90:
@@ -69,18 +69,18 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
   > `ls migrations/versions/` — wenn nach Story 2.0–2.3 neue Migrationen existieren,
   > keinen Down-Revision-Fehler einbauen (diese Story braucht keine Migration).
 
-  - [ ] 1.1 Bestätigen: `notes_owners` auf `Object` vorhanden (kein neues Feld, keine Migration nötig)
+  - [x] 1.1 Bestätigen: `notes_owners` auf `Object` vorhanden (kein neues Feld, keine Migration nötig)
 
-- [ ] **Task 2 — `object_detail`-Handler erweitern** (AC1, AC2)
+- [x] **Task 2 — `object_detail`-Handler erweitern** (AC1, AC2)
 
   In `app/routers/objects.py`, Funktion `object_detail`:
 
-  - [ ] 2.1 Imports prüfen (am Datei-Anfang):
+  - [x] 2.1 Imports prüfen (am Datei-Anfang):
     ```python
     from app.permissions import has_permission  # ggf. bereits vorhanden nach Story 2.0
     ```
 
-  - [ ] 2.2 Vor dem `return templates.TemplateResponse(...)` einen neuen Block einfügen:
+  - [x] 2.2 Vor dem `return templates.TemplateResponse(...)` einen neuen Block einfügen:
     ```python
     # --- Menschen-Notizen (Story 2.4, nur für view_confidential) ---
     notes_owners: dict | None = None
@@ -88,14 +88,14 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
         notes_owners = dict(detail.obj.notes_owners or {})
     ```
 
-  - [ ] 2.3 Im `context`-Dict des `TemplateResponse`-Aufrufs ergänzen:
+  - [x] 2.3 Im `context`-Dict des `TemplateResponse`-Aufrufs ergänzen:
     ```python
     "notes_owners": notes_owners,
     ```
     Hinweis: Der Wert ist `None` für User ohne `view_confidential` und ein Dict (ggf. leer)
     für Admins. Das Template prüft `has_permission(user, "objects:view_confidential")`.
 
-  - [ ] 2.4 Im Template `object_detail.html` den Include nach den
+  - [x] 2.4 Im Template `object_detail.html` den Include nach den
     bestehenden Sektion-Includes hinzufügen (nach Story 2.1 liegt
     `_obj_versicherungen.html` zwischen `_obj_technik.html` und dem
     Menschen-Block — Menschen gehört ans Ende):
@@ -103,7 +103,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
     {% include "_obj_menschen.html" %}
     ```
 
-- [ ] **Task 3 — Drei Inline-Edit-Routen in `objects.py`** (AC2, AC3, AC4)
+- [x] **Task 3 — Drei Inline-Edit-Routen in `objects.py`** (AC2, AC3, AC4)
 
   Alle Routen unter `@router` in `app/routers/objects.py`. Imports, die ggf. ergänzt werden müssen:
   ```python
@@ -113,7 +113,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
   `Eigentuemer` ist in `app/models/person.py`. Prüfen ob `from app.models import Eigentuemer`
   bereits (via `__init__.py`) verfügbar — falls nicht: expliziter Import.
 
-  - [ ] 3.1 **GET view-Fragment** `GET /{object_id}/menschen-notizen/{eigentuemer_id}/view`:
+  - [x] 3.1 **GET view-Fragment** `GET /{object_id}/menschen-notizen/{eigentuemer_id}/view`:
     ```python
     @router.get("/{object_id}/menschen-notizen/{eigentuemer_id}/view", response_class=HTMLResponse)
     async def notiz_view(
@@ -134,7 +134,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
         )
     ```
 
-  - [ ] 3.2 **GET edit-Fragment** `GET /{object_id}/menschen-notizen/{eigentuemer_id}/edit`:
+  - [x] 3.2 **GET edit-Fragment** `GET /{object_id}/menschen-notizen/{eigentuemer_id}/edit`:
     ```python
     @router.get("/{object_id}/menschen-notizen/{eigentuemer_id}/edit", response_class=HTMLResponse)
     async def notiz_edit(
@@ -158,7 +158,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
         )
     ```
 
-  - [ ] 3.3 **POST save** `POST /{object_id}/menschen-notizen/{eigentuemer_id}`:
+  - [x] 3.3 **POST save** `POST /{object_id}/menschen-notizen/{eigentuemer_id}`:
     ```python
     @router.post("/{object_id}/menschen-notizen/{eigentuemer_id}", response_class=HTMLResponse)
     async def notiz_save(
@@ -200,7 +200,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
     Import `write_field_human` prüfen: kommt aus `app.services.steckbrief_write_gate`
     (wurde in Story 1.6 in `objects.py` hinzugefügt, ist also bereits verfügbar).
 
-- [ ] **Task 4 — Template `app/templates/_obj_menschen.html`** (neu) (AC1, AC2)
+- [x] **Task 4 — Template `app/templates/_obj_menschen.html`** (neu) (AC1, AC2)
 
   Neue Datei. Vollständiger Inhalt:
   ```html
@@ -242,7 +242,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
   verhindert leckende leere Sektionen falls `notes_owners=None` durch `object_detail`
   durchrutscht.
 
-- [ ] **Task 5 — Template `app/templates/_obj_notiz_view.html`** (neu) (AC1, AC4)
+- [x] **Task 5 — Template `app/templates/_obj_notiz_view.html`** (neu) (AC1, AC4)
 
   Neue Datei. Enthält das per-Eigentümer View-Fragment (Container-ID für HTMX-Swap):
   ```html
@@ -266,7 +266,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
   </div>
   ```
 
-- [ ] **Task 6 — Template `app/templates/_obj_notiz_edit.html`** (neu) (AC4)
+- [x] **Task 6 — Template `app/templates/_obj_notiz_edit.html`** (neu) (AC4)
 
   Neue Datei. Enthält das per-Eigentümer Edit-Fragment (Container-ID muss identisch mit View sein):
   ```html
@@ -297,11 +297,11 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
   </div>
   ```
 
-- [ ] **Task 7 — Tests `tests/test_menschen_notizen_unit.py`** (AC2, AC3, AC5)
+- [x] **Task 7 — Tests `tests/test_menschen_notizen_unit.py`** (AC2, AC3, AC5)
 
   Neue Datei anlegen. Muster aus `tests/test_zugangscodes_routes_smoke.py` (Story 2.0) übernehmen:
 
-  - [ ] 7.1 Fixtures:
+  - [x] 7.1 Fixtures:
     - `admin_user` mit `permissions_extra=["objects:view", "objects:edit", "objects:view_confidential"]`
     - `normal_user` mit `permissions_extra=["objects:view", "objects:edit"]` — OHNE `view_confidential`
     - `admin_client` (TestClient mit `admin_user`)
@@ -309,7 +309,7 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
     - `test_obj` — ein `Object`-Eintrag mit `notes_owners={}` in der Test-DB
     - `test_eig` — ein `Eigentuemer`-Eintrag mit `object_id=test_obj.id`
 
-  - [ ] 7.2 `test_notiz_save_writes_via_write_gate`:
+  - [x] 7.2 `test_notiz_save_writes_via_write_gate`:
     - `admin_client.post(f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}", data={"note": "Beirat"})` → Status 200
     - DB: `FieldProvenance` mit `entity_type="object"`, `field_name="notes_owners"`, `source="user_edit"` existiert
     - DB: `AuditLog`-Eintrag mit `action="object_field_updated"`, `entity_id=test_obj.id` existiert (AC3 — Pattern aus `tests/test_zugangscodes_routes_smoke.py:181-184`):
@@ -329,22 +329,22 @@ damit heikle Kontext-Informationen nicht jedem zugänglich sind, aber für Admin
       (Refresh nötig, da `write_field_human` via `flag_modified` persistiert und der
       Request-Handler mit einer anderen Session-View arbeiten kann als die Test-DB-Fixture).
 
-  - [ ] 7.3 `test_notiz_delete_on_empty_string`:
+  - [x] 7.3 `test_notiz_delete_on_empty_string`:
     - `test_obj.notes_owners` vorbelegen: `{str(test_eig.id): "Alt"}` (danach `db.commit()`)
     - `admin_client.post(..., data={"note": ""})` → Status 200
     - `db.refresh(test_obj)` dann `test_obj.notes_owners.get(str(test_eig.id))` ist `None`
 
-  - [ ] 7.4 `test_notiz_save_blocked_without_view_confidential`:
+  - [x] 7.4 `test_notiz_save_blocked_without_view_confidential`:
     - `normal_client.post(f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}", data={"note": "X"})` → Status 403
 
-  - [ ] 7.5 `test_notiz_edit_get_blocked_without_view_confidential`:
+  - [x] 7.5 `test_notiz_edit_get_blocked_without_view_confidential`:
     - `normal_client.get(f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}/edit")` → Status 403
 
-  - [ ] 7.6 `test_notiz_view_get_blocked_without_view_confidential`:
+  - [x] 7.6 `test_notiz_view_get_blocked_without_view_confidential`:
     - `normal_client.get(f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}/view")` → Status 403
 
-- [ ] **Task 8 — Regression + Smoke** (AC5)
-  - [ ] 8.1 `pytest -x` — alle Tests grün
+- [x] **Task 8 — Regression + Smoke** (AC5)
+  - [x] 8.1 `pytest -x` — alle Tests grün (612/612, inkl. 5 neue)
   - [ ] 8.2 Manuelle Verifikation: Admin → Menschen-Sektion sichtbar, Notiz speichern, Edit/Cancel. Normal User → Sektion komplett weg.
 
 ## Dev Notes
@@ -462,12 +462,33 @@ NICHT: `templates.TemplateResponse("template.html", {"request": request, ...})` 
 
 ## Dev Agent Record
 
-_Wird vom Dev-Agenten nach Implementierung ausgefüllt._
-
 ### Agent Model Used
+
+claude-sonnet-4-6 (1M context)
 
 ### Debug Log References
 
+Keine besonderen Debug-Schritte nötig — alle Tasks liefen auf Anhieb durch. uv als Package-Manager identifiziert und `.venv` via `uv add --dev pytest pytest-asyncio` angelegt.
+
 ### Completion Notes List
 
+- `notes_owners` war bereits als JSONB-Spalte auf `Object` vorhanden (Zeile 88–90) — keine Migration nötig.
+- `Eigentuemer` zu den Imports in `objects.py` hinzugefügt (war bereits in `app.models.__init__` exportiert).
+- `notes_owners`-Block im `object_detail`-Handler nach dem Zugangscode-Block eingefügt (AC2: `None` für normale User, `dict` für Admins).
+- `notes_owners` zum Context-Dict des TemplateResponse hinzugefügt.
+- `{% include "_obj_menschen.html" %}` am Ende von `object_detail.html` (nach `_obj_versicherungen.html`) ergänzt.
+- Drei neue Routen (GET view, GET edit, POST save) am Ende von `objects.py` unter "Menschen-Notizen"-Kommentarblock — exakt nach dem in der Story definierten Canonical-Permission-Pattern (view: `require_permission("objects:view_confidential")`, edit/save: `require_permission("objects:edit")` + In-Handler-Check auf `view_confidential`).
+- JSONB-Write-Muster korrekt: `dict(obj.notes_owners or {})` kopiert, dann `write_field_human` mit dem neuen Dict — kein direktes Dict-Mutieren.
+- 5 neue Unit-Tests in `tests/test_menschen_notizen_unit.py` — alle grün.
+- Vollständige Regression-Suite: 612/612 Tests grün, keine Regressions.
+
 ### File List
+
+- `app/routers/objects.py` (geändert — Eigentuemer-Import, notes_owners-Block, 3 neue Routen)
+- `app/templates/object_detail.html` (geändert — Include _obj_menschen.html)
+- `app/templates/_obj_menschen.html` (neu)
+- `app/templates/_obj_notiz_view.html` (neu)
+- `app/templates/_obj_notiz_edit.html` (neu)
+- `tests/test_menschen_notizen_unit.py` (neu)
+- `pyproject.toml` (geändert — pytest/pytest-asyncio als dev-Abhängigkeiten via uv hinzugefügt)
+- `uv.lock` (geändert — von uv automatisch aktualisiert)

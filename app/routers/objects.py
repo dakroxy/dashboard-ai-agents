@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import InsurancePolicy, Object, Schadensfall, Unit, User, Wartungspflicht
+from app.models import Eigentuemer, InsurancePolicy, Object, Schadensfall, Unit, User, Wartungspflicht
 from app.models.object import SteckbriefPhoto
 from app.models.registry import Dienstleister
 from app.permissions import accessible_object_ids, has_permission, require_permission
@@ -294,6 +294,11 @@ async def object_detail(
             except Exception:
                 pass  # Audit-Commit-Fehler darf Page-Render nicht blockieren
 
+    # --- Menschen-Notizen (Story 2.4, nur fuer view_confidential) ---
+    notes_owners: dict | None = None
+    if has_permission(user, "objects:view_confidential"):
+        notes_owners = dict(detail.obj.notes_owners or {})
+
     # ---- Versicherungs-Sektion (Story 2.1+2.2+2.3) ----
     policen = get_policen_for_object(db, detail.obj.id)
     versicherer_list = get_all_versicherer(db)
@@ -345,6 +350,7 @@ async def object_detail(
             "schadensfaelle": schadensfaelle,
             "units": units,
             "get_due_severity": get_due_severity,
+            "notes_owners": notes_owners,
         },
     )
 
@@ -1497,4 +1503,92 @@ async def wartungspflicht_delete(
             "get_due_severity": get_due_severity,
             "user": user,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Menschen-Notizen (Story 2.4) — Inline-Edit fuer Eigentuemer-Notizen.
+# view_confidential ist Pflicht fuer alle drei Endpoints.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{object_id}/menschen-notizen/{eigentuemer_id}/view", response_class=HTMLResponse)
+async def notiz_view(
+    object_id: uuid.UUID,
+    eigentuemer_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:view_confidential")),
+    db: Session = Depends(get_db),
+):
+    obj = _load_accessible_object(db, object_id, user)
+    eig = db.get(Eigentuemer, eigentuemer_id)
+    if not eig or eig.object_id != obj.id:
+        raise HTTPException(404, detail="Eigentuemer nicht gefunden")
+    note_text = (obj.notes_owners or {}).get(str(eigentuemer_id)) or ""
+    return templates.TemplateResponse(
+        request, "_obj_notiz_view.html",
+        {"obj": obj, "eig": eig, "note_text": note_text, "user": user},
+    )
+
+
+@router.get("/{object_id}/menschen-notizen/{eigentuemer_id}/edit", response_class=HTMLResponse)
+async def notiz_edit(
+    object_id: uuid.UUID,
+    eigentuemer_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    if not has_permission(user, "objects:view_confidential"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung fuer vertrauliche Felder",
+        )
+    obj = _load_accessible_object(db, object_id, user)
+    eig = db.get(Eigentuemer, eigentuemer_id)
+    if not eig or eig.object_id != obj.id:
+        raise HTTPException(404, detail="Eigentuemer nicht gefunden")
+    note_text = (obj.notes_owners or {}).get(str(eigentuemer_id)) or ""
+    return templates.TemplateResponse(
+        request, "_obj_notiz_edit.html",
+        {"obj": obj, "eig": eig, "note_text": note_text, "user": user},
+    )
+
+
+@router.post("/{object_id}/menschen-notizen/{eigentuemer_id}", response_class=HTMLResponse)
+async def notiz_save(
+    object_id: uuid.UUID,
+    eigentuemer_id: uuid.UUID,
+    request: Request,
+    note: str | None = Form(None),
+    user: User = Depends(require_permission("objects:edit")),
+    db: Session = Depends(get_db),
+):
+    if not has_permission(user, "objects:view_confidential"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung fuer vertrauliche Felder",
+        )
+    obj = _load_accessible_object(db, object_id, user)
+    eig = db.get(Eigentuemer, eigentuemer_id)
+    if not eig or eig.object_id != obj.id:
+        raise HTTPException(404, detail="Eigentuemer nicht gefunden")
+
+    new_notes = dict(obj.notes_owners or {})
+    note_clean = (note or "").strip()
+    if note_clean:
+        new_notes[str(eigentuemer_id)] = note_clean
+    else:
+        new_notes.pop(str(eigentuemer_id), None)
+
+    write_field_human(
+        db, entity=obj, field="notes_owners", value=new_notes,
+        source="user_edit", user=user, request=request,
+    )
+    db.commit()
+
+    note_text = new_notes.get(str(eigentuemer_id)) or ""
+    return templates.TemplateResponse(
+        request, "_obj_notiz_view.html",
+        {"obj": obj, "eig": eig, "note_text": note_text, "user": user},
     )

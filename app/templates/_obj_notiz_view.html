@@ -1,0 +1,18 @@
+{# View-Fragment fuer eine einzelne Eigentuemer-Notiz.
+   Container-ID = `notiz-{eig.id}`, damit HTMX outerHTML-Swap trifft. #}
+<div id="notiz-{{ eig.id }}">
+    {% if note_text %}
+    <p class="text-sm text-slate-800 whitespace-pre-wrap">{{ note_text }}</p>
+    {% else %}
+    <span class="text-slate-400 text-sm">—</span>
+    {% endif %}
+    {% if has_permission(user, "objects:edit") and has_permission(user, "objects:view_confidential") %}
+    <button type="button"
+            hx-get="/objects/{{ obj.id }}/menschen-notizen/{{ eig.id }}/edit"
+            hx-target="#notiz-{{ eig.id }}"
+            hx-swap="outerHTML"
+            class="mt-1 text-xs text-sky-600 hover:text-sky-900">
+        Bearbeiten
+    </button>
+    {% endif %}
+</div>

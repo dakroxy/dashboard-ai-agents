@@ -1,0 +1,25 @@
+{# Edit-Fragment fuer eine einzelne Eigentuemer-Notiz.
+   Selbe Container-ID wie View-Fragment damit Cancel/Save-Swap korrekt trifft. #}
+<div id="notiz-{{ eig.id }}">
+    <form hx-post="/objects/{{ obj.id }}/menschen-notizen/{{ eig.id }}"
+          hx-target="#notiz-{{ eig.id }}"
+          hx-swap="outerHTML">
+        <textarea name="note"
+                  rows="3"
+                  placeholder="Notiz zu {{ eig.name }} …"
+                  class="block w-full rounded border border-slate-300 px-2 py-1 text-sm resize-y">{{ note_text }}</textarea>
+        <div class="flex items-center gap-2 mt-1.5">
+            <button type="submit"
+                    class="text-xs px-2 py-0.5 rounded bg-sky-600 text-white hover:bg-sky-700">
+                Speichern
+            </button>
+            <button type="button"
+                    hx-get="/objects/{{ obj.id }}/menschen-notizen/{{ eig.id }}/view"
+                    hx-target="#notiz-{{ eig.id }}"
+                    hx-swap="outerHTML"
+                    class="text-xs text-slate-500 hover:text-slate-900">
+                Abbrechen
+            </button>
+        </div>
+    </form>
+</div>
