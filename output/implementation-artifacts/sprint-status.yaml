@@ -59,7 +59,7 @@ development_status:
   2-0-view-confidential-enforcement: done
   2-1-policen-pro-objekt-pflegen: done
   2-2-wartungspflichten-mit-policen-verweis: done
-  2-3-schadensfall-direkt-aus-objekt-anlegen: ready-for-dev
+  2-3-schadensfall-direkt-aus-objekt-anlegen: review
   2-4-menschen-notizen-admin-only: ready-for-dev
   2-5-due-radar-global-view: ready-for-dev
   2-6-due-radar-filter-deep-links: ready-for-dev

@@ -73,6 +73,13 @@ class InsurancePolicy(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    schadensfaelle: Mapped[list["Schadensfall"]] = relationship(
+        "Schadensfall",
+        back_populates="policy",
+        foreign_keys="[Schadensfall.policy_id]",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class Wartungspflicht(Base):
@@ -164,4 +171,11 @@ class Schadensfall(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    policy: Mapped["InsurancePolicy | None"] = relationship(
+        "InsurancePolicy", back_populates="schadensfaelle", foreign_keys=[policy_id]
+    )
+    unit: Mapped["Unit | None"] = relationship(  # noqa: F821
+        "Unit", foreign_keys=[unit_id]
     )

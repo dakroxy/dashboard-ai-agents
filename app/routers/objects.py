@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import InsurancePolicy, Object, User, Wartungspflicht
+from app.models import InsurancePolicy, Object, Schadensfall, Unit, User, Wartungspflicht
 from app.models.object import SteckbriefPhoto
 from app.models.registry import Dienstleister
 from app.permissions import accessible_object_ids, has_permission, require_permission
@@ -69,6 +69,10 @@ from app.services.steckbrief_policen import (
     get_policen_for_object,
     update_police,
     validate_police_dates,
+)
+from app.services.steckbrief_schadensfaelle import (
+    create_schadensfall,
+    get_schadensfaelle_for_object,
 )
 from app.services.steckbrief_wartungen import (
     create_wartungspflicht,
@@ -289,10 +293,14 @@ async def object_detail(
             except Exception:
                 pass  # Audit-Commit-Fehler darf Page-Render nicht blockieren
 
-    # ---- Versicherungs-Sektion (Story 2.1+2.2) ----
+    # ---- Versicherungs-Sektion (Story 2.1+2.2+2.3) ----
     policen = get_policen_for_object(db, detail.obj.id)
     versicherer_list = get_all_versicherer(db)
     dienstleister_list = get_all_dienstleister(db)
+    schadensfaelle = get_schadensfaelle_for_object(db, detail.obj.id)
+    units = db.scalars(
+        select(Unit).where(Unit.object_id == detail.obj.id).order_by(Unit.name)
+    ).all()
 
     # --- Fotos pro Komponente (Story 1.8) ---
     photos_raw = (
@@ -333,6 +341,8 @@ async def object_detail(
             "policen": policen,
             "versicherer_list": versicherer_list,
             "dienstleister_list": dienstleister_list,
+            "schadensfaelle": schadensfaelle,
+            "units": units,
             "get_due_severity": get_due_severity,
         },
     )
@@ -1020,6 +1030,10 @@ def _render_versicherungen(
     policen = get_policen_for_object(db, obj.id)
     versicherer_list = get_all_versicherer(db)
     dienstleister_list = get_all_dienstleister(db)
+    schadensfaelle = get_schadensfaelle_for_object(db, obj.id)
+    units = db.scalars(
+        select(Unit).where(Unit.object_id == obj.id).order_by(Unit.name)
+    ).all()
     return templates.TemplateResponse(
         request,
         "_obj_versicherungen.html",
@@ -1028,6 +1042,8 @@ def _render_versicherungen(
             "policen": policen,
             "versicherer_list": versicherer_list,
             "dienstleister_list": dienstleister_list,
+            "schadensfaelle": schadensfaelle,
+            "units": units,
             "get_due_severity": get_due_severity,
             "user": user,
         },
@@ -1042,6 +1058,54 @@ async def versicherungen_section(
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(db, object_id, user)
+    return _render_versicherungen(request, obj, db, user)
+
+
+@router.post("/{object_id}/schadensfaelle", response_class=HTMLResponse)
+async def create_schadensfall_route(
+    request: Request,
+    object_id: uuid.UUID,
+    policy_id: uuid.UUID = Form(...),
+    unit_id: str | None = Form(None),
+    occurred_at: str | None = Form(None),
+    estimated_sum: str = Form(...),
+    description: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("objects:edit")),
+):
+    # AC5: accessible_object_ids-Gate als ERSTER Aufruf
+    obj = _load_accessible_object(db, object_id, user)
+
+    policy = db.get(InsurancePolicy, policy_id)
+    if not policy or policy.object_id != obj.id:
+        raise HTTPException(404, detail="Police nicht gefunden")
+
+    unit_uuid: uuid.UUID | None = None
+    if unit_id and unit_id.strip():
+        try:
+            unit_uuid = uuid.UUID(unit_id.strip())
+        except ValueError:
+            raise HTTPException(422, detail="Ungueltige Unit-ID")
+
+    # AC3: Summen-Validierung
+    try:
+        amount = Decimal(estimated_sum.replace(",", ".").strip())
+    except InvalidOperation:
+        raise HTTPException(422, detail="Summe muss eine Zahl sein")
+    if amount <= 0:
+        raise HTTPException(422, detail="Geschaetzte Summe muss groesser als 0 sein")
+
+    occ_date = _parse_date(occurred_at)
+
+    create_schadensfall(
+        db, policy, user, request,
+        occurred_at=occ_date,
+        amount=amount,
+        description=description.strip() if description else None,
+        unit_id=unit_uuid,
+    )
+    db.commit()
+
     return _render_versicherungen(request, obj, db, user)
 
 
