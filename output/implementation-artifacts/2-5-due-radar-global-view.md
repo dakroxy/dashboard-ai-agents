@@ -1,6 +1,6 @@
 # Story 2.5: Due-Radar Global-View
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -19,55 +19,55 @@ damit keine Kündigungsfenster unbemerkt verstreichen.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Service `app/services/due_radar.py` erstellen (AC: 1, 2, 3)
-  - [ ] `DueRadarEntry` Dataclass mit Feldern: `kind`, `entity_id`, `object_id`, `object_short_code`, `due_date`, `days_remaining`, `severity`, `title`, `link_url`
-  - [ ] `list_due_within(db, *, days: int = 90, accessible_object_ids: set[uuid.UUID], severity: str | None = None, types: list[str] | None = None) -> list[DueRadarEntry]` implementieren. `severity`/`types` bleiben in dieser Story ungenutzt (Story 2.6 verdrahtet sie) — aber Signatur jetzt korrekt bauen, verhindert Refactoring in 2.6.
-  - [ ] **Early-Return bei leerem Input**: `if not accessible_object_ids: return []` vor den Queries — sonst `SAWarning: The IN-predicate on ... was invoked with an empty sequence` auf Postgres. Muster: `services/steckbrief.py:58–59`.
-  - [ ] Police-Query: `select(InsurancePolicy.id, .object_id, .next_main_due, .versicherer_id, Object.short_code, Versicherer.name)` mit `.join(Object, ...).outerjoin(Versicherer, ...)` — filter auf `next_main_due IS NOT NULL AND next_main_due <= cutoff AND object_id IN (accessible_object_ids)` (Set direkt, keine `list(...)`-Konversion — siehe Dev Notes "Was existiert")
-  - [ ] Wartung-Query: `select(Wartungspflicht.id, .bezeichnung, .next_due_date, InsurancePolicy.object_id, Object.short_code)` mit `.join(InsurancePolicy, InsurancePolicy.id == Wartungspflicht.policy_id).join(Object, ...)` — filter auf `policy_id IS NOT NULL AND next_due_date IS NOT NULL AND next_due_date <= cutoff AND InsurancePolicy.object_id IN (accessible_object_ids)`
-  - [ ] Beide Listen nach `due_date` zusammenführen + sortieren
-  - [ ] `days_remaining = (due_date - date.today()).days` — kann negativ sein (überfällig)
-  - [ ] Severity: `"< 30 Tage"` wenn `days_remaining < 30` (inkl. negativer Werte für überfällige Einträge), sonst `"< 90 Tage"`. **Keine dritte Severity-Stufe `"überfällig"`** — die "überfällig"-Anzeige ist reine Template-Logik in der Verbleibend-Zelle (Task 3, siehe AC2), der Severity-Badge bleibt rot "< 30 Tage".
-  - [ ] Title: Police → `versicherer_name or "Police"`, Wartung → `bezeichnung`
-  - [ ] `link_url`: immer `/objects/{object_id}#versicherungen` für beide Typen
+- [x] Task 1: Service `app/services/due_radar.py` erstellen (AC: 1, 2, 3)
+  - [x] `DueRadarEntry` Dataclass mit Feldern: `kind`, `entity_id`, `object_id`, `object_short_code`, `due_date`, `days_remaining`, `severity`, `title`, `link_url`
+  - [x] `list_due_within(db, *, days: int = 90, accessible_object_ids: set[uuid.UUID], severity: str | None = None, types: list[str] | None = None) -> list[DueRadarEntry]` implementieren. `severity`/`types` bleiben in dieser Story ungenutzt (Story 2.6 verdrahtet sie) — aber Signatur jetzt korrekt bauen, verhindert Refactoring in 2.6.
+  - [x] **Early-Return bei leerem Input**: `if not accessible_object_ids: return []` vor den Queries — sonst `SAWarning: The IN-predicate on ... was invoked with an empty sequence` auf Postgres. Muster: `services/steckbrief.py:58–59`.
+  - [x] Police-Query: `select(InsurancePolicy.id, .object_id, .next_main_due, .versicherer_id, Object.short_code, Versicherer.name)` mit `.join(Object, ...).outerjoin(Versicherer, ...)` — filter auf `next_main_due IS NOT NULL AND next_main_due <= cutoff AND object_id IN (accessible_object_ids)` (Set direkt, keine `list(...)`-Konversion — siehe Dev Notes "Was existiert")
+  - [x] Wartung-Query: `select(Wartungspflicht.id, .bezeichnung, .next_due_date, InsurancePolicy.object_id, Object.short_code)` mit `.join(InsurancePolicy, InsurancePolicy.id == Wartungspflicht.policy_id).join(Object, ...)` — filter auf `policy_id IS NOT NULL AND next_due_date IS NOT NULL AND next_due_date <= cutoff AND InsurancePolicy.object_id IN (accessible_object_ids)`
+  - [x] Beide Listen nach `due_date` zusammenführen + sortieren
+  - [x] `days_remaining = (due_date - date.today()).days` — kann negativ sein (überfällig)
+  - [x] Severity: `"< 30 Tage"` wenn `days_remaining < 30` (inkl. negativer Werte für überfällige Einträge), sonst `"< 90 Tage"`. **Keine dritte Severity-Stufe `"überfällig"`** — die "überfällig"-Anzeige ist reine Template-Logik in der Verbleibend-Zelle (Task 3, siehe AC2), der Severity-Badge bleibt rot "< 30 Tage".
+  - [x] Title: Police → `versicherer_name or "Police"`, Wartung → `bezeichnung`
+  - [x] `link_url`: immer `/objects/{object_id}#versicherungen` für beide Typen
 
-- [ ] Task 2: Router `app/routers/due_radar.py` erstellen (AC: 1, 4)
-  - [ ] `APIRouter(prefix="/due-radar", tags=["due-radar"])`
-  - [ ] `GET ""` Handler: `require_permission("due_radar:view")`, `accessible = accessible_object_ids(db, user)`, `entries = list_due_within(db, accessible_object_ids=accessible)` → `templates.TemplateResponse(request, "due_radar.html", {"title": "Due-Radar", "user": user, "entries": entries})`. Set wird direkt übergeben — kein `list(...)`-Wrapping (Muster: `routers/objects.py:97–98`).
-  - [ ] Kein separater HTMX-Fragment-Endpoint in dieser Story — Story 2.6 ergänzt `/due-radar/rows` mit Filterparametern
+- [x] Task 2: Router `app/routers/due_radar.py` erstellen (AC: 1, 4)
+  - [x] `APIRouter(prefix="/due-radar", tags=["due-radar"])`
+  - [x] `GET ""` Handler: `require_permission("due_radar:view")`, `accessible = accessible_object_ids(db, user)`, `entries = list_due_within(db, accessible_object_ids=accessible)` → `templates.TemplateResponse(request, "due_radar.html", {"title": "Due-Radar", "user": user, "entries": entries})`. Set wird direkt übergeben — kein `list(...)`-Wrapping (Muster: `routers/objects.py:97–98`).
+  - [x] Kein separater HTMX-Fragment-Endpoint in dieser Story — Story 2.6 ergänzt `/due-radar/rows` mit Filterparametern
 
-- [ ] Task 3: Templates erstellen (AC: 1, 2, 3, 5)
-  - [ ] `app/templates/due_radar.html` — extends `base.html`, enthält Seitenheader + `<table>` mit `thead` + `{% include "_due_radar_rows.html" %}`
-  - [ ] `app/templates/_due_radar_rows.html` — `<tbody id="due-radar-rows">` mit `{% for entry in entries %}` Zeilen + Empty-State-Fallback; tbody-ID ist Pflicht weil Story 2.6 HTMX `hx-target="#due-radar-rows"` nutzt
-  - [ ] Tabellenkolumnen: Typ | Objekt | Titel | Fälligkeit (`dd.MM.yyyy`) | Verbleibend | Schwere
-  - [ ] Verbleibend-Zelle: `days_remaining < 0` → "überfällig" (rot), sonst `{days_remaining} Tage` (rot < 30, orange sonst)
-  - [ ] Severity-Badge: `bg-red-100 text-red-700` für "< 30 Tage", `bg-orange-100 text-orange-700` für "< 90 Tage"
-  - [ ] Objekt-Kürzel als `<a href="/objects/{{ entry.object_id }}">` Link
-  - [ ] Titel als `<a href="{{ entry.link_url }}">` Link
+- [x] Task 3: Templates erstellen (AC: 1, 2, 3, 5)
+  - [x] `app/templates/due_radar.html` — extends `base.html`, enthält Seitenheader + `<table>` mit `thead` + `{% include "_due_radar_rows.html" %}`
+  - [x] `app/templates/_due_radar_rows.html` — `<tbody id="due-radar-rows">` mit `{% for entry in entries %}` Zeilen + Empty-State-Fallback; tbody-ID ist Pflicht weil Story 2.6 HTMX `hx-target="#due-radar-rows"` nutzt
+  - [x] Tabellenkolumnen: Typ | Objekt | Titel | Fälligkeit (`dd.MM.yyyy`) | Verbleibend | Schwere
+  - [x] Verbleibend-Zelle: `days_remaining < 0` → "überfällig" (rot), sonst `{days_remaining} Tage` (rot < 30, orange sonst)
+  - [x] Severity-Badge: `bg-red-100 text-red-700` für "< 30 Tage", `bg-orange-100 text-orange-700` für "< 90 Tage"
+  - [x] Objekt-Kürzel als `<a href="/objects/{{ entry.object_id }}">` Link
+  - [x] Titel als `<a href="{{ entry.link_url }}">` Link
 
-- [ ] Task 4: Router in `app/main.py` registrieren + Sidebar ergänzen (AC: 4, 5)
-  - [ ] In `app/main.py`: `from app.routers import due_radar as due_radar_router` importieren + `app.include_router(due_radar_router.router)` eintragen (analog zu `objects_router`, alphabetisch sortiert)
-  - [ ] In `app/templates/base.html`: Due-Radar Sidebar-Link nach dem Objekte-Block einfügen, nur wenn `has_permission(user, "due_radar:view")`. Die `path`-Variable kommt aus `{% set path = request.url.path %}` (bereits in `base.html:26` gesetzt — nicht neu deklarieren); Active-State via `path.startswith("/due-radar")`. Tailwind-Klassen + `<svg>`-Wrapping 1:1 analog zum Objekte-Link-Block in `base.html:41–52` kopieren. Uhr-Icon-Path: `<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>`
+- [x] Task 4: Router in `app/main.py` registrieren + Sidebar ergänzen (AC: 4, 5)
+  - [x] In `app/main.py`: `from app.routers import due_radar as due_radar_router` importieren + `app.include_router(due_radar_router.router)` eintragen (analog zu `objects_router`, alphabetisch sortiert)
+  - [x] In `app/templates/base.html`: Due-Radar Sidebar-Link nach dem Objekte-Block einfügen, nur wenn `has_permission(user, "due_radar:view")`. Die `path`-Variable kommt aus `{% set path = request.url.path %}` (bereits in `base.html:26` gesetzt — nicht neu deklarieren); Active-State via `path.startswith("/due-radar")`. Tailwind-Klassen + `<svg>`-Wrapping 1:1 analog zum Objekte-Link-Block in `base.html:41–52` kopieren. Uhr-Icon-Path: `<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>`
 
-- [ ] Task 5: Tests `tests/test_due_radar_unit.py` (AC: 6)
-  - [ ] `test_empty_when_no_accessible_ids()` — `list_due_within(db, accessible_object_ids=set())` → `[]` (Early-Return ohne DB-Roundtrip)
-  - [ ] `test_police_entry_included_within_90_days()` — Police mit `next_main_due = today + 30` erscheint im Ergebnis, `kind="police"`, `title == versicherer.name`
-  - [ ] `test_wartung_entry_via_police_join()` — Wartung ohne direktes `object_id`, erfordert JOIN via `policen`; `kind="wartung"`, `title == bezeichnung`
-  - [ ] `test_severity_under_30_days_red()` — `days_remaining=15` → `severity="< 30 Tage"`
-  - [ ] `test_severity_30_to_90_days_orange()` — `days_remaining=45` → `severity="< 90 Tage"`
-  - [ ] `test_overdue_entry_included_and_severity_stays_red()` — `next_main_due = today - 5` (überfällig, `days_remaining < 0`) erscheint im Ergebnis (Cutoff `<= today + 90`) und hat `severity="< 30 Tage"` (keine separate "überfällig"-Severity)
+- [x] Task 5: Tests `tests/test_due_radar_unit.py` (AC: 6)
+  - [x] `test_empty_when_no_accessible_ids()` — `list_due_within(db, accessible_object_ids=set())` → `[]` (Early-Return ohne DB-Roundtrip)
+  - [x] `test_police_entry_included_within_90_days()` — Police mit `next_main_due = today + 30` erscheint im Ergebnis, `kind="police"`, `title == versicherer.name`
+  - [x] `test_wartung_entry_via_police_join()` — Wartung ohne direktes `object_id`, erfordert JOIN via `policen`; `kind="wartung"`, `title == bezeichnung`
+  - [x] `test_severity_under_30_days_red()` — `days_remaining=15` → `severity="< 30 Tage"`
+  - [x] `test_severity_30_to_90_days_orange()` — `days_remaining=45` → `severity="< 90 Tage"`
+  - [x] `test_overdue_entry_included_and_severity_stays_red()` — `next_main_due = today - 5` (überfällig, `days_remaining < 0`) erscheint im Ergebnis (Cutoff `<= today + 90`) und hat `severity="< 30 Tage"` (keine separate "überfällig"-Severity)
 
-- [ ] Task 6: Smoke-Tests + Sidebar-Gate + Regression (AC: 4, 5)
-  - [ ] Neue Datei `tests/test_due_radar_routes_smoke.py` anlegen — eigene Datei pro Feature ist die aktuelle Konvention seit Story 1.3 (siehe `test_technik_routes_smoke.py`, `test_zugangscodes_routes_smoke.py`, `test_foto_routes_smoke.py`). **Nicht** in `test_routes_smoke.py` einfügen.
-  - [ ] Lokale Fixture `due_radar_user` (analog `steckbrief_admin_user` in `test_steckbrief_routes_smoke.py:19–45`) mit `permissions_extra=["due_radar:view", "objects:view"]` — `objects:view` ist nötig, damit `accessible_object_ids` nicht leer zurückkommt (v1-Semantik `permissions.py:257–270`).
-  - [ ] Lokale Fixture `due_radar_client` (analog `steckbrief_admin_client`) mit `app.dependency_overrides` für diesen User.
-  - [ ] `test_requires_login(anon_client)` — unauthenticated → 302, `location` startet mit `/auth/google/login`
-  - [ ] `test_forbidden_without_due_radar_view(auth_client)` — `test_user` aus `conftest.py` hat `due_radar:view` **nicht** → 403, Detail-Meldung enthält `"due_radar:view"`
-  - [ ] `test_ok_for_user_with_permission(due_radar_client)` — 200, `"text/html"` im Content-Type
-  - [ ] `test_empty_state_text(due_radar_client)` — AC3: bei 0 Einträgen erscheint "Keine ablaufenden Einträge in den nächsten 90 Tagen"
-  - [ ] `test_sidebar_link_visible_for_permitted_user(due_radar_client)` — GET `/` → Body enthält `'href="/due-radar"'` (AC5 positive)
-  - [ ] `test_sidebar_link_hidden_for_unpermitted_user(auth_client)` — GET `/` → weder `'href="/due-radar"'` noch das Wort "Due-Radar" im Body (AC5 negative; Muster: `test_steckbrief_routes_smoke.py:388–396`)
-  - [ ] `pytest tests/` grün (aktuell 478 Tests nach Story 1.8)
+- [x] Task 6: Smoke-Tests + Sidebar-Gate + Regression (AC: 4, 5)
+  - [x] Neue Datei `tests/test_due_radar_routes_smoke.py` anlegen — eigene Datei pro Feature ist die aktuelle Konvention seit Story 1.3 (siehe `test_technik_routes_smoke.py`, `test_zugangscodes_routes_smoke.py`, `test_foto_routes_smoke.py`). **Nicht** in `test_routes_smoke.py` einfügen.
+  - [x] Lokale Fixture `due_radar_user` (analog `steckbrief_admin_user` in `test_steckbrief_routes_smoke.py:19–45`) mit `permissions_extra=["due_radar:view", "objects:view"]` — `objects:view` ist nötig, damit `accessible_object_ids` nicht leer zurückkommt (v1-Semantik `permissions.py:257–270`).
+  - [x] Lokale Fixture `due_radar_client` (analog `steckbrief_admin_client`) mit `app.dependency_overrides` für diesen User.
+  - [x] `test_requires_login(anon_client)` — unauthenticated → 302, `location` startet mit `/auth/google/login`
+  - [x] `test_forbidden_without_due_radar_view(auth_client)` — `test_user` aus `conftest.py` hat `due_radar:view` **nicht** → 403, Detail-Meldung enthält `"due_radar:view"`
+  - [x] `test_ok_for_user_with_permission(due_radar_client)` — 200, `"text/html"` im Content-Type
+  - [x] `test_empty_state_text(due_radar_client)` — AC3: bei 0 Einträgen erscheint "Keine ablaufenden Einträge in den nächsten 90 Tagen"
+  - [x] `test_sidebar_link_visible_for_permitted_user(due_radar_client)` — GET `/` → Body enthält `'href="/due-radar"'` (AC5 positive)
+  - [x] `test_sidebar_link_hidden_for_unpermitted_user(auth_client)` — GET `/` → weder `'href="/due-radar"'` noch das Wort "Due-Radar" im Body (AC5 negative; Muster: `test_steckbrief_routes_smoke.py:388–396`)
+  - [x] `pytest tests/` grün (aktuell 646 Tests nach Story 2.5)
 
 ## Dev Notes
 
@@ -180,4 +180,37 @@ claude-sonnet-4-6[1m]
 
 ### Completion Notes List
 
+- Service `due_radar.py` mit `DueRadarEntry`-Dataclass und `list_due_within()` implementiert (zwei separate Queries, Police + Wartung, nach due_date sortiert zusammengeführt).
+- Early-Return bei leerem `accessible_object_ids` verhindert SAWarning auf Postgres (Muster aus `steckbrief.py`).
+- Wartung-Query nutzt JOIN via `policy_id → policen → objects`, kein direktes `object_id` — entspricht Story-Vorgabe.
+- Router `/due-radar` mit `require_permission("due_radar:view")` + `accessible_object_ids`-ACL-Schicht.
+- Templates `due_radar.html` + `_due_radar_rows.html` mit `<tbody id="due-radar-rows">` für Story-2.6-HTMX-Hooks.
+- Sidebar-Link in `base.html` nach Objekte-Block, Permission-Gate `due_radar:view`, Uhr-Icon.
+- Router in `main.py` alphabetisch vor `objects_router` eingetragen.
+- 6 Unit-Tests (alle Severity-Schwellen, überfällige Einträge, Wartung-JOIN) + 6 Smoke-Tests (Login-Gate, 403, 200, Empty-State, Sidebar positiv/negativ).
+- Alle 646 Tests grün, keine Regressionen.
+
 ### File List
+
+- `app/services/due_radar.py` (neu)
+- `app/routers/due_radar.py` (neu)
+- `app/templates/due_radar.html` (neu)
+- `app/templates/_due_radar_rows.html` (neu)
+- `tests/test_due_radar_unit.py` (neu)
+- `tests/test_due_radar_routes_smoke.py` (neu)
+- `app/main.py` (geändert: due_radar_router Import + include_router)
+- `app/templates/base.html` (geändert: Due-Radar Sidebar-Link)
+
+### Review Findings
+
+Code-Review 2026-04-27 (3-Layer adversarial: Blind Hunter, Edge Case Hunter, Acceptance Auditor).
+
+- [x] [Review][Patch] Toter Anchor `#versicherungen` — kein matching `id`-Element vorhanden [`app/services/due_radar.py:82,116` + `app/templates/_obj_versicherungen.html:6`] — `link_url = "/objects/{id}#versicherungen"` zeigt auf einen Anchor, den es nicht gibt. Section setzt nur `data-section="versicherungen"`, kein `id`. Browser kann nicht scrollen, User landet am Seitenanfang. Fix: `id="versicherungen"` zur `<section>` in `_obj_versicherungen.html:6` ergänzt.
+- [x] [Review][Patch] Pluralisierung "1 Tage" statt "1 Tag" [`app/templates/_due_radar_rows.html:23,25`] — Bei `days_remaining == 1` rendert das Template "1 Tage". Sichtbar für die dringendsten nicht-überfälligen Einträge. Fix: `{{ entry.days_remaining }} Tag{% if entry.days_remaining != 1 %}e{% endif %}` eingesetzt.
+- [x] [Review][Defer] Sort-Stabilität bei gleichem `due_date` [`app/services/due_radar.py:120`] — deferred, kosmetisch — Spec definiert keinen Sekundär-Sortierschlüssel; aktuelle Reihenfolge (Polizen vor Wartungen bei selbem Datum) ergibt sich aus Loop-Order, nicht aus User-Intent. Bei UX-Feedback Sekundär-Sort nach `kind`/`title` einbauen.
+- [x] [Review][Defer] Spec-Doc-Wording: Test-Beschreibung "Wartung ohne direktes `object_id`" passt nicht zum Model [`output/implementation-artifacts/2-5-due-radar-global-view.md:54` + `app/models/police.py:106-111`] — deferred, Spec-Doc-Kosmetik. `Wartungspflicht.object_id` ist `nullable=False`. Test exerciset den JOIN-via-policy korrekt (Service nutzt `InsurancePolicy.object_id`); nur die Spec-Beschreibung ist ungenau. Bei nächster Story-Iteration angleichen.
+
+## Change Log
+
+- 2026-04-27: Story 2.5 implementiert — Due-Radar Global-View (Service + Router + Templates + Sidebar + Tests, 646 Tests grün)
+- 2026-04-27: Code-Review (3-Layer): 2 Patches, 2 Defer, 3 Dismissed; keine CRITICAL/HIGH/MEDIUM Findings.

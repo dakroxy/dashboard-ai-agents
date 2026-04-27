@@ -51,6 +51,20 @@
             </a>
             {% endif %}
 
+            {# Due-Radar #}
+            {% if has_permission(user, "due_radar:view") %}
+            {% set active = path.startswith("/due-radar") %}
+            <a href="/due-radar"
+               class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
+                      {% if active %}bg-slate-800 text-white border-emerald-400
+                      {% else %}text-slate-300 hover:bg-slate-800 hover:text-white border-transparent{% endif %}">
+                <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Due-Radar
+            </a>
+            {% endif %}
+
             {# Workflows (Konfiguration) #}
             {% if has_permission(user, "workflows:view") %}
             {% set active = path.startswith("/workflows") %}

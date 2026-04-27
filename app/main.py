@@ -24,6 +24,7 @@ from app.routers import auth as auth_router
 from app.routers import cases as cases_router
 from app.routers import contacts as contacts_router
 from app.routers import documents as documents_router
+from app.routers import due_radar as due_radar_router
 from app.routers import impower as impower_router
 from app.routers import objects as objects_router
 from app.routers import registries as registries_router
@@ -336,6 +337,7 @@ app.include_router(auth_router.router)
 app.include_router(documents_router.router)
 app.include_router(cases_router.router)
 app.include_router(contacts_router.router)
+app.include_router(due_radar_router.router)
 app.include_router(objects_router.router)
 app.include_router(registries_router.router)
 app.include_router(workflows_router.router)

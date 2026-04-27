@@ -1,0 +1,43 @@
+{# Fragment fuer Due-Radar-Tabellenkoerper. tbody-ID wird von Story 2.6 (HTMX-Filter) benoetigt. #}
+<tbody id="due-radar-rows">
+    {% for entry in entries %}
+    <tr class="border-t border-slate-100 hover:bg-slate-50">
+        <td class="px-4 py-3 text-slate-500">
+            {% if entry.kind == "police" %}Police{% else %}Wartung{% endif %}
+        </td>
+        <td class="px-4 py-3 font-medium">
+            <a href="/objects/{{ entry.object_id }}" class="hover:underline text-slate-800">
+                {{ entry.object_short_code }}
+            </a>
+        </td>
+        <td class="px-4 py-3 text-slate-700">
+            <a href="{{ entry.link_url }}" class="hover:underline">{{ entry.title }}</a>
+        </td>
+        <td class="px-4 py-3 tabular-nums text-slate-600">
+            {{ entry.due_date.strftime("%d.%m.%Y") }}
+        </td>
+        <td class="px-4 py-3 tabular-nums">
+            {% if entry.days_remaining < 0 %}
+            <span class="text-red-600 font-medium">überfällig</span>
+            {% elif entry.days_remaining < 30 %}
+            <span class="text-red-600">{{ entry.days_remaining }} Tag{% if entry.days_remaining != 1 %}e{% endif %}</span>
+            {% else %}
+            <span class="text-orange-600">{{ entry.days_remaining }} Tag{% if entry.days_remaining != 1 %}e{% endif %}</span>
+            {% endif %}
+        </td>
+        <td class="px-4 py-3">
+            {% if entry.severity == "< 30 Tage" %}
+            <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700">{{ entry.severity }}</span>
+            {% else %}
+            <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-700">{{ entry.severity }}</span>
+            {% endif %}
+        </td>
+    </tr>
+    {% else %}
+    <tr>
+        <td colspan="6" class="px-4 py-10 text-center text-slate-400">
+            Keine ablaufenden Einträge in den nächsten 90 Tagen.
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>

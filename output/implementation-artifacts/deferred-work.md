@@ -2,6 +2,21 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of story-2.5 (2026-04-27)
+
+- **Sort-Stabilitaet bei gleichem `due_date`** [`app/services/due_radar.py:120`] — Polizen kommen bei selbem `due_date` immer vor Wartungen (Loop-Order, Python-stable-Sort). Spec definiert keinen Sekundaer-Sortierschluessel. Bei UX-Feedback Sekundaer-Sort nach `kind`/`title` einbauen.
+- **Spec-Doc-Wording: Test-Beschreibung "Wartung ohne direktes `object_id`" passt nicht zum Model** [`output/implementation-artifacts/2-5-due-radar-global-view.md:54` + `app/models/police.py:106-111`] — `Wartungspflicht.object_id` ist `nullable=False`. Test exerciset den JOIN-via-policy korrekt (Service nutzt `InsurancePolicy.object_id`); nur die Spec-Beschreibung ist ungenau. Bei naechster Story-Iteration im Spec-Wording angleichen.
+
+## Deferred from: code review of sepa-extraktion-inline-edit (2026-04-27)
+
+- **Per-Feld „manuell"-Pill fehlt** [`app/templates/_extraction_field_view.html`] — Nur globale Modell-Anzeige im Block-Footer (`extraction.model = "manual"`) signalisiert manuelle Bearbeitung. Saubere Per-Feld-Anzeige braucht entweder (a) Audit-Log-Aggregation pro Render (N+1-Risiko) oder (b) ein neues `_manual_fields`-Feld im JSONB. Aufschieben bis UX-Feedback dafür drueckt.
+- **`sepa_date` ohne Bounds (`>9999-12-31` / `<1900-01-01`)** [`app/services/document_field_edit.py:_validate_sepa_date`] — `date.fromisoformat()` akzeptiert beliebig hohe Jahre. Praktisch unwahrscheinlich (User tippt selten 9999), aber bei Hardening-Runde analog zu Schadensfall-Story 2.3 (`_parse_date`) Bounds einziehen.
+- **Concurrent-Save-Race auf demselben Document** [`app/routers/documents.py:extraction_field_save`] — Zwei parallele POSTs erzeugen zwei Extraction-Rows mit gleicher Vorlage; das BG-`_run_matching` läuft zweimal und überschreibt sich. Selten in Single-User-UI; bei Multi-Admin-Volumen via `with_for_update` auf doc oder Advisory-Lock absichern.
+- **Pen-Icon ohne distinctes `aria-label`-Pattern** [`app/templates/_extraction_field_view.html`] — `aria-label="{label} bearbeiten"` ist gesetzt; ein konsistentes Pattern für alle Inline-Edit-Buttons projektweit (Technik-Section, Zugangscodes, Steckbrief-Feld-Edits) wäre sauberer als pro-Story-Lösung. Sammelpunkt für UI-Hardening-Sprint.
+- **Mobile IBAN-Input ohne `inputmode`/`pattern`-Hint** [`app/templates/_extraction_field_edit.html`] — Default `type="text"` → Mobile-Tastatur ist QWERTY. `inputmode="latin-prose"` oder `pattern="[A-Z0-9 ]+"` wäre besser für IBAN/BIC. Niedrige Prio (Inline-Edit primär Desktop-Usecase im Buero).
+- **CSRF-Schutz fehlt projektweit für alle POST-Routen** — Mention nochmal mit dem neuen `POST /documents/{id}/extraction/field`. Bereits in 2.4-Defer-Section, hier nur als Reminder dass die neue Route mit unter den Sammelpunkt fällt.
+- **GET `/extraction/view?field=` hat keinen `documents:approve`-Check** [`app/routers/documents.py:extraction_field_view_fragment`] — Cancel-Pfad zeigt den aktuellen Wert ohne Permission-Check. Information-Disclosure-Risiko sehr niedrig (der Wert ist auf der Detail-Seite ohnehin sichtbar, sonst hätte der User die Route gar nicht erreicht). Bei Permission-Pattern-Review konsolidieren.
+
 ## Deferred from: code review of story-2.4 (2026-04-27)
 
 - **CSRF-Schutz fehlt projektweit fuer alle POST-Routen** [`app/main.py`, alle Router] — Cookie-basierte Google-Workspace-Session ohne CSRF-Token-Check macht Form-Posts theoretisch ueber externe Seiten triggerbar. Pre-existing (alle Stories betroffen), nicht Story-2.4-spezifisch. Vor produktivem Multi-Mandanten-Rollout konsequent abdecken (Starlette-`CSRFMiddleware` oder `hx-headers` mit Token).
