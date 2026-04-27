@@ -205,3 +205,68 @@ def test_notiz_view_get_blocked_without_view_confidential(
         f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}/view",
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Review-Patches Story 2.4 (Code-Review 2026-04-27)
+# ---------------------------------------------------------------------------
+
+
+def test_notiz_save_max_length_enforced(admin_client, test_obj, test_eig):
+    """Patch P1: 4001 Zeichen werden vom Form-Validator auf 422 gemappt."""
+    too_long = "x" * 4001
+    resp = admin_client.post(
+        f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}",
+        data={"note": too_long},
+    )
+    assert resp.status_code == 422
+
+
+def test_notiz_save_cross_object_returns_404(db, admin_client, admin_user, test_obj, test_eig):
+    """Patch P3: Eigentuemer aus Objekt A via URL Objekt B → 404 (IDOR-Guard)."""
+    other_obj = Object(
+        id=uuid.uuid4(),
+        short_code="MN02",
+        name="MNotiz anderes Objekt",
+        notes_owners={},
+    )
+    db.add(other_obj)
+    db.commit()
+    db.refresh(other_obj)
+
+    resp = admin_client.post(
+        f"/objects/{other_obj.id}/menschen-notizen/{test_eig.id}",
+        data={"note": "darf nicht durchgehen"},
+    )
+    assert resp.status_code == 404
+
+
+def test_notiz_save_whitespace_only_deletes(db, admin_client, test_obj, test_eig):
+    """Patch P4: Whitespace-only-Notiz triggert nach `.strip()` den Delete-Branch."""
+    test_obj.notes_owners = {str(test_eig.id): "Alt"}
+    db.add(test_obj)
+    db.commit()
+
+    resp = admin_client.post(
+        f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}",
+        data={"note": "   \t\n  "},
+    )
+    assert resp.status_code == 200
+
+    db.expire_all()
+    refreshed = db.get(Object, test_obj.id)
+    assert refreshed.notes_owners.get(str(test_eig.id)) is None
+
+
+def test_notiz_view_escapes_html_payload(db, admin_client, test_obj, test_eig):
+    """Patch P5: XSS-Payload wird durch Jinja-Autoescape escapt, nicht roh ausgegeben."""
+    payload = "<script>alert('xss')</script>"
+    save_resp = admin_client.post(
+        f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}",
+        data={"note": payload},
+    )
+    assert save_resp.status_code == 200
+
+    body = save_resp.text
+    assert "<script>" not in body
+    assert "&lt;script&gt;" in body or "&#x3C;script&#x3E;" in body or "&#60;script&#62;" in body

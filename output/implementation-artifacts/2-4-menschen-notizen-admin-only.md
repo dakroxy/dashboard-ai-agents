@@ -1,6 +1,6 @@
 # Story 2.4: Menschen-Notizen admin-only
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -481,6 +481,7 @@ Keine besonderen Debug-Schritte nötig — alle Tasks liefen auf Anhieb durch. u
 - JSONB-Write-Muster korrekt: `dict(obj.notes_owners or {})` kopiert, dann `write_field_human` mit dem neuen Dict — kein direktes Dict-Mutieren.
 - 5 neue Unit-Tests in `tests/test_menschen_notizen_unit.py` — alle grün.
 - Vollständige Regression-Suite: 612/612 Tests grün, keine Regressions.
+- **Code-Review-Patches (2026-04-27):** 4 Patches angewandt — `max_length=4000` auf Form-Param, plus 4 neue Tests (`max_length`, Cross-Object-IDOR-Guard, Whitespace-only-Delete, XSS-Escape). 5. Patch (edit-ohne-view_confidential-Test) verworfen, da bereits durch `normal_user`-Fixture abgedeckt. Regression: 634/634 grün.
 
 ### File List
 
@@ -492,3 +493,20 @@ Keine besonderen Debug-Schritte nötig — alle Tasks liefen auf Anhieb durch. u
 - `tests/test_menschen_notizen_unit.py` (neu)
 - `pyproject.toml` (geändert — pytest/pytest-asyncio als dev-Abhängigkeiten via uv hinzugefügt)
 - `uv.lock` (geändert — von uv automatisch aktualisiert)
+
+### Review Findings
+
+**Code review 2026-04-27** (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Spec-Compliance OK (alle ACs durch). Triage: 5 patch · 5 defer · 22 dismissed. Details siehe unten.
+
+- [x] [Review][Patch] Note-Text ohne Laengenbegrenzung → unbounded JSONB-Wachstum [`app/routers/objects.py:1563`] — fixed via `Form(None, max_length=4000)`, plus `test_notiz_save_max_length_enforced`
+- [x] [Review][Patch][DROPPED] Test fehlt: edit/save mit `objects:edit` ohne `view_confidential` — beim Patch-Apply festgestellt: `normal_user`-Fixture (`objects:edit` ohne `view_confidential`) trifft den In-Handler-Check bereits in `test_notiz_edit_get_blocked_without_view_confidential` und `test_notiz_save_blocked_without_view_confidential`. Pfad ist abgedeckt, Patch verworfen.
+- [x] [Review][Patch] Test fehlt: Cross-Object-IDOR (`eig` aus Objekt A via URL Objekt B) [`tests/test_menschen_notizen_unit.py`] — added `test_notiz_save_cross_object_returns_404`
+- [x] [Review][Patch] Test fehlt: Whitespace-only-Notiz triggert Delete-Branch [`tests/test_menschen_notizen_unit.py`] — added `test_notiz_save_whitespace_only_deletes`
+- [x] [Review][Patch] Test fehlt: XSS-Payload im Note wird durch Jinja-Autoescape escapt [`tests/test_menschen_notizen_unit.py`] — added `test_notiz_view_escapes_html_payload`
+- [x] [Review][Defer] CSRF-Schutz fehlt projektweit fuer alle POST-Routen — pre-existing, kein Story-2.4-Issue
+- [x] [Review][Defer] Race-Condition / Last-Write-Wins zwischen zwei Admins ohne ETag — Concurrency-Story, out of scope v1
+- [x] [Review][Defer] Unicode-Whitespace (Zero-Width-Space) nicht NFKC-normalisiert — `.strip()` reicht fuer freie Notizen, kritisch nur bei Ziffernfolgen wie IBAN
+- [x] [Review][Defer] Orphan keys in `notes_owners` nach Eigentuemer-Loeschung — Eigentuemer-Lifecycle-Story
+- [x] [Review][Defer] Subtask 8.2 (manuelle Browser-Smoke) noch offen — Prozess, kein Code
+
+**Dismissed (kurze Begruendung):** `flag_modified` und `audit()` sind verifiziert in `write_field_human` (`steckbrief_write_gate.py:282,308`); HTML-Escaping in `<textarea>{{ note_text }}</textarea>` und Attribut-Placeholder ist durch Jinja2-Autoescape abgedeckt; Edit-Pfad mit `require_permission("objects:edit")` + In-Handler `view_confidential`-Check ist der Canonical Pattern aus Story 2.0 (gewollt, nicht redundant); `eig.id | string` ruft Pythons `str()` (kein Format-Drift); `try/except` um Write fehlt projektweit; HTMX-Endpoints ohne `HX-Request`-Header-Pruefung sind Projekt-Konvention; `db.refresh` nach Write nicht noetig (`new_notes` ist die Wahrheit); UUID-Casing/JSONB-Keys/malformed-UUID werden von FastAPI/Python sauber gehandhabt.

@@ -2,6 +2,14 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of story-2.4 (2026-04-27)
+
+- **CSRF-Schutz fehlt projektweit fuer alle POST-Routen** [`app/main.py`, alle Router] — Cookie-basierte Google-Workspace-Session ohne CSRF-Token-Check macht Form-Posts theoretisch ueber externe Seiten triggerbar. Pre-existing (alle Stories betroffen), nicht Story-2.4-spezifisch. Vor produktivem Multi-Mandanten-Rollout konsequent abdecken (Starlette-`CSRFMiddleware` oder `hx-headers` mit Token).
+- **Race-Condition zwischen zwei Admins (Last-Write-Wins) auf `notes_owners` und allgemein auf JSONB-Felder** [`app/routers/objects.py:1577-1588`, projektweit] — Zwei parallele Edits → letzter ueberschreibt erste. Kein ETag, kein Optimistic-Lock. Praktisches Risiko niedrig bei Hand-voll Admins; bei groesserer Admin-Population per `If-Match`-Header oder `notes_owners`-Versionsfeld absichern. Betrifft auch alle anderen JSONB-Inline-Edits.
+- **Unicode-Whitespace (Zero-Width-Space U+200B u. a.) wird nicht aus Note-Text gestripped** [`app/routers/objects.py:1578`] — `.strip()` entfernt nur ASCII-Whitespace. Fuer freie Notizen marginal (User tippt selten ZWSP), kritisch nur bei Ziffernfolgen wie IBAN (siehe Memory `feedback_llm_iban_unicode_normalize.md`). Bei naechster Notes-Iteration ggf. `unicodedata.normalize("NFKC", note).strip()` einsetzen.
+- **Orphan keys in `notes_owners` nach Eigentuemer-Loeschung** [`app/models/object.py` JSONB-Feld] — Wird ein Eigentuemer geloescht, bleibt sein UUID-Key inkl. Note-Text fuer immer in `notes_owners`. Kein Enforcement-Pfad zeigt das heute. Beim naechsten Eigentuemer-Lifecycle-Touch (z.B. via Impower-Mirror, Story 1.4) Orphan-Cleanup mitnehmen.
+- **Manuelle Browser-Smoke (Task 8.2) noch offen** [`output/implementation-artifacts/2-4-menschen-notizen-admin-only.md`] — Live-Klick-Verifikation steht aus: Admin sieht Sektion + speichert + Edit/Cancel; Normal-User sieht Sektion komplett nicht. Code- und Test-seitig OK, aber das Manual-Smoke-Gate ist nicht abgehakt. Vor Story-Done-Move einmal durchklicken.
+
 ## Deferred from: code review of story-2.3 (2026-04-27)
 
 - **`Schadensfall.description` ohne Length-Cap** [`app/services/steckbrief_schadensfaelle.py`, `app/routers/objects.py:1095`] — Description geht unbeschraenkt durch `write_field_human` in die DB. Wenn die Spalte `Text` ist (zu pruefen via Migration `0010`), ist kein Cap noetig; falls `String(N)`, ist ein zu langer POST eine 500-Quelle. Pre-existing, nicht Story-2.3-spezifisch — bei naechster Hardening-Runde checken.

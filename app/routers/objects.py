@@ -1560,7 +1560,7 @@ async def notiz_save(
     object_id: uuid.UUID,
     eigentuemer_id: uuid.UUID,
     request: Request,
-    note: str | None = Form(None),
+    note: str | None = Form(None, max_length=4000),
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
