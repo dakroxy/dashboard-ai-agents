@@ -27,6 +27,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -299,7 +300,7 @@ async def object_detail(
     dienstleister_list = get_all_dienstleister(db)
     schadensfaelle = get_schadensfaelle_for_object(db, detail.obj.id)
     units = db.scalars(
-        select(Unit).where(Unit.object_id == detail.obj.id).order_by(Unit.name)
+        select(Unit).where(Unit.object_id == detail.obj.id).order_by(Unit.unit_number)
     ).all()
 
     # --- Fotos pro Komponente (Story 1.8) ---
@@ -1032,7 +1033,7 @@ def _render_versicherungen(
     dienstleister_list = get_all_dienstleister(db)
     schadensfaelle = get_schadensfaelle_for_object(db, obj.id)
     units = db.scalars(
-        select(Unit).where(Unit.object_id == obj.id).order_by(Unit.name)
+        select(Unit).where(Unit.object_id == obj.id).order_by(Unit.unit_number)
     ).all()
     return templates.TemplateResponse(
         request,
@@ -1065,10 +1066,10 @@ async def versicherungen_section(
 async def create_schadensfall_route(
     request: Request,
     object_id: uuid.UUID,
-    policy_id: uuid.UUID = Form(...),
+    policy_id: str = Form(""),
     unit_id: str | None = Form(None),
     occurred_at: str | None = Form(None),
-    estimated_sum: str = Form(...),
+    estimated_sum: str = Form(""),
     description: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("objects:edit")),
@@ -1076,35 +1077,108 @@ async def create_schadensfall_route(
     # AC5: accessible_object_ids-Gate als ERSTER Aufruf
     obj = _load_accessible_object(db, object_id, user)
 
-    policy = db.get(InsurancePolicy, policy_id)
+    form_data = {
+        "policy_id": policy_id or "",
+        "unit_id": unit_id or "",
+        "occurred_at": occurred_at or "",
+        "estimated_sum": estimated_sum or "",
+        "description": description or "",
+    }
+
+    def _render_with_error(err: str) -> HTMLResponse:
+        policen = get_policen_for_object(db, obj.id)
+        versicherer_list = get_all_versicherer(db)
+        dienstleister_list = get_all_dienstleister(db)
+        schadensfaelle = get_schadensfaelle_for_object(db, obj.id)
+        units = db.scalars(
+            select(Unit).where(Unit.object_id == obj.id).order_by(Unit.unit_number)
+        ).all()
+        return templates.TemplateResponse(
+            request,
+            "_obj_versicherungen.html",
+            {
+                "obj": obj,
+                "policen": policen,
+                "versicherer_list": versicherer_list,
+                "dienstleister_list": dienstleister_list,
+                "schadensfaelle": schadensfaelle,
+                "units": units,
+                "get_due_severity": get_due_severity,
+                "user": user,
+                "schaden_form_error": err,
+                "schaden_form_data": form_data,
+            },
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    # Police: Pflichtfeld + Cross-Object-Check via 404 (Security)
+    if not policy_id or not policy_id.strip():
+        return _render_with_error("Bitte eine Police auswählen.")
+    try:
+        policy_uuid = uuid.UUID(policy_id.strip())
+    except ValueError:
+        return _render_with_error("Ungültige Police-ID.")
+    policy = db.get(InsurancePolicy, policy_uuid)
     if not policy or policy.object_id != obj.id:
         raise HTTPException(404, detail="Police nicht gefunden")
 
+    # Unit: optional + Cross-Object-Check via 404 (IDOR-Gate, Security)
     unit_uuid: uuid.UUID | None = None
     if unit_id and unit_id.strip():
         try:
             unit_uuid = uuid.UUID(unit_id.strip())
         except ValueError:
-            raise HTTPException(422, detail="Ungueltige Unit-ID")
+            return _render_with_error("Ungültige Einheit-ID.")
+        unit = db.get(Unit, unit_uuid)
+        if not unit or unit.object_id != obj.id:
+            raise HTTPException(404, detail="Einheit nicht gefunden")
 
-    # AC3: Summen-Validierung
+    # AC3: Summen-Validierung — strikt Punkt als Dezimaltrenner, Inf/NaN/Overflow gefiltert
+    estimated_sum_clean = (estimated_sum or "").strip()
+    if not estimated_sum_clean:
+        return _render_with_error("Bitte eine geschätzte Summe angeben.")
+    if "," in estimated_sum_clean:
+        return _render_with_error(
+            "Bitte Punkt als Dezimaltrenner verwenden (z. B. 1500.50)."
+        )
     try:
-        amount = Decimal(estimated_sum.replace(",", ".").strip())
+        amount = Decimal(estimated_sum_clean)
     except InvalidOperation:
-        raise HTTPException(422, detail="Summe muss eine Zahl sein")
+        return _render_with_error("Summe muss eine Zahl sein.")
+    if not amount.is_finite():
+        return _render_with_error("Summe ist ungültig.")
     if amount <= 0:
-        raise HTTPException(422, detail="Geschaetzte Summe muss groesser als 0 sein")
+        return _render_with_error("Geschätzte Summe muss größer als 0 sein.")
+    if amount > Decimal("9999999999.99"):
+        return _render_with_error("Summe ist zu groß (max. 9.999.999.999,99 €).")
+    amount = amount.quantize(Decimal("0.01"))
 
-    occ_date = _parse_date(occurred_at)
+    # Datum: optional, kein zukünftiges Schadensdatum, nicht vor 1900
+    occ_date: date | None = None
+    if occurred_at and occurred_at.strip():
+        try:
+            occ_date = date.fromisoformat(occurred_at.strip())
+        except ValueError:
+            return _render_with_error(f"Ungültiges Datum: {occurred_at!r}.")
+        if occ_date > date.today():
+            return _render_with_error("Schadensdatum darf nicht in der Zukunft liegen.")
+        if occ_date.year < 1900:
+            return _render_with_error("Schadensdatum vor 1900 ist unzulässig.")
 
-    create_schadensfall(
-        db, policy, user, request,
-        occurred_at=occ_date,
-        amount=amount,
-        description=description.strip() if description else None,
-        unit_id=unit_uuid,
-    )
-    db.commit()
+    description_clean = (description or "").strip() or None
+
+    try:
+        create_schadensfall(
+            db, policy, user, request,
+            occurred_at=occ_date,
+            amount=amount,
+            description=description_clean,
+            unit_id=unit_uuid,
+        )
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return _render_with_error("Speichern fehlgeschlagen — bitte erneut versuchen.")
 
     return _render_versicherungen(request, obj, db, user)
 

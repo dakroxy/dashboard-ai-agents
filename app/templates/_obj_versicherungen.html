@@ -123,13 +123,20 @@
 
     {# Schadensfall melden + Liste (Story 2.3) #}
     {% if has_permission(user, "objects:edit") %}
+    {% set sfd = schaden_form_data if schaden_form_data is defined else {} %}
+    {% set sfe = schaden_form_error if schaden_form_error is defined else None %}
     <div class="mt-6">
-        <details id="schadensfall-form-toggle">
+        <details id="schadensfall-form-toggle"{% if sfe %} open{% endif %}>
             <summary class="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium
                             bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100">
                 Schadensfall melden
             </summary>
             <div class="mt-3 p-4 border border-red-200 rounded-lg bg-red-50/50">
+                {% if sfe %}
+                <div class="mb-3 rounded bg-red-100 border border-red-300 text-red-800 text-sm p-2">
+                    {{ sfe }}
+                </div>
+                {% endif %}
                 <form hx-post="/objects/{{ obj.id }}/schadensfaelle"
                       hx-target="[data-section='versicherungen']"
                       hx-swap="outerHTML">
@@ -140,7 +147,7 @@
                                     class="mt-1 w-full rounded border-slate-300 text-sm">
                                 <option value="">— bitte wählen —</option>
                                 {% for p in policen %}
-                                <option value="{{ p.id }}">
+                                <option value="{{ p.id }}"{% if sfd.get("policy_id") == (p.id|string) %} selected{% endif %}>
                                     {{ p.versicherer.name if p.versicherer else "Unbekannt" }}
                                     {% if p.police_number %} · {{ p.police_number }}{% endif %}
                                 </option>
@@ -153,25 +160,27 @@
                                     class="mt-1 w-full rounded border-slate-300 text-sm">
                                 <option value="">— keine —</option>
                                 {% for u in units %}
-                                <option value="{{ u.id }}">{{ u.name or u.impower_unit_id or u.id }}</option>
+                                <option value="{{ u.id }}"{% if sfd.get("unit_id") == (u.id|string) %} selected{% endif %}>{{ u.unit_number or u.impower_unit_id or u.id }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700">Schadensdatum</label>
                             <input type="date" name="occurred_at"
+                                   value="{{ sfd.get('occurred_at') or '' }}"
                                    class="mt-1 w-full rounded border-slate-300 text-sm">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700">Geschätzte Summe (€) *</label>
                             <input type="number" name="estimated_sum" step="0.01" min="0.01" required
+                                   value="{{ sfd.get('estimated_sum') or '' }}"
                                    placeholder="0.00"
                                    class="mt-1 w-full rounded border-slate-300 text-sm">
                         </div>
                         <div class="sm:col-span-2">
                             <label class="block text-sm font-medium text-slate-700">Beschreibung</label>
                             <textarea name="description" rows="2"
-                                      class="mt-1 w-full rounded border-slate-300 text-sm"></textarea>
+                                      class="mt-1 w-full rounded border-slate-300 text-sm">{{ sfd.get('description') or '' }}</textarea>
                         </div>
                     </div>
                     <div class="mt-3 flex gap-2">
@@ -216,10 +225,10 @@
                         {% endif %}
                     </td>
                     <td class="px-3 py-2">
-                        {{ s.unit.name if s.unit and s.unit.name else (s.unit.impower_unit_id if s.unit else "—") }}
+                        {{ s.unit.unit_number if s.unit and s.unit.unit_number else (s.unit.impower_unit_id if s.unit else "—") }}
                     </td>
                     <td class="px-3 py-2 text-right tabular-nums">
-                        {{ "%.2f"|format(s.amount|float) if s.amount else "—" }}
+                        {{ "{:.2f}".format(s.amount) if s.amount is not none else "—" }}
                     </td>
                     <td class="px-3 py-2">
                         <span class="text-xs px-2 py-0.5 rounded-full

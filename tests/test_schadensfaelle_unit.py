@@ -155,13 +155,26 @@ def test_amount_validation_negative(db, admin_client, obj, policy):
 
 
 def test_amount_validation_comma_decimal(db, admin_client, obj, policy):
-    # "1.500,50" — Deutsche Notation mit Tausender-Punkt + Komma-Dezimal
-    # Decimal("1.500,50".replace(",", ".")) → Decimal("1.500.50") → InvalidOperation → 422
-    resp = admin_client.post(
-        f"/objects/{obj.id}/schadensfaelle",
-        data={"policy_id": str(policy.id), "estimated_sum": "1.500,50"},
-    )
-    assert resp.status_code == 422
+    # AC3: Server akzeptiert nur Punkt-Notation. Komma im Input → 422 (form_error).
+    # Deckt drei kritische Faelle ab: "1.500,50" (deutsch komplett), "1500,50"
+    # (deutsch ohne Tausender), "1,5" (deutsch klein) — alle muessen wegen Komma 422.
+    for bad in ["1.500,50", "1500,50", "1,5"]:
+        resp = admin_client.post(
+            f"/objects/{obj.id}/schadensfaelle",
+            data={"policy_id": str(policy.id), "estimated_sum": bad},
+        )
+        assert resp.status_code == 422, f"erwartet 422 fuer {bad!r}"
+    assert db.query(Schadensfall).filter(Schadensfall.policy_id == policy.id).count() == 0
+
+
+def test_amount_validation_inf_nan_overflow(db, admin_client, obj, policy):
+    # AC3 hardening: Decimal("Infinity"), Decimal("NaN"), und Werte > Numeric(12,2) muessen 422 geben.
+    for bad in ["Infinity", "-Infinity", "NaN", "10000000000.00"]:
+        resp = admin_client.post(
+            f"/objects/{obj.id}/schadensfaelle",
+            data={"policy_id": str(policy.id), "estimated_sum": bad},
+        )
+        assert resp.status_code == 422, f"erwartet 422 fuer {bad!r}"
     assert db.query(Schadensfall).filter(Schadensfall.policy_id == policy.id).count() == 0
 
 

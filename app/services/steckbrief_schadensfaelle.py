@@ -4,8 +4,8 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import Any
 
+from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -35,7 +35,7 @@ def create_schadensfall(
     db: Session,
     policy: InsurancePolicy,
     user: User,
-    request: Any,
+    request: Request | None,
     *,
     occurred_at: date | None,
     amount: Decimal,

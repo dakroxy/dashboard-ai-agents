@@ -1,6 +1,6 @@
 # Story 2.3: Schadensfall direkt aus Objekt anlegen
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -454,6 +454,57 @@ damit die Versicherer-Schadensquote automatisch aggregiert wird und Dokumentatio
 - [x] **Task 6 — Regression + Smoke** (AC6)
   - [x] 6.1 `pytest -x` — Syntax-Check aller neuen Dateien bestätigt (Docker-Daemon nicht lokal gestartet; pytest-Lauf beim Deploy via `docker compose` nötig)
   - [ ] 6.2 Manuelle Verifikation: Schadensfall anlegen, in Liste sehen, Validierungsfehler bei 0 testen
+
+### Review Findings
+
+Code-Review 2026-04-27 (Blind Hunter + Edge Case Hunter + Acceptance Auditor, parallele Reviews). Alle Patches angewendet, 607 Tests grün.
+
+**Decision-needed (resolved):**
+
+- [x] [Review][Decision] **HTMX-Validierungs-UX: HTTPException 422 vs. `form_error`-Pattern** — Entschieden für `form_error`-Pattern (konsistent mit Police-Create im selben File). Validation-Errors rendern jetzt die Section neu mit Inline-Fehler, sticky Form-Daten und auto-open `<details>` damit der User die Form sofort wieder sieht.
+
+**Patches (alle erledigt):**
+
+- [x] [Review][Patch][CRITICAL] `Unit.name` existiert nicht — Unit-Modell hat `unit_number`. 4 Stellen gefixt: `app/routers/objects.py:302+1035` (`order_by(Unit.unit_number)`) und `app/templates/_obj_versicherungen.html:156+219` (`u.unit_number`/`s.unit.unit_number`).
+- [x] [Review][Patch][CRITICAL] Tests asserten Description-Text, der nie gerendert wird — Tests umgestellt auf Assertions gegen `"Schadensfälle (1)"`-Count und Amount-Render. Fixture in `test_get_versicherungen_shows_existing_schadensfaelle` erweitert um `amount=Decimal("1234.56")`.
+- [x] [Review][Patch][HIGH] IDOR: `unit_id` wird gegen `obj.id` validiert — `db.get(Unit, unit_uuid)` + Cross-Object-Check vor `create_schadensfall()`. Neuer Regression-Test `test_unit_id_from_other_object_returns_404`.
+- [x] [Review][Patch][HIGH] `Decimal`-Validierung deckt Infinity/NaN/Overflow ab — `is_finite()`-Check + Cap auf `9999999999.99` + `quantize(Decimal("0.01"))`. Neuer Test `test_amount_validation_inf_nan_overflow` deckt `Infinity`/`-Infinity`/`NaN`/`10000000000.00` ab.
+- [x] [Review][Patch][HIGH] Strikt Punkt-Notation — bei `"," in estimated_sum` Inline-Fehler "Bitte Punkt als Dezimaltrenner verwenden". `test_amount_validation_comma_decimal` deckt jetzt `"1.500,50"`, `"1500,50"` und `"1,5"` ab.
+- [x] [Review][Patch][HIGH] `pytest -x` ausgeführt — 18/18 Schadensfall-Tests + 607/607 Gesamt-Suite grün (Python 3.12 venv via `uv`, weil Docker-Daemon lokal nicht verfügbar).
+- [x] [Review][Patch][HIGH] Rollback-Handling — `try/except IntegrityError` um `db.commit()`, im Fehlerfall `db.rollback()` + form_error "Speichern fehlgeschlagen — bitte erneut versuchen.".
+- [x] [Review][Patch][MEDIUM] Monkeypatch greift — verifiziert durch grüne Test-Läufe (`test_accessible_object_ids_gate_returns_404`, `_no_audit_no_db_write`); zusätzlicher echter IDOR-Test `test_unit_id_from_other_object_returns_404` ohne Monkeypatch.
+- [x] [Review][Patch][MEDIUM] Whitespace-only Description → None — `(description or "").strip() or None`.
+- [x] [Review][Patch][MEDIUM] Datums-Bounds inline — `occ_date > date.today()` und `year < 1900` werfen Inline-Fehler. Neuer Test `test_occurred_at_future_returns_422`.
+- [x] [Review][Patch][MEDIUM] Deutsche Fehlermeldungen mit Umlauten — `"Geschätzte"`, `"größer"`, `"Ungültige"` etc.
+- [x] [Review][Patch][MEDIUM] `|float`-Filter raus — Template nutzt jetzt `"{:.2f}".format(s.amount)` direkt auf `Decimal`.
+- [x] [Review][Patch][LOW] Service-Type-Hint — `request: Request | None`.
+- [ ] [Review][Patch][LOW] Manuelle Verifikation (Task 6.2) — bewusst offen gelassen, kann erst auf Live-Deployment durchgespielt werden (Schadensfall mit/ohne Unit anlegen, 0/negativ, Future-Datum, IDOR, sticky Form bei Fehler).
+
+**Deferred (pre-existing oder generisch, nicht Story-2.3-spezifisch):**
+
+- [x] [Review][Defer] Description ohne Length-Cap — DB-Spaltentyp prüfen; wenn `Text`, ist Cap nicht nötig. Pre-existing, keine Story-2.3-Regression.
+- [x] [Review][Defer] Race auf concurrent Policy-Delete — Sehr selten, generisch für alle Writes ohne `with_for_update`. Defer bis echtes Multi-Admin-Volumen erreicht.
+- [x] [Review][Defer] `audit_log.ip_address` ohne Length-Cap — Pre-existing, betrifft alle audit-Calls global, nicht Story 2.3.
+- [x] [Review][Defer] Spec-Selbstwiderspruch: AC1 sagt "alle Feld-Writes via `write_field_human`", Dev Notes Task 2.3 sagen "FK-Felder beim Create exempt" — Spec-Text-Issue, kein Code-Issue. Implementation matched die Code-Snippet-Vorlage. Bei nächster Spec-Iteration AC1-Wording schärfen oder Dev-Notes-Carve-out streichen.
+
+### Code Review Fix Summary (2026-04-27)
+
+**Geänderte Dateien:**
+- `app/routers/objects.py` — Unit.name→unit_number Fix (2x), Schadensfall-Route mit form_error-Pattern + sticky form_data + IDOR-Gate für unit_id + Inf/NaN/Overflow + strikt Punkt + Datum-Bounds + IntegrityError-Rollback
+- `app/services/steckbrief_schadensfaelle.py` — Type-Hint `request: Request | None`
+- `app/templates/_obj_versicherungen.html` — `u.unit_number`/`s.unit.unit_number` statt `name`, `|float`-Filter raus, form_error-Block + sticky Inputs + auto-open `<details>` bei Fehler
+- `tests/test_schadensfaelle_unit.py` — comma_decimal-Test deckt 3 Fälle ab, neuer `test_amount_validation_inf_nan_overflow`
+- `tests/test_schadensfaelle_routes_smoke.py` — renders_in_list/shows_existing-Tests asserten jetzt Count + Amount, neue Tests `test_unit_id_from_other_object_returns_404` + `test_occurred_at_future_returns_422` + `test_form_error_keeps_user_input_sticky`
+- `tests/test_steckbrief_routes_smoke.py` — SQL-Statement-Cap von 14 auf 16 erhöht (Story 2.3 hat zwei Queries dazugebracht: schadensfaelle + units)
+
+**Test-Lauf:** 607/607 passed (lokales venv mit Python 3.12 via `uv`).
+
+**Deferred (pre-existing oder generisch, nicht Story-2.3-spezifisch):**
+
+- [x] [Review][Defer] Description ohne Length-Cap — DB-Spaltentyp prüfen; wenn `Text`, ist Cap nicht nötig. Pre-existing, keine Story-2.3-Regression.
+- [x] [Review][Defer] Race auf concurrent Policy-Delete — Sehr selten, generisch für alle Writes ohne `with_for_update`. Defer bis echtes Multi-Admin-Volumen erreicht.
+- [x] [Review][Defer] `audit_log.ip_address` ohne Length-Cap — Pre-existing, betrifft alle audit-Calls global, nicht Story 2.3.
+- [x] [Review][Defer] Spec-Selbstwiderspruch: AC1 sagt "alle Feld-Writes via `write_field_human`", Dev Notes Task 2.3 sagen "FK-Felder beim Create exempt" — Spec-Text-Issue, kein Code-Issue. Implementation matched die Code-Snippet-Vorlage. Bei nächster Spec-Iteration AC1-Wording schärfen oder Dev-Notes-Carve-out streichen.
 
 ## Dev Notes
 

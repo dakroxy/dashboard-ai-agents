@@ -2,6 +2,13 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of story-2.3 (2026-04-27)
+
+- **`Schadensfall.description` ohne Length-Cap** [`app/services/steckbrief_schadensfaelle.py`, `app/routers/objects.py:1095`] — Description geht unbeschraenkt durch `write_field_human` in die DB. Wenn die Spalte `Text` ist (zu pruefen via Migration `0010`), ist kein Cap noetig; falls `String(N)`, ist ein zu langer POST eine 500-Quelle. Pre-existing, nicht Story-2.3-spezifisch — bei naechster Hardening-Runde checken.
+- **Race bei concurrent Policy-Delete** [`app/routers/objects.py:1079-1081`] — Zwei simultane Requests, einer loescht das Parent-Object → FK-Verletzung im POST → 500. Generisch fuer alle Writes ohne `with_for_update`, betrifft auch Stories 2.1/2.2. Defer bis echtes Multi-Admin-Volumen erreicht.
+- **`audit_log.ip_address` ohne Length-Cap** [`app/services/audit.py`] — Wenn `X-Forwarded-For` malformed/sehr lang ist, landet der String unbegrenzt in der DB. Pre-existing, betrifft alle Audit-Calls global, nicht Story-2.3-spezifisch.
+- **Spec-Selbstwiderspruch zwischen AC1 und Dev Notes Task 2.3 zur FK-`write_field_human`-Frage** [`output/implementation-artifacts/2-3-schadensfall-direkt-aus-objekt-anlegen.md`] — AC1 sagt "alle Feld-Writes laufen ueber `write_field_human`", Dev Notes Task 2.3 sagen "FK-Felder beim Create sind zulaessige Ausnahme vom Write-Gate". Diff folgt der Code-Snippet-Vorlage und routet `unit_id` durch das Gate, was die Provenance-Zeilen-Semantik konsistent haelt. Bei naechster Spec-Iteration AC1-Wording oder den Dev-Notes-Carve-out angleichen — kein Code-Issue.
+
 ## Deferred from: code review of story-1.1 (2026-04-21)
 
 - **Multi-Worker-Race bei Erst-Boot des `_seed_default_roles`** [`app/main.py:119-137`] — Parallele Gunicorn-Worker koennen beide gleichzeitig in eine leere `roles`-Tabelle INSERT-en und auf UNIQUE `roles.key` einen `IntegrityError` werfen. Pre-existing, existierte schon vor Story 1.1. In Elestio bisher nicht aufgetreten (Healthcheck faengt Restarts ab), aber vor echtem Multi-Worker-Produktivbetrieb fixen: `INSERT ... ON CONFLICT DO NOTHING` oder Postgres-Advisory-Lock um den Seed herum.

@@ -450,8 +450,10 @@ def test_detail_sql_statement_count(
     # Erwartet: accessible_ids, Object, Eigentuemer, Stammdaten-Provenance-Map,
     # Stale-Check, Finanzen-Provenance-Map, Sparkline-Rows, Technik-Provenance-Map,
     # Zugangscode-Provenance-Map (Story 1.7), SteckbriefPhoto-Liste (Story 1.8),
-    # Policen-Liste mit Versicherer-Joinedload (Story 2.1), Versicherer-Dropdown (Story 2.1).
-    # Puffer fuer Framework-Setup -> max 14.
-    assert counter.count <= 14, (
+    # Policen-Liste mit Versicherer-Joinedload (Story 2.1), Versicherer-Dropdown (Story 2.1),
+    # Schadensfaelle-Liste mit policy/versicherer/unit-joinedloads (Story 2.3),
+    # Units-Dropdown (Story 2.3).
+    # Puffer fuer Framework-Setup -> max 16.
+    assert counter.count <= 16, (
         f"Zu viele SQL-Statements auf Detailseite: {counter.count}"
     )

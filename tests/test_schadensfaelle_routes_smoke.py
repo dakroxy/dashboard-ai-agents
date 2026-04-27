@@ -127,6 +127,7 @@ def test_post_schadensfall_creates_record(db, admin_client, make_object):
 
 
 def test_post_schadensfall_renders_in_list(db, admin_client, make_object):
+    # AC2: Liste rendert Datum/Versicherer/Einheit/Summe/Status — KEINE Description-Spalte.
     obj = make_object("SCH-A2")
     policy = _make_policy(db, obj.id)
 
@@ -139,17 +140,20 @@ def test_post_schadensfall_renders_in_list(db, admin_client, make_object):
         },
     )
     assert resp.status_code == 200
-    assert "Glasbruch Fenster" in resp.text
-    assert "Schadensfälle" in resp.text
+    assert "Schadensfälle (1)" in resp.text
+    assert "800.00" in resp.text
 
 
 def test_get_versicherungen_shows_existing_schadensfaelle(db, admin_client, make_object):
+    from decimal import Decimal
+
     obj = make_object("SCH-A3")
     policy = _make_policy(db, obj.id)
     schaden = Schadensfall(
         id=uuid.uuid4(),
         policy_id=policy.id,
         description="Sturmschaden Dach",
+        amount=Decimal("1234.56"),
     )
     db.add(schaden)
     db.commit()
@@ -157,7 +161,8 @@ def test_get_versicherungen_shows_existing_schadensfaelle(db, admin_client, make
 
     resp = admin_client.get(f"/objects/{obj.id}/sections/versicherungen")
     assert resp.status_code == 200
-    assert "Sturmschaden Dach" in resp.text
+    assert "Schadensfälle (1)" in resp.text
+    assert "1234.56" in resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -226,3 +231,76 @@ def test_accessible_object_ids_gate_no_audit_no_db_write(
         .filter(AuditLog.entity_type == "schaden")
         .count()
     ) == 0
+
+
+# ---------------------------------------------------------------------------
+# IDOR: unit_id darf nicht aus fremdem Objekt stammen (Code-Review-Fix)
+# ---------------------------------------------------------------------------
+
+def test_unit_id_from_other_object_returns_404(db, admin_client, make_object):
+    from app.models import Unit
+
+    obj_a = make_object("SCH-IDOR-A")
+    policy_a = _make_policy(db, obj_a.id)
+
+    obj_b = make_object("SCH-IDOR-B")
+    foreign_unit = Unit(id=uuid.uuid4(), object_id=obj_b.id, unit_number="WE-FOREIGN")
+    db.add(foreign_unit)
+    db.commit()
+
+    resp = admin_client.post(
+        f"/objects/{obj_a.id}/schadensfaelle",
+        data={
+            "policy_id": str(policy_a.id),
+            "unit_id": str(foreign_unit.id),
+            "estimated_sum": "500",
+        },
+    )
+    assert resp.status_code == 404
+    assert db.query(Schadensfall).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Datum-Bounds: Zukunft ist nicht erlaubt (Code-Review-Fix)
+# ---------------------------------------------------------------------------
+
+def test_occurred_at_future_returns_422(db, admin_client, make_object):
+    obj = make_object("SCH-FUT")
+    policy = _make_policy(db, obj.id)
+
+    resp = admin_client.post(
+        f"/objects/{obj.id}/schadensfaelle",
+        data={
+            "policy_id": str(policy.id),
+            "estimated_sum": "500",
+            "occurred_at": "2099-12-31",
+        },
+    )
+    assert resp.status_code == 422
+    assert "Zukunft" in resp.text
+    assert db.query(Schadensfall).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Form-Error: User-Eingabe bleibt erhalten (Code-Review-Fix, sticky form_data)
+# ---------------------------------------------------------------------------
+
+def test_form_error_keeps_user_input_sticky(db, admin_client, make_object):
+    obj = make_object("SCH-STICKY")
+    policy = _make_policy(db, obj.id)
+
+    resp = admin_client.post(
+        f"/objects/{obj.id}/schadensfaelle",
+        data={
+            "policy_id": str(policy.id),
+            "estimated_sum": "0",  # invalid
+            "description": "Wasserschaden Ostfassade",
+        },
+    )
+    assert resp.status_code == 422
+    # Inline-Fehler im Section-Swap, nicht JSON
+    assert "größer als 0" in resp.text
+    # Eingabe bleibt erhalten (sticky)
+    assert "Wasserschaden Ostfassade" in resp.text
+    # Details automatisch geöffnet damit User die Form sieht
+    assert "<details" in resp.text and "open" in resp.text
