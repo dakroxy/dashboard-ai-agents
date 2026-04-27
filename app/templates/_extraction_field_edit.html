@@ -1,0 +1,40 @@
+{# Inline-Edit-Form fuer ein einzelnes Extraktionsfeld.
+   Behaelt die Container-ID `extraction-cell-<key>` bei (damit Cancel-Swap
+   wieder denselben Knoten trifft). Save targetet aber den ganzen Block
+   `#extraction-block`, weil ein Status-Wechsel mit re-rendert werden muss. #}
+<div id="extraction-cell-{{ key }}"
+     class="grid grid-cols-[8rem_1fr_auto] items-baseline gap-3"
+     data-edit-field="{{ key }}">
+    <dt class="text-xs text-slate-400 uppercase tracking-wide">{{ label | safe }}</dt>
+    <dd class="col-span-2">
+        <form hx-post="/documents/{{ doc_id }}/extraction/field"
+              hx-target="#extraction-block"
+              hx-swap="outerHTML"
+              class="flex flex-col gap-1">
+            <input type="hidden" name="field" value="{{ key }}">
+            {% set current_value = submitted_value if submitted_value is defined and submitted_value is not none else (value if value is not none else "") %}
+            <div class="flex items-center gap-2">
+                <input id="input-{{ key }}"
+                       name="value"
+                       type="{{ 'date' if key == 'sepa_date' else 'text' }}"
+                       value="{{ current_value }}"
+                       autofocus
+                       class="block w-full rounded border {{ 'border-rose-300' if form_error else 'border-slate-300' }} px-2 py-1 text-sm font-mono">
+                <button type="submit"
+                        class="text-xs px-2 py-1 rounded bg-sky-600 text-white hover:bg-sky-700">
+                    Speichern
+                </button>
+                <button type="button"
+                        hx-get="/documents/{{ doc_id }}/extraction/view?field={{ key }}"
+                        hx-target="#extraction-cell-{{ key }}"
+                        hx-swap="outerHTML"
+                        class="text-xs text-slate-500 hover:text-slate-900">
+                    Abbrechen
+                </button>
+            </div>
+            {% if form_error %}
+                <p class="text-xs text-rose-600 mt-0.5">{{ form_error }}</p>
+            {% endif %}
+        </form>
+    </dd>
+</div>

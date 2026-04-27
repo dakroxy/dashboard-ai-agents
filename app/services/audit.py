@@ -51,6 +51,7 @@ KNOWN_AUDIT_ACTIONS: list[str] = sorted(
         "document_already_present",
         "document_write_failed",
         "document_chat_message",
+        "extraction_field_updated",
         # Cases (Mietverwaltung)
         "case_created",
         "case_renamed",

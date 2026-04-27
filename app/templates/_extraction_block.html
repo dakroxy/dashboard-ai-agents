@@ -49,7 +49,9 @@
         </div>
 
     {% elif extraction and extraction.extracted %}
-        {# Extraktions-Felder #}
+        {# Extraktions-Felder — Click-to-Edit pro Feld via _extraction_field_view.html #}
+        {% set doc_id = document.id %}
+        {% set editable = document.status in ["extracted", "needs_review", "matched", "error"] and has_permission(user, "documents:approve") %}
         <dl class="grid grid-cols-1 gap-x-5 gap-y-3 text-sm">
             {% set fields = [
                 ("WEG-K&uuml;rzel", "weg_kuerzel"),
@@ -64,18 +66,8 @@
                 ("Gl&auml;ubiger-ID", "creditor_id")
             ] %}
             {% for label, key in fields %}
-            <div class="grid grid-cols-[8rem_1fr] items-baseline gap-3">
-                <dt class="text-xs text-slate-400 uppercase tracking-wide">{{ label | safe }}</dt>
-                <dd class="{% if not extraction.extracted.get(key) %}text-slate-300 italic{% else %}font-mono text-slate-800 break-words{% endif %}">
-                    {% if not extraction.extracted.get(key) %}
-                        &mdash;
-                    {% elif key == "iban" %}
-                        {{ extraction.extracted[key] | iban_format }}
-                    {% else %}
-                        {{ extraction.extracted[key] }}
-                    {% endif %}
-                </dd>
-            </div>
+                {% set value = extraction.extracted.get(key) %}
+                {% include "_extraction_field_view.html" %}
             {% endfor %}
         </dl>
         {% if extraction.extracted.get("notes") %}
@@ -181,7 +173,7 @@
         <div class="mt-5 pt-4 border-t border-slate-100">
             {% if document.status == "needs_review" %}
             <p class="text-xs text-amber-700 mb-3">
-                &#9888; Bitte Extraktion und Matching pr&uuml;fen. Bei Korrekturen den Chat nutzen.
+                &#9888; Bitte Extraktion und Matching pr&uuml;fen. Felder direkt &uuml;ber das Stift-Symbol oder im Chat korrigieren.
             </p>
             {% endif %}
             <form action="/documents/{{ document.id }}/approve" method="post">

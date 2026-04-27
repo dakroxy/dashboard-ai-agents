@@ -33,6 +33,12 @@ from app.permissions import (
 from app.services.audit import audit
 from app.templating import templates
 from app.services.claude import chat_about_mandate, extract_mandate_from_pdf
+from app.services.document_field_edit import (
+    EDITABLE_FIELDS,
+    EDITABLE_STATUSES,
+    FieldValidationError,
+    update_extraction_field,
+)
 from app.services.impower import (
     MatchResult,
     run_full_match,
@@ -43,6 +49,20 @@ DEFAULT_WORKFLOW_KEY = "sepa_mandate"
 
 # Statuses that allow the approve/write action
 _APPROVABLE_STATUSES = {"extracted", "needs_review", "matched", "error"}
+
+# Anzeige-Labels fuer die zehn editierbaren Extraktionsfelder.
+_EXTRACTION_FIELD_LABELS: dict[str, str] = {
+    "weg_kuerzel": "WEG-K&uuml;rzel",
+    "weg_name": "WEG",
+    "weg_adresse": "Adresse WEG",
+    "unit_nr": "Einheit",
+    "owner_name": "Eigent&uuml;mer",
+    "iban": "IBAN",
+    "bic": "BIC",
+    "bank_name": "Bank",
+    "sepa_date": "SEPA-Datum",
+    "creditor_id": "Gl&auml;ubiger-ID",
+}
 
 
 def _load_default_workflow(db: Session) -> Workflow:
@@ -706,6 +726,7 @@ async def chat(
         request,
         "_chat_response.html",
         {
+            "user": user,
             "document": doc,
             "extraction": new_extraction or current_extraction,
             "chat_messages": all_messages,
@@ -734,6 +755,7 @@ async def document_status_fragment(
         request,
         "_extraction_block.html",
         {
+            "user": user,
             "document": doc,
             "extraction": extraction,
         },
@@ -756,5 +778,168 @@ async def document_file(
         media_type="application/pdf",
         headers={
             "Content-Disposition": f"inline; filename*=UTF-8''{filename_encoded}",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Inline-Edit fuer Extraktionsfelder
+# ---------------------------------------------------------------------------
+
+
+def _check_field_edit_permission(user: User, field: str) -> None:
+    if not has_permission(user, "documents:approve"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung: documents:approve",
+        )
+    if field not in EDITABLE_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Feld '{field}' ist nicht editierbar.",
+        )
+
+
+def _latest_extraction(db: Session, doc: Document) -> Extraction | None:
+    return (
+        db.query(Extraction)
+        .filter(Extraction.document_id == doc.id)
+        .order_by(Extraction.created_at.desc())
+        .first()
+    )
+
+
+@router.get("/{document_id}/extraction/edit", response_class=HTMLResponse)
+async def extraction_field_edit_form(
+    document_id: uuid.UUID,
+    request: Request,
+    field: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Liefert das Inline-Edit-Form-Fragment fuer ein einzelnes Feld."""
+    doc = _load_doc_for_user(db, user, document_id)
+    _check_field_edit_permission(user, field)
+    if doc.status not in EDITABLE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Status '{doc.status}' kann nicht editiert werden.",
+        )
+    extraction = _latest_extraction(db, doc)
+    if extraction is None or not extraction.extracted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine Extraktion vorhanden — Edit nicht moeglich.",
+        )
+    current_value = extraction.extracted.get(field)
+    return templates.TemplateResponse(
+        request,
+        "_extraction_field_edit.html",
+        {
+            "doc_id": doc.id,
+            "key": field,
+            "label": _EXTRACTION_FIELD_LABELS.get(field, field),
+            "value": current_value,
+            "form_error": None,
+        },
+    )
+
+
+@router.get("/{document_id}/extraction/view", response_class=HTMLResponse)
+async def extraction_field_view_fragment(
+    document_id: uuid.UUID,
+    request: Request,
+    field: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Liefert das Read-Only-View-Fragment fuer ein einzelnes Feld (Cancel-Pfad)."""
+    doc = _load_doc_for_user(db, user, document_id)
+    if field not in EDITABLE_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Feld '{field}' ist nicht editierbar.",
+        )
+    extraction = _latest_extraction(db, doc)
+    current_value = (
+        extraction.extracted.get(field) if extraction and extraction.extracted else None
+    )
+    editable = (
+        doc.status in EDITABLE_STATUSES
+        and has_permission(user, "documents:approve")
+    )
+    return templates.TemplateResponse(
+        request,
+        "_extraction_field_view.html",
+        {
+            "doc_id": doc.id,
+            "key": field,
+            "label": _EXTRACTION_FIELD_LABELS.get(field, field),
+            "value": current_value,
+            "editable": editable,
+        },
+    )
+
+
+@router.post("/{document_id}/extraction/field", response_class=HTMLResponse)
+async def extraction_field_save(
+    document_id: uuid.UUID,
+    background: BackgroundTasks,
+    request: Request,
+    field: str = Form(...),
+    value: str = Form(""),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Persistiert einen einzelnen Feld-Edit. Triggert anschliessend Re-Match.
+
+    Bei Validierungsfehler: rendert die Edit-Form mit Inline-Fehler neu
+    (HTTP 200, weil HTMX 2.x Default-Config 4xx-Responses NICHT swappt;
+    der semantische 422-Fehler wird nur ueber den Edit-Form-Re-Render an
+    den User kommuniziert — siehe Spec Change Log).
+    Bei No-Op (Wert unveraendert): kein Re-Match-Trigger, Block re-rendert
+    aber sauber, damit die Cell von Edit-Form zurueck auf View springt.
+    Bei Erfolg: rendert den ganzen `_extraction_block.html` neu (Whole-Block-Swap)
+    und triggert `_run_matching` als BackgroundTask.
+    """
+    doc = _load_doc_for_user(db, user, document_id)
+    _check_field_edit_permission(user, field)
+
+    try:
+        new_extraction = update_extraction_field(db, doc, field, value, user, request)
+        db.commit()
+    except FieldValidationError as exc:
+        # Edit-Form mit Inline-Fehler neu rendern (Cell-Swap). HTTP 200, damit
+        # HTMX die Antwort tatsaechlich in den DOM swappt.
+        db.rollback()
+        return templates.TemplateResponse(
+            request,
+            "_extraction_field_edit.html",
+            {
+                "doc_id": doc.id,
+                "key": field,
+                "label": _EXTRACTION_FIELD_LABELS.get(field, field),
+                "value": value,
+                "submitted_value": value,
+                "form_error": exc.detail,
+            },
+        )
+
+    # Re-Match nur bei tatsaechlicher Aenderung — bei No-Op spart das einen
+    # ungewollten Impower-Roundtrip + verhindert eine Race auf doc.matching_result.
+    if new_extraction is not None:
+        background.add_task(_run_matching, doc.id)
+
+    # Whole-Block-Swap: Status-Pill, Pen-Icons, Matching-Bereich werden
+    # konsistent neu gerendert.
+    db.refresh(doc)
+    extraction = _latest_extraction(db, doc)
+    return templates.TemplateResponse(
+        request,
+        "_extraction_block.html",
+        {
+            "user": user,
+            "document": doc,
+            "extraction": extraction,
         },
     )
