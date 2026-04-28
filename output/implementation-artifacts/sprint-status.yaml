@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-27 (Story 2.5 Due-Radar Global-View → done)
+# last_updated: 2026-04-28 (Story 2.6 Due-Radar-Filter & Deep-Links → done nach Code-Review)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-27 (Story 2.5 Due-Radar Global-View → done)
+last_updated: 2026-04-28 (Story 2.6 Due-Radar-Filter & Deep-Links → done nach Code-Review)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system

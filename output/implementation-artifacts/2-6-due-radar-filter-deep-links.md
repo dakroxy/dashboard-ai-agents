@@ -1,10 +1,11 @@
 # Story 2.6: Due-Radar-Filter & Deep-Links
 
-Status: review
+Status: done
 
 ## Change Log
 
 - 2026-04-28: Story 2.6 implementiert — Filter-Controls (Typ + Schwere), HTMX-Fragment-Endpoint `/due-radar/rows`, Versicherer-Deep-Link, Police-Anker-Link. 7 Unit-Tests + 2 Smoke-Tests neu.
+- 2026-04-28: Code-Review-Fixes (8 Patches) — Literal-Validierung fuer `type`/`severity`, `HX-Request`-Guard, `hx-swap="outerHTML"` (nested-tbody-Fix), `lt90`-Option entfernt (UX-Redundanz), Wartung-Severity-Test, 4 zusaetzliche Routes-Smoke-Tests. 662/662 gruen.
 
 ## Story
 
@@ -247,7 +248,7 @@ claude-sonnet-4-6[1m]
 - Neuer HTMX-Fragment-Endpoint `GET /due-radar/rows` mit `require_permission("due_radar:view")`, Param-Mapping `type`/`severity` → Service.
 - Filter-Form (2 Selects) über der Tabelle in `due_radar.html`; `hx-trigger="change from:select"` serialisiert automatisch beide Params.
 - `_due_radar_rows.html`: Titel-Zelle Police zeigt Versicherer-Link (`/registries/versicherer/{id}`) wenn `versicherer_id` gesetzt; Typ/Fälligkeit/Verbleibend/Schwere-Zellen als Block-Link auf `entry.link_url`.
-- 7 neue Unit-Tests (alle Filter-Kombinationen + versicherer_id + link_url-Anker), 2 neue Smoke-Tests (401-Redirect + 403).
+- 7 neue Unit-Tests (alle Filter-Kombinationen + versicherer_id + link_url-Anker), 2 neue Smoke-Tests (302-Redirect + 403).
 - Vollständige Regression: 657/657 Tests grün.
 
 ### File List
@@ -258,3 +259,23 @@ claude-sonnet-4-6[1m]
 - `app/templates/_due_radar_rows.html`
 - `tests/test_due_radar_unit.py`
 - `tests/test_routes_smoke.py`
+
+### Review Findings
+
+**Patches (8):** alle behoben am 2026-04-28.
+
+- [x] [Review][Patch] **`severity=lt90`-Select-Option entfernen** [`app/templates/due_radar.html:29`] — Optionen `all` und `lt90` liefern identische Resultate, weil die SQL-Cutoff bereits 90 Tage abgrenzt. Option aus dem Select gestrichen; `severity_filter`-Mapping im Router bleibt fuer kuenftige Aufrufer mit anderem `days`-Default.
+- [x] [Review][Patch] **`HX-Request`-Header-Guard im Fragment-Endpoint** [`app/routers/due_radar.py:32`] — Bei fehlendem Header (Direkt-Navigation per kopierter URL oder Tab-Refresh) per `RedirectResponse` zurueck auf `/due-radar`.
+- [x] [Review][Patch] **Geschachtelte `<tbody>` durch HTMX-Swap** [`app/templates/due_radar.html:16`] — `hx-swap="innerHTML"` → `hx-swap="outerHTML"`. Das gesamte tbody-Element wird jetzt sauber ersetzt; keine Verschachtelung, keine Duplicate-IDs.
+- [x] [Review][Patch] `type`-Query-Param mit `Literal`-Typing [`app/routers/due_radar.py:36`] — `type: Literal["all", "police", "wartung"] = "all"`. FastAPI/Pydantic gibt automatisch 422 bei unbekannten Werten.
+- [x] [Review][Patch] `severity`-Query-Param mit `Literal`-Typing [`app/routers/due_radar.py:37`] — `severity: Literal["all", "lt30", "lt90"] = "all"`. Mapping ueber Modul-Konstante `_SEVERITY_MAP` statt verschachteltem Ternaer.
+- [x] [Review][Patch] Tests fuer ungueltige `type`/`severity`-Werte [`tests/test_due_radar_routes_smoke.py`] — 4 neue Tests: HX-Request-Guard (302), Fragment OK mit HX-Request (200), invalid type (422), invalid severity (422).
+- [x] [Review][Patch] Severity-Filter Wartungs-Eintraege getestet [`tests/test_due_radar_unit.py`] — `test_filter_severity_lt30_excludes_wartung_with_45_days` verifiziert dass eine 45-Tage-Wartung von `severity="< 30 Tage"` ausgeschlossen wird, eine 15-Tage-Wartung enthalten bleibt.
+- [x] [Review][Patch] Doc-Typo „401-Redirect" in den Completion Notes — angepasst auf „302-Redirect + 403".
+
+**Test-Ergebnis nach Patches:** 662/662 gruen (5 neue Tests: 4 Routes-Smoke + 1 Unit).
+
+**Deferred (2):**
+
+- [x] [Review][Defer] Versicherer-Deep-Link 404t bis Story 2.8 [`app/templates/_due_radar_rows.html:17`] — `/registries/versicherer/{id}` existiert noch nicht; Spec akzeptiert das explizit ("Versicherer-Link: Route noch nicht implementiert"). Greift automatisch sobald 2.8 gemergt ist.
+- [x] [Review][Defer] Magic-Strings `"< 30 Tage"`, `"< 90 Tage"`, `"police"`, `"wartung"` ohne Konstanten [`app/services/due_radar.py:28-31, 125-128` + `app/routers/due_radar.py:42`] — Werte sind in Service, Router und Tests dupliziert; Tippfehler-Risiko. Refactor-Kandidat fuer naechste Hardening-Runde (z. B. `class Severity(StrEnum)`).

@@ -100,3 +100,39 @@ def test_sidebar_link_hidden_for_unpermitted_user(auth_client):
     assert resp.status_code == 200
     assert 'href="/due-radar"' not in resp.text
     assert "Due-Radar" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Story 2.6 — /due-radar/rows Fragment-Endpoint
+# ---------------------------------------------------------------------------
+
+def test_rows_fragment_redirects_without_hx_request(due_radar_client):
+    """Direkt-Navigation auf /due-radar/rows ohne HX-Request-Header → 302 zu /due-radar."""
+    resp = due_radar_client.get("/due-radar/rows")
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/due-radar"
+
+
+def test_rows_fragment_ok_with_hx_request(due_radar_client):
+    """Mit HX-Request-Header liefert /due-radar/rows das Fragment (200 + HTML)."""
+    resp = due_radar_client.get("/due-radar/rows", headers={"HX-Request": "true"})
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+
+
+def test_rows_invalid_type_returns_422(due_radar_client):
+    """Ungueltiger ?type-Wert wird von FastAPI/Pydantic als 422 abgewiesen."""
+    resp = due_radar_client.get(
+        "/due-radar/rows?type=garbage",
+        headers={"HX-Request": "true"},
+    )
+    assert resp.status_code == 422
+
+
+def test_rows_invalid_severity_returns_422(due_radar_client):
+    """Ungueltiger ?severity-Wert wird von FastAPI/Pydantic als 422 abgewiesen."""
+    resp = due_radar_client.get(
+        "/due-radar/rows?severity=lt60",
+        headers={"HX-Request": "true"},
+    )
+    assert resp.status_code == 422

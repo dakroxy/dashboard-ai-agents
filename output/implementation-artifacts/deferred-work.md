@@ -2,6 +2,11 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of story-2.6 (2026-04-28)
+
+- **Versicherer-Deep-Link 404t bis Story 2.8** [`app/templates/_due_radar_rows.html:17`] — `/registries/versicherer/{id}` existiert noch nicht; Spec akzeptiert das explizit ("Versicherer-Link: Route noch nicht implementiert"). Greift automatisch sobald 2.8 gemergt ist.
+- **Magic-Strings ohne Konstanten** [`app/services/due_radar.py:28-31, 125-128` + `app/routers/due_radar.py:42`] — `"< 30 Tage"`, `"< 90 Tage"`, `"police"`, `"wartung"` sind in Service, Router und Tests dupliziert; Tippfehler-Risiko. Refactor-Kandidat fuer naechste Hardening-Runde (z. B. `class Severity(StrEnum)`).
+
 ## Deferred from: code review of story-2.5 (2026-04-27)
 
 - **Sort-Stabilitaet bei gleichem `due_date`** [`app/services/due_radar.py:120`] — Polizen kommen bei selbem `due_date` immer vor Wartungen (Loop-Order, Python-stable-Sort). Spec definiert keinen Sekundaer-Sortierschluessel. Bei UX-Feedback Sekundaer-Sort nach `kind`/`title` einbauen.

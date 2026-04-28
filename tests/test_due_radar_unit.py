@@ -242,3 +242,25 @@ def test_police_link_url_has_policy_anchor(db):
 
     assert len(result) == 1
     assert result[0].link_url.endswith(f"#policy-{p.id}")
+
+
+def test_filter_severity_lt30_excludes_wartung_with_45_days(db):
+    """Severity-Filter '< 30 Tage' wirkt auch auf Wartungs-Eintraege (Filter laeuft
+    auf days_remaining ueber beide Kinds, nicht nur Police)."""
+    obj = _make_object(db)
+    policy = _make_police(db, obj, date.today() + timedelta(days=60))
+    _make_wartung(db, policy, "Heizungswartung", date.today() + timedelta(days=45))
+    _make_wartung(db, policy, "Kaminkehrer", date.today() + timedelta(days=15))
+    db.commit()
+
+    result = list_due_within(
+        db,
+        accessible_object_ids={obj.id},
+        types=["wartung"],
+        severity="< 30 Tage",
+    )
+
+    assert len(result) == 1
+    assert result[0].kind == "wartung"
+    assert result[0].title == "Kaminkehrer"
+    assert result[0].days_remaining == 15

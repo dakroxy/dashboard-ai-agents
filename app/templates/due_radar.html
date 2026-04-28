@@ -13,7 +13,7 @@
 <form hx-get="/due-radar/rows"
       hx-target="#due-radar-rows"
       hx-trigger="change from:select"
-      hx-swap="innerHTML"
+      hx-swap="outerHTML"
       class="flex gap-4 mb-4 items-center">
     <label class="flex items-center gap-2 text-sm text-slate-600">Typ:
         <select name="type" class="border border-slate-300 rounded px-2 py-1 text-sm">
@@ -26,7 +26,6 @@
         <select name="severity" class="border border-slate-300 rounded px-2 py-1 text-sm">
             <option value="all">Alle</option>
             <option value="lt30">&lt; 30 Tage</option>
-            <option value="lt90">&lt; 90 Tage</option>
         </select>
     </label>
 </form>

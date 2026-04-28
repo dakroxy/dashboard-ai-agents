@@ -1,8 +1,10 @@
 """Due-Radar — portfolio-weite Liste ablaufender Policen und Wartungen."""
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -12,6 +14,13 @@ from app.services.due_radar import list_due_within
 from app.templating import templates
 
 router = APIRouter(prefix="/due-radar", tags=["due-radar"])
+
+
+_SEVERITY_MAP: dict[str, str | None] = {
+    "all": None,
+    "lt30": "< 30 Tage",
+    "lt90": "< 90 Tage",
+}
 
 
 @router.get("", response_class=HTMLResponse)
@@ -32,14 +41,16 @@ async def due_radar_view(
 @router.get("/rows", response_class=HTMLResponse)
 async def due_radar_rows(
     request: Request,
-    type: str = "all",
-    severity: str = "all",
+    type: Literal["all", "police", "wartung"] = "all",
+    severity: Literal["all", "lt30", "lt90"] = "all",
     user: User = Depends(require_permission("due_radar:view")),
     db: Session = Depends(get_db),
 ):
+    if "hx-request" not in request.headers:
+        return RedirectResponse(url="/due-radar", status_code=302)
     accessible = accessible_object_ids(db, user)
     types_filter = None if type == "all" else [type]
-    severity_filter = None if severity == "all" else ("< 30 Tage" if severity == "lt30" else "< 90 Tage")
+    severity_filter = _SEVERITY_MAP[severity]
     entries = list_due_within(
         db,
         types=types_filter,
