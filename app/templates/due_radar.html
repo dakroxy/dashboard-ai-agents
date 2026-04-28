@@ -10,6 +10,27 @@
     <a href="/" class="text-sm text-slate-500 hover:text-slate-900">&larr; Dashboard</a>
 </div>
 
+<form hx-get="/due-radar/rows"
+      hx-target="#due-radar-rows"
+      hx-trigger="change from:select"
+      hx-swap="innerHTML"
+      class="flex gap-4 mb-4 items-center">
+    <label class="flex items-center gap-2 text-sm text-slate-600">Typ:
+        <select name="type" class="border border-slate-300 rounded px-2 py-1 text-sm">
+            <option value="all">Alle Typen</option>
+            <option value="police">Policen</option>
+            <option value="wartung">Wartungspflichten</option>
+        </select>
+    </label>
+    <label class="flex items-center gap-2 text-sm text-slate-600">Schwere:
+        <select name="severity" class="border border-slate-300 rounded px-2 py-1 text-sm">
+            <option value="all">Alle</option>
+            <option value="lt30">&lt; 30 Tage</option>
+            <option value="lt90">&lt; 90 Tage</option>
+        </select>
+    </label>
+</form>
+
 <div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
     <table class="w-full text-sm">
         <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">

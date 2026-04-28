@@ -104,6 +104,17 @@ def boom_route():
         ]
 
 
+class TestDueRadarRowsEndpoint:
+    def test_unauthenticated_redirects(self, anon_client):
+        resp = anon_client.get("/due-radar/rows")
+        assert resp.status_code == 302
+
+    def test_no_permission_returns_403(self, auth_client):
+        # test_user hat keine due_radar:view-Permission
+        resp = auth_client.get("/due-radar/rows")
+        assert resp.status_code == 403
+
+
 class TestXRobotsTagHeader:
     def test_set_on_health(self, anon_client):
         resp = anon_client.get("/health")

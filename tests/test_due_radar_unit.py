@@ -133,3 +133,112 @@ def test_overdue_entry_included_and_severity_stays_red(db):
     entry = result[0]
     assert entry.days_remaining == -5
     assert entry.severity == "< 30 Tage"
+
+
+# ---------------------------------------------------------------------------
+# Story 2.6 — Filter-Tests
+# ---------------------------------------------------------------------------
+
+def test_filter_type_police_returns_only_police(db):
+    """types=['police'] filtert Wartungs-Eintraege heraus."""
+    obj = _make_object(db)
+    v = _make_versicherer(db)
+    due = date.today() + timedelta(days=30)
+    policy = _make_police(db, obj, due, v)
+    _make_wartung(db, policy, "Kaminkehrer", due)
+    db.commit()
+
+    result = list_due_within(db, accessible_object_ids={obj.id}, types=["police"])
+
+    assert all(e.kind == "police" for e in result)
+    assert len(result) == 1
+
+
+def test_filter_type_wartung_returns_only_wartung(db):
+    """types=['wartung'] filtert Police-Eintraege heraus."""
+    obj = _make_object(db)
+    v = _make_versicherer(db)
+    due = date.today() + timedelta(days=30)
+    policy = _make_police(db, obj, due, v)
+    _make_wartung(db, policy, "Kaminkehrer", due)
+    db.commit()
+
+    result = list_due_within(db, accessible_object_ids={obj.id}, types=["wartung"])
+
+    assert all(e.kind == "wartung" for e in result)
+    assert len(result) == 1
+
+
+def test_filter_severity_lt30_excludes_later_entries(db):
+    """severity='< 30 Tage' gibt nur Eintraege mit days_remaining < 30 zurueck."""
+    obj = _make_object(db)
+    _make_police(db, obj, date.today() + timedelta(days=15))
+    _make_police(db, obj, date.today() + timedelta(days=45))
+    db.commit()
+
+    result = list_due_within(db, accessible_object_ids={obj.id}, severity="< 30 Tage")
+
+    assert len(result) == 1
+    assert result[0].days_remaining == 15
+
+
+def test_filter_severity_lt30_includes_overdue_entries(db):
+    """Ueberfaellige Eintraege (days_remaining < 0) bleiben bei severity='< 30 Tage' enthalten."""
+    obj = _make_object(db)
+    _make_police(db, obj, date.today() - timedelta(days=5))   # -5 Tage
+    _make_police(db, obj, date.today() + timedelta(days=15))  # 15 Tage
+    _make_police(db, obj, date.today() + timedelta(days=45))  # 45 Tage
+    db.commit()
+
+    result = list_due_within(db, accessible_object_ids={obj.id}, severity="< 30 Tage")
+
+    assert len(result) == 2
+    days = {e.days_remaining for e in result}
+    assert -5 in days
+    assert 15 in days
+
+
+def test_filter_combined_additive(db):
+    """types=['police'] + severity='< 30 Tage' filtert additiv."""
+    obj = _make_object(db)
+    v = _make_versicherer(db)
+    due_near = date.today() + timedelta(days=15)
+    policy = _make_police(db, obj, due_near, v)
+    _make_wartung(db, policy, "Kaminkehrer", due_near)
+    db.commit()
+
+    result = list_due_within(
+        db,
+        accessible_object_ids={obj.id},
+        types=["police"],
+        severity="< 30 Tage",
+    )
+
+    assert len(result) == 1
+    assert result[0].kind == "police"
+
+
+def test_versicherer_id_on_police_entry(db):
+    """Police-Eintrag hat versicherer_id gesetzt, wenn Versicherer verknuepft."""
+    obj = _make_object(db)
+    v = _make_versicherer(db, "Allianz")
+    _make_police(db, obj, date.today() + timedelta(days=20), v)
+    db.commit()
+
+    result = list_due_within(db, accessible_object_ids={obj.id})
+
+    assert len(result) == 1
+    assert result[0].versicherer_id == v.id
+
+
+def test_police_link_url_has_policy_anchor(db):
+    """Police link_url endet auf '#policy-{id}'."""
+    obj = _make_object(db)
+    v = _make_versicherer(db)
+    p = _make_police(db, obj, date.today() + timedelta(days=20), v)
+    db.commit()
+
+    result = list_due_within(db, accessible_object_ids={obj.id})
+
+    assert len(result) == 1
+    assert result[0].link_url.endswith(f"#policy-{p.id}")

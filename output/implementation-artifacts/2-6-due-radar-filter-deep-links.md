@@ -1,6 +1,10 @@
 # Story 2.6: Due-Radar-Filter & Deep-Links
 
-Status: ready-for-dev
+Status: review
+
+## Change Log
+
+- 2026-04-28: Story 2.6 implementiert — Filter-Controls (Typ + Schwere), HTMX-Fragment-Endpoint `/due-radar/rows`, Versicherer-Deep-Link, Police-Anker-Link. 7 Unit-Tests + 2 Smoke-Tests neu.
 
 ## Story
 
@@ -22,51 +26,51 @@ damit ich gezielt priorisieren und Maßnahmen ergreifen kann.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: `DueRadarEntry` in `app/services/due_radar.py` um `versicherer_id`-Feld erweitern (AC: 5, 6)
-  - [ ] `versicherer_id: uuid.UUID | None = None` zu `DueRadarEntry` hinzufügen (Dataclass, `field(default=None)`)
-  - [ ] Police-Query: `InsurancePolicy.versicherer_id` in `SELECT`-Liste aufnehmen + in `DueRadarEntry`-Mapping setzen
-  - [ ] Police `link_url` von `/objects/{object_id}#versicherungen` auf `/objects/{object_id}#policy-{entity_id}` ändern (Scroll-Ziel für Story 2-1; Browser-Anker navigiert automatisch)
-  - [ ] Wartung `link_url` bleibt `/objects/{object_id}#versicherungen` (unverändert)
+- [x] Task 1: `DueRadarEntry` in `app/services/due_radar.py` um `versicherer_id`-Feld erweitern (AC: 5, 6)
+  - [x] `versicherer_id: uuid.UUID | None = None` zu `DueRadarEntry` hinzufügen (Dataclass, `field(default=None)`)
+  - [x] Police-Query: `InsurancePolicy.versicherer_id` in `SELECT`-Liste aufnehmen + in `DueRadarEntry`-Mapping setzen
+  - [x] Police `link_url` von `/objects/{object_id}#versicherungen` auf `/objects/{object_id}#policy-{entity_id}` ändern (Scroll-Ziel für Story 2-1; Browser-Anker navigiert automatisch)
+  - [x] Wartung `link_url` bleibt `/objects/{object_id}#versicherungen` (unverändert)
 
-- [ ] Task 2: Filterparameter in `list_due_within()` aktivieren (AC: 1, 2, 3)
-  - [ ] Signatur auf `list_due_within(db, *, days: int = 90, severity: str | None = None, types: list[str] | None = None, accessible_object_ids: list[uuid.UUID]) -> list[DueRadarEntry]` anpassen (Architecture ID2 bereits so spezifiziert)
-  - [ ] Police-Query: wenn `types` gesetzt und `"police"` nicht enthalten → leere Liste zurückgeben (skip query)
-  - [ ] Wartung-Query: wenn `types` gesetzt und `"wartung"` nicht enthalten → leere Liste zurückgeben (skip query)
-  - [ ] Severity-Filter auf beide Queries anwenden: `severity="< 30 Tage"` → `days_remaining < 30`; `severity="< 90 Tage"` → `days_remaining < 90` (in Python nach dem Merge, nicht als SQL-Predicate, da `days_remaining` erst nach dem Laden berechnet wird)
-  - [ ] Bestehender `GET /due-radar`-Handler: `list_due_within(db, accessible_object_ids=...)` bleibt unverändert aufgerufen (default `severity=None, types=None` → kein Filter, alles wie bisher)
+- [x] Task 2: Filterparameter in `list_due_within()` aktivieren (AC: 1, 2, 3)
+  - [x] Signatur auf `list_due_within(db, *, days: int = 90, severity: str | None = None, types: list[str] | None = None, accessible_object_ids: list[uuid.UUID]) -> list[DueRadarEntry]` anpassen (Architecture ID2 bereits so spezifiziert)
+  - [x] Police-Query: wenn `types` gesetzt und `"police"` nicht enthalten → leere Liste zurückgeben (skip query)
+  - [x] Wartung-Query: wenn `types` gesetzt und `"wartung"` nicht enthalten → leere Liste zurückgeben (skip query)
+  - [x] Severity-Filter auf beide Queries anwenden: `severity="< 30 Tage"` → `days_remaining < 30`; `severity="< 90 Tage"` → `days_remaining < 90` (in Python nach dem Merge, nicht als SQL-Predicate, da `days_remaining` erst nach dem Laden berechnet wird)
+  - [x] Bestehender `GET /due-radar`-Handler: `list_due_within(db, accessible_object_ids=...)` bleibt unverändert aufgerufen (default `severity=None, types=None` → kein Filter, alles wie bisher)
 
-- [ ] Task 3: `GET /due-radar/rows` HTMX-Fragment-Endpoint im Router `app/routers/due_radar.py` (AC: 1, 2, 3, 9)
-  - [ ] `GET "/rows"` Handler mit Query-Params: `type: str = "all"` und `severity: str = "all"`
-  - [ ] `require_permission("due_radar:view")` + `accessible_object_ids` wie im Haupt-Handler
-  - [ ] Param-Mapping: `type` → `types` für Service: `"all"` → `None`, `"police"` → `["police"]`, `"wartung"` → `["wartung"]`
-  - [ ] Param-Mapping: `severity` → Service: `"all"` → `None`, `"lt30"` → `"< 30 Tage"`, `"lt90"` → `"< 90 Tage"`
-  - [ ] Liefert `templates.TemplateResponse(request, "_due_radar_rows.html", {"entries": entries})` (nur Fragment, kein volles Layout)
+- [x] Task 3: `GET /due-radar/rows` HTMX-Fragment-Endpoint im Router `app/routers/due_radar.py` (AC: 1, 2, 3, 9)
+  - [x] `GET "/rows"` Handler mit Query-Params: `type: str = "all"` und `severity: str = "all"`
+  - [x] `require_permission("due_radar:view")` + `accessible_object_ids` wie im Haupt-Handler
+  - [x] Param-Mapping: `type` → `types` für Service: `"all"` → `None`, `"police"` → `["police"]`, `"wartung"` → `["wartung"]`
+  - [x] Param-Mapping: `severity` → Service: `"all"` → `None`, `"lt30"` → `"< 30 Tage"`, `"lt90"` → `"< 90 Tage"`
+  - [x] Liefert `templates.TemplateResponse(request, "_due_radar_rows.html", {"entries": entries})` (nur Fragment, kein volles Layout)
 
-- [ ] Task 4: Filter-Controls in `app/templates/due_radar.html` (AC: 4)
-  - [ ] Zwei `<select>`-Elemente über der Tabelle in einem `<form>`-Tag:
+- [x] Task 4: Filter-Controls in `app/templates/due_radar.html` (AC: 4)
+  - [x] Zwei `<select>`-Elemente über der Tabelle in einem `<form>`-Tag:
     - Typ-Select: `name="type"`, Optionen `value="all"` (Alle Typen), `value="police"` (Policen), `value="wartung"` (Wartungspflichten)
     - Schwere-Select: `name="severity"`, Optionen `value="all"` (Alle Schweren), `value="lt30"` (< 30 Tage), `value="lt90"` (< 90 Tage)
-  - [ ] Auf dem `<form>`: `hx-get="/due-radar/rows"`, `hx-target="#due-radar-rows"`, `hx-trigger="change from:select"`, `hx-swap="innerHTML"`
-  - [ ] Tailwind-Klassen analog zu Filter-Forms in `app/templates/admin/` (Select-Styling: `border border-slate-300 rounded px-2 py-1 text-sm`)
-  - [ ] Label-Texte: "Typ:" und "Schwere:"
+  - [x] Auf dem `<form>`: `hx-get="/due-radar/rows"`, `hx-target="#due-radar-rows"`, `hx-trigger="change from:select"`, `hx-swap="innerHTML"`
+  - [x] Tailwind-Klassen analog zu Filter-Forms in `app/templates/admin/` (Select-Styling: `border border-slate-300 rounded px-2 py-1 text-sm`)
+  - [x] Label-Texte: "Typ:" und "Schwere:"
 
-- [ ] Task 5: `_due_radar_rows.html` für Versicherer-Link erweitern (AC: 5, 6, 7)
-  - [ ] Titel-Zelle für `kind="police"`: `<a href="/registries/versicherer/{{ entry.versicherer_id }}" class="hover:underline text-blue-600">{{ entry.title }}</a>` — nur wenn `entry.versicherer_id` gesetzt, sonst Plaintext `{{ entry.title }}`
-  - [ ] Zeilen-Link (Typ-Spalte, Fälligkeits-Spalte, Verbleibend-Spalte, Schwere-Spalte): `<a href="{{ entry.link_url }}" class="block px-4 py-3">...` — damit "Klick auf Zeile" zum Object-Detail führt
-  - [ ] Objekt-Kürzel-Zelle: weiterhin `<a href="/objects/{{ entry.object_id }}">` (generischer Object-Link, kein Anker)
-  - [ ] Wartung-Zeilen: `entry.versicherer_id` ist `None` → Titel-Zelle rendert Plaintext-Link zu `entry.link_url` (unverändertes 2-5-Verhalten)
+- [x] Task 5: `_due_radar_rows.html` für Versicherer-Link erweitern (AC: 5, 6, 7)
+  - [x] Titel-Zelle für `kind="police"`: `<a href="/registries/versicherer/{{ entry.versicherer_id }}" class="hover:underline text-blue-600">{{ entry.title }}</a>` — nur wenn `entry.versicherer_id` gesetzt, sonst Plaintext `{{ entry.title }}`
+  - [x] Zeilen-Link (Typ-Spalte, Fälligkeits-Spalte, Verbleibend-Spalte, Schwere-Spalte): `<a href="{{ entry.link_url }}" class="block px-4 py-3">...` — damit "Klick auf Zeile" zum Object-Detail führt
+  - [x] Objekt-Kürzel-Zelle: weiterhin `<a href="/objects/{{ entry.object_id }}">` (generischer Object-Link, kein Anker)
+  - [x] Wartung-Zeilen: `entry.versicherer_id` ist `None` → Titel-Zelle rendert Plaintext-Link zu `entry.link_url` (unverändertes 2-5-Verhalten)
 
-- [ ] Task 6: Tests `tests/test_due_radar_unit.py` erweitern (AC: 8)
-  - [ ] `test_filter_type_police_returns_only_police()` — Police + Wartung im DB → `list_due_within(... types=["police"])` gibt nur Police-Einträge zurück
-  - [ ] `test_filter_type_wartung_returns_only_wartung()` — analog, nur Wartungs-Einträge
-  - [ ] `test_filter_severity_lt30_excludes_later_entries()` — Police mit `days_remaining=15` + Police mit `days_remaining=45` → `severity="< 30 Tage"` gibt nur die 15-Tage-Police zurück
-  - [ ] `test_filter_severity_lt30_includes_overdue_entries()` — Police mit `days_remaining=-5` (überfällig) + Police mit `days_remaining=15` + Police mit `days_remaining=45` → `severity="< 30 Tage"` gibt BEIDE ersten Einträge zurück (Überfällige sind strenger als 30 Tage, deshalb eingeschlossen — siehe Dev Notes "Severity-Filterung")
-  - [ ] `test_filter_combined_additive()` — Police mit 15 Tagen + Wartung mit 15 Tagen → `types=["police"], severity="< 30 Tage"` gibt nur die Police zurück (beide Bedingungen gelten)
-  - [ ] `test_versicherer_id_on_police_entry()` — Police-Eintrag hat `versicherer_id` gesetzt (nicht None)
-  - [ ] `test_police_link_url_has_policy_anchor()` — Police-Eintrag `link_url` endet auf `#policy-{id}`
+- [x] Task 6: Tests `tests/test_due_radar_unit.py` erweitern (AC: 8)
+  - [x] `test_filter_type_police_returns_only_police()` — Police + Wartung im DB → `list_due_within(... types=["police"])` gibt nur Police-Einträge zurück
+  - [x] `test_filter_type_wartung_returns_only_wartung()` — analog, nur Wartungs-Einträge
+  - [x] `test_filter_severity_lt30_excludes_later_entries()` — Police mit `days_remaining=15` + Police mit `days_remaining=45` → `severity="< 30 Tage"` gibt nur die 15-Tage-Police zurück
+  - [x] `test_filter_severity_lt30_includes_overdue_entries()` — Police mit `days_remaining=-5` (überfällig) + Police mit `days_remaining=15` + Police mit `days_remaining=45` → `severity="< 30 Tage"` gibt BEIDE ersten Einträge zurück (Überfällige sind strenger als 30 Tage, deshalb eingeschlossen — siehe Dev Notes "Severity-Filterung")
+  - [x] `test_filter_combined_additive()` — Police mit 15 Tagen + Wartung mit 15 Tagen → `types=["police"], severity="< 30 Tage"` gibt nur die Police zurück (beide Bedingungen gelten)
+  - [x] `test_versicherer_id_on_police_entry()` — Police-Eintrag hat `versicherer_id` gesetzt (nicht None)
+  - [x] `test_police_link_url_has_policy_anchor()` — Police-Eintrag `link_url` endet auf `#policy-{id}`
 
-- [ ] Task 7: Smoke-Test für neuen Endpoint (AC: 9)
-  - [ ] In `tests/test_routes_smoke.py` neue Klasse `TestDueRadarRowsEndpoint`:
+- [x] Task 7: Smoke-Test für neuen Endpoint (AC: 9)
+  - [x] In `tests/test_routes_smoke.py` neue Klasse `TestDueRadarRowsEndpoint`:
     - `test_unauthenticated_redirects()` — `GET /due-radar/rows` → 302
     - `test_no_permission_returns_403()` — Auth aber ohne `due_radar:view` → 403
 
@@ -237,4 +241,20 @@ claude-sonnet-4-6[1m]
 
 ### Completion Notes List
 
+- `DueRadarEntry` um `versicherer_id: uuid.UUID | None = None` erweitert (frozen dataclass, Default am Ende).
+- Police-Query selektiert jetzt `InsurancePolicy.versicherer_id`; `link_url` auf `#policy-{entity_id}` umgestellt.
+- `list_due_within()`: Type-Filter per early-skip der jeweiligen Query, Severity-Filter in Python nach dem Merge (< 30 Tage schließt negative days_remaining ein).
+- Neuer HTMX-Fragment-Endpoint `GET /due-radar/rows` mit `require_permission("due_radar:view")`, Param-Mapping `type`/`severity` → Service.
+- Filter-Form (2 Selects) über der Tabelle in `due_radar.html`; `hx-trigger="change from:select"` serialisiert automatisch beide Params.
+- `_due_radar_rows.html`: Titel-Zelle Police zeigt Versicherer-Link (`/registries/versicherer/{id}`) wenn `versicherer_id` gesetzt; Typ/Fälligkeit/Verbleibend/Schwere-Zellen als Block-Link auf `entry.link_url`.
+- 7 neue Unit-Tests (alle Filter-Kombinationen + versicherer_id + link_url-Anker), 2 neue Smoke-Tests (401-Redirect + 403).
+- Vollständige Regression: 657/657 Tests grün.
+
 ### File List
+
+- `app/services/due_radar.py`
+- `app/routers/due_radar.py`
+- `app/templates/due_radar.html`
+- `app/templates/_due_radar_rows.html`
+- `tests/test_due_radar_unit.py`
+- `tests/test_routes_smoke.py`
