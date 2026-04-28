@@ -2,6 +2,15 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of story-2.8 (2026-04-28)
+
+- **Negative Praemie / negative Schaden nicht sanitiziert** [`app/services/registries.py:229,274`] — `gesamtpraemie` / `gesamtschaden` werden naiv akkumuliert. Der `gesamtpraemie > 0`-Guard fuer Division-by-Zero greift bei negativen Summen falsch (Quote = 0). In Praxis nicht erwartet, aber wieder ein Datenmodell-Aspekt (siehe gleiche Note aus Story 2.7).
+- **`date.today()` ohne Timezone (UTC vs Europe/Berlin)** [`app/services/registries.py:216`] — Server-Container in UTC; in den Nachtstunden kann `today()` einen Tag zuruecklaufen. Severity-Schwellen 30/90 reagieren am Grenzfall um 1 Tag verschoben. App-uebergreifend, nicht story-spezifisch — gehoert in eine zentrale `today_local()`-Helper-Runde.
+- **`policen_anzahl` vs Heatmap-Sichtbarkeit inkonsistent** [`app/services/registries.py:264,277`] — Header-KPI zaehlt alle Policen, Heatmap zeigt nur die mit `next_main_due`. Inkonsistente UX bei Versicherer mit unklaren Faelligkeiten. UX-Frage, kein Bug.
+- **Monkeypatch von `reg_mod.date` redundant** [`tests/test_registries_unit.py:204-208`] — Pattern bietet keinen echten Schutz gegen Datums-Wechsel zwischen Setup und Service-Aufruf. Cleanup ohne Funktionswirkung — beim naechsten Test-Refactor mitnehmen.
+- **Smoke-Test `test_detail_permitted_user_returns_200` ohne Render-Check** [`tests/test_registries_routes_smoke.py:114-119`] — prueft nur 200 + Name. Heatmap-Severity-Klassen, Policen-Tabellen-Rendering und Schadensfaelle-Liste werden nicht abgedeckt. Erweiterung in spaeterer Test-Coverage-Runde.
+- **Magic Numbers 30 / 90 doppelt im Code** [`app/services/registries.py:144-149,194-199`] — Severity-Schwellwerte sind in `_build_heatmap` und `get_versicherer_detail` separat hartkodiert. Drift-Risiko gering, aber Refactoring-Kandidat (Konstante oder kleine `_severity_for(days)`-Helper-Funktion).
+
 ## Deferred from: code review of story-2.7 (2026-04-28)
 
 - **Negative `praemie` / negative `Schadensfall.amount` ohne Guard** [`app/models/police.py`, `app/services/registries.py:138-140`] — Datenmodell erlaubt negative `Numeric(12,2)`. Aggregations-Service kann dadurch `praemie_sum < 0` liefern; das `praemie > 0`-Guard zur ZeroDivision-Vermeidung springt fälschlich auch bei negativen Summen → `schadensquote=0.0` für tatsächlich kaputten Datensatz. Pre-existing Datenmodell-Lücke (betrifft alle künftigen Aggregations-Views, nicht 2.7-spezifisch). Vor Multi-Mandanten-Rollout entweder DB-CHECK-Constraint (`praemie >= 0`, `amount >= 0`) oder Service-seitige `max(Decimal('0'), ...)`-Guards.

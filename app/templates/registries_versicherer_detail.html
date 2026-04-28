@@ -11,12 +11,13 @@
 
     {% if detail.versicherer.contact_info %}
     {% set ci = detail.versicherer.contact_info %}
+    {% set _adr = ci.get("adresse") or ci.get("address") %}
+    {% set _mail = ci.get("email") %}
+    {% set _tel = ci.get("tel") or ci.get("phone") %}
     <div class="mt-2 text-sm text-slate-500 space-y-0.5">
-        {% if ci.get("adresse") %}<p>{{ ci.get("adresse") }}</p>{% endif %}
-        {% if ci.get("address") %}<p>{{ ci.get("address") }}</p>{% endif %}
-        {% if ci.get("email") %}<p>{{ ci.get("email") }}</p>{% endif %}
-        {% if ci.get("tel") %}<p>{{ ci.get("tel") }}</p>{% endif %}
-        {% if ci.get("phone") %}<p>{{ ci.get("phone") }}</p>{% endif %}
+        {% if _adr %}<p>{{ _adr }}</p>{% endif %}
+        {% if _mail %}<p>{{ _mail }}</p>{% endif %}
+        {% if _tel %}<p>{{ _tel }}</p>{% endif %}
     </div>
     {% endif %}
 
@@ -39,21 +40,33 @@
 <!-- Ablauf-Heatmap -->
 <div class="bg-white rounded-lg border border-slate-200 p-6 mb-4">
     <h2 class="text-sm font-semibold text-slate-700 mb-4">Ablauf-Heatmap (12 Monate)</h2>
-    <div class="grid grid-cols-12 gap-1">
-        {% for b in detail.heatmap %}
-        <div class="flex flex-col items-center" title="{{ b.label }}: {{ b.policy_count }} {% if b.policy_count == 1 %}Police{% else %}Policen{% endif %}">
-            <div class="w-full h-10 rounded
-                {% if b.severity == 'critical' %}bg-red-500
-                {% elif b.severity == 'warning' %}bg-orange-400
-                {% elif b.severity == 'normal' %}bg-green-400
-                {% else %}bg-slate-100{% endif %}">
+    <div class="flex items-stretch gap-3">
+        <!-- Ueberfaellig-Bucket (Policen mit Faelligkeit vor dem aktuellen Monat) -->
+        <div class="flex flex-col items-center w-16" title="Ueberfaellig (vor dem aktuellen Monat): {{ detail.overdue_count }} {% if detail.overdue_count == 1 %}Police{% else %}Policen{% endif %}">
+            <div class="w-full h-10 rounded flex items-center justify-center text-xs font-semibold
+                {% if detail.overdue_count > 0 %}bg-red-700 text-white{% else %}bg-slate-100 text-slate-400{% endif %}">
+                {{ detail.overdue_count }}
             </div>
-            <span class="text-xs text-slate-400 mt-1 text-center leading-tight">{{ b.label }}</span>
+            <span class="text-xs text-slate-400 mt-1 text-center leading-tight">Ueberf&auml;llig</span>
         </div>
-        {% endfor %}
+        <div class="border-l border-slate-200"></div>
+        <div class="flex-1 grid grid-cols-12 gap-1">
+            {% for b in detail.heatmap %}
+            <div class="flex flex-col items-center"{% if b.policy_count > 0 %} title="{{ b.label }}: {{ b.policy_count }} {% if b.policy_count == 1 %}Police{% else %}Policen{% endif %}"{% else %} title="{{ b.label }}: keine Police"{% endif %}>
+                <div class="w-full h-10 rounded
+                    {% if b.severity == 'critical' %}bg-red-500
+                    {% elif b.severity == 'warning' %}bg-orange-400
+                    {% elif b.severity == 'normal' %}bg-green-400
+                    {% else %}bg-slate-100{% endif %}">
+                </div>
+                <span class="text-xs text-slate-400 mt-1 text-center leading-tight">{{ b.label }}</span>
+            </div>
+            {% endfor %}
+        </div>
     </div>
     <p class="text-xs text-slate-400 mt-3">
-        <span class="inline-block w-3 h-3 rounded bg-red-500 mr-1"></span>&lt; 30 Tage ·
+        <span class="inline-block w-3 h-3 rounded bg-red-700 mr-1"></span>&Uuml;berf&auml;llig ·
+        <span class="inline-block w-3 h-3 rounded bg-red-500 mr-1 ml-2"></span>&lt; 30 Tage ·
         <span class="inline-block w-3 h-3 rounded bg-orange-400 mr-1 ml-2"></span>&lt; 90 Tage ·
         <span class="inline-block w-3 h-3 rounded bg-green-400 mr-1 ml-2"></span>≥ 90 Tage
     </p>

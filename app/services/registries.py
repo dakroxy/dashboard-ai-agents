@@ -153,6 +153,7 @@ class VersichererDetailData:
     schadensfaelle: list[SchadensfallDetailRow]
     verbundene_objekte: list[VerbundeneObjektRow]
     heatmap: list[HeatmapBucket]
+    overdue_count: int  # Policen mit next_main_due VOR dem aktuellen Monat (vor day=1)
 
 
 def _build_heatmap(policen: list[PolicyDetailRow], today: date) -> list[HeatmapBucket]:
@@ -226,14 +227,14 @@ def get_versicherer_detail(
             sev = "warning"
         else:
             sev = "normal"
-        gesamtpraemie += Decimal(str(r.praemie)) if r.praemie else Decimal("0")
+        gesamtpraemie += Decimal(str(r.praemie)) if r.praemie is not None else Decimal("0")
         policen.append(PolicyDetailRow(
             policy_id=r.id,
             police_number=r.police_number,
             object_id=r.object_id,
             object_short_code=r.short_code,
             object_name=r.name,
-            praemie=Decimal(str(r.praemie)) if r.praemie else None,
+            praemie=Decimal(str(r.praemie)) if r.praemie is not None else None,
             next_main_due=r.next_main_due,
             days_remaining=dr,
             severity=sev,
@@ -271,13 +272,13 @@ def get_versicherer_detail(
     schadensfaelle: list[SchadensfallDetailRow] = []
     gesamtschaden = Decimal("0")
     for r in schaden_raw:
-        gesamtschaden += Decimal(str(r.amount)) if r.amount else Decimal("0")
+        gesamtschaden += Decimal(str(r.amount)) if r.amount is not None else Decimal("0")
         schadensfaelle.append(SchadensfallDetailRow(
             schadensfall_id=r.id,
             occurred_at=r.occurred_at,
             object_short_code=r.object_short_code,
             unit_number=unit_map.get(r.unit_id) if r.unit_id else None,
-            amount=Decimal(str(r.amount)) if r.amount else None,
+            amount=Decimal(str(r.amount)) if r.amount is not None else None,
             description=r.description,
         ))
     schadensfaelle.sort(
@@ -298,9 +299,17 @@ def get_versicherer_detail(
                 short_code=r.short_code,
                 name=r.name,
             ))
+    verbundene_objekte.sort(key=lambda o: o.short_code.casefold())
 
     # Step 9
     heatmap = _build_heatmap(policen, today)
+
+    # Step 10: Ueberfaellig-Bucket = Policen mit Faelligkeit VOR dem 1. des aktuellen Monats
+    first_of_month = today.replace(day=1)
+    overdue_count = sum(
+        1 for p in policen
+        if p.next_main_due is not None and p.next_main_due < first_of_month
+    )
 
     return VersichererDetailData(
         versicherer=versicherer,
@@ -312,4 +321,5 @@ def get_versicherer_detail(
         schadensfaelle=schadensfaelle,
         verbundene_objekte=verbundene_objekte,
         heatmap=heatmap,
+        overdue_count=overdue_count,
     )

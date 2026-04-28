@@ -1,6 +1,6 @@
 # Story 2.8: Versicherer-Detailseite mit Heatmap & Schadensfaellen
 
-Status: review
+Status: done
 
 ## Story
 
@@ -247,6 +247,31 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
   - [x] `test_detail_unknown_versicherer_returns_404(steckbrief_admin_client)` — `GET /registries/versicherer/{uuid.uuid4()}` → 404
   - [x] `test_detail_permitted_user_returns_200(steckbrief_admin_client, db)` — Versicherer via `db.add(...)` anlegen → `GET /registries/versicherer/{v.id}` → 200
 
+### Review Findings
+
+**Code-Review 2026-04-28** — 3 Reviewer parallel (Blind Hunter / Edge Case Hunter / Acceptance Auditor). Decision (Option 1) und alle Patches angewendet, 692/692 Tests gruen.
+
+#### Decision (resolved → patch)
+
+- [x] [Review][Decision] **Heatmap zeigt ueberfaellige Policen nicht im 12-Monats-Fenster** → User-Entscheidung: Option 1 — eigener "Ueberfaellig"-Bucket links neben den 12 Monatszellen. Service hat neues Feld `VersichererDetailData.overdue_count`; Berechnung: Policen mit `next_main_due < today.replace(day=1)`. Template rendert eigene Zelle (knallrot bei > 0, hellgrau bei 0) mit Trennstrich vor der 12-Monats-Heatmap. Legende um "Ueberfaellig"-Eintrag erweitert.
+
+#### Patches (alle angewendet)
+
+- [x] [Review][Patch] **Test `test_heatmap_marks_overdue_policy_as_critical` flaky am 1.-5. Monatstag** [`tests/test_registries_unit.py`] — Alle Heatmap-Tests stabilisiert auf `today = date.today().replace(day=15)`, sodass Datums-Arithmetik (`+10 Tage`, `-5 Tage`, `+60 Tage`) garantiert in-range bleibt. Plus neuer Test `test_overdue_count_counts_policies_before_current_month` (10 Unit-Tests gesamt).
+- [x] [Review][Patch] **`Decimal("0")` wird als `None` behandelt (Truthiness-Bug)** [`app/services/registries.py:229,236,274,280`] — Alle vier Stellen auf `is not None` umgestellt. Echte Null-Praemie / Bagatell-Schaden zeigt jetzt "0 €" statt "–".
+- [x] [Review][Patch] **Template rendert `adresse` UND `address` doppelt bei Doppelbesetzung** [`app/templates/registries_versicherer_detail.html`] — OR-Logik mit Jinja-`set`-Variablen: `_adr = ci.get("adresse") or ci.get("address")`, analog `_tel = ci.get("tel") or ci.get("phone")`. Email blieb wie ist (kein Alias-Konflikt).
+- [x] [Review][Patch] **`verbundene_objekte` ohne stabile Sortierung** [`app/services/registries.py`] — Nach Dedup: `verbundene_objekte.sort(key=lambda o: o.short_code.casefold())`.
+- [x] [Review][Patch] **Tooltip "0 Policen" auf leeren Heatmap-Buckets** [`app/templates/registries_versicherer_detail.html`] — Title konditional: `policy_count > 0` → "Apr 2026: 1 Police", sonst "Apr 2026: keine Police".
+
+#### Deferred
+
+- [x] [Review][Defer] **Negative Praemie / negative Schaden nicht sanitiziert** [`app/services/registries.py:229,274`] — deferred, in Praxis nicht erwartet (Storno-Buchungen werden nicht so abgebildet); App-uebergreifender Punkt.
+- [x] [Review][Defer] **`date.today()` ohne Timezone** [`app/services/registries.py:216`] — deferred, App-uebergreifend (UTC vs Europe/Berlin), nicht story-spezifisch.
+- [x] [Review][Defer] **`policen_anzahl` vs Heatmap-Sichtbarkeit inkonsistent** [`app/services/registries.py:264,277`] — deferred, Header zaehlt Policen ohne `next_main_due` mit, Heatmap nicht. UX-Frage, kein Bug.
+- [x] [Review][Defer] **Monkeypatch von `reg_mod.date` redundant** [`tests/test_registries_unit.py:204-208`] — deferred, Test-Cleanup ohne Funktionswirkung; lohnt nur bei naechstem Refactor.
+- [x] [Review][Defer] **Smoke-Test `test_detail_permitted_user_returns_200` ohne Render-Check** [`tests/test_registries_routes_smoke.py:114-119`] — deferred, prueft nur 200 + Name; Heatmap-/Tabellen-Render-Logik wird nicht abgedeckt. Test-Coverage-Erweiterung fuer naechste Story.
+- [x] [Review][Defer] **Magic Numbers 30 / 90 doppelt im Code** [`app/services/registries.py:144-149,194-199`] — deferred, Refactoring-Hygiene; Drift-Risiko gering.
+
 ## Dev Notes
 
 ### Abhängigkeit: Story 2.7 muss vorher implementiert sein
@@ -430,3 +455,4 @@ Heatmap-Test `test_heatmap_marks_expiring_policy_as_critical`: ursprünglich `he
 ## Change Log
 
 - 2026-04-28: Story 2.8 implementiert — Versicherer-Detailseite mit Ablauf-Heatmap, Policen-Tabelle, Schadensfälle-Liste und Verbundene-Objekte-Abschnitt. 13 neue Tests (9 Unit + 4 Smoke), 691/691 grün.
+- 2026-04-28: Code-Review-Fixes — Decision (Ueberfaellig-Bucket links der Heatmap) + 5 Patches (Decimal-Truthiness, Adresse/Address-Aliasing, Verbundene-Objekte alphabetisch sortiert, Heatmap-Tooltip konditional, Heatmap-Tests datums-stabilisiert via `today.replace(day=15)`). Plus 1 neuer Unit-Test (`test_overdue_count_counts_policies_before_current_month`). 692/692 Tests gruen.

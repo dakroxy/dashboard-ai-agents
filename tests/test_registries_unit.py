@@ -200,7 +200,9 @@ def test_get_versicherer_detail_heatmap_has_12_months(db):
 def test_heatmap_marks_expiring_policy_as_critical(db, monkeypatch):
     from app.services import registries as reg_mod
 
-    today = date.today()
+    # Stabilisiert auf Mitte des Monats, damit `today + 10 Tage` und `today - 5 Tage`
+    # garantiert im selben Kalendermonat liegen (verhindert Test-Flake am Monatsanfang).
+    today = date.today().replace(day=15)
     monkeypatch.setattr(reg_mod, "date", type("_FakeDate", (), {
         "today": staticmethod(lambda: today),
         "max": date.max,
@@ -224,7 +226,7 @@ def test_heatmap_marks_expiring_policy_as_critical(db, monkeypatch):
 def test_heatmap_marks_overdue_policy_as_critical(db, monkeypatch):
     from app.services import registries as reg_mod
 
-    today = date.today()
+    today = date.today().replace(day=15)
     monkeypatch.setattr(reg_mod, "date", type("_FakeDate", (), {
         "today": staticmethod(lambda: today),
         "max": date.max,
@@ -233,23 +235,45 @@ def test_heatmap_marks_overdue_policy_as_critical(db, monkeypatch):
 
     obj = _make_object(db, "OVD1")
     v = _make_versicherer(db, "Overdue-Versicherer")
-    overdue = today - timedelta(days=5)
+    overdue = today - timedelta(days=5)  # 10. dieses Monats — sicher im aktuellen Monats-Bucket
     _make_policy_with_due(db, obj, v, praemie=100, next_main_due=overdue)
     db.commit()
 
     detail = get_versicherer_detail(db, v.id)
     assert detail is not None
-    # Überfälliger Bucket: Monat des Ablaufdatums (kann bereits vergangen sein)
     overdue_bucket = next(
         b for b in detail.heatmap if b.year == overdue.year and b.month == overdue.month
     )
     assert overdue_bucket.severity == "critical"
 
 
+def test_overdue_count_counts_policies_before_current_month(db, monkeypatch):
+    from app.services import registries as reg_mod
+
+    today = date.today().replace(day=15)
+    monkeypatch.setattr(reg_mod, "date", type("_FakeDate", (), {
+        "today": staticmethod(lambda: today),
+        "max": date.max,
+        "min": date.min,
+    }))
+
+    obj = _make_object(db, "OVDLONG")
+    v = _make_versicherer(db, "Long-Overdue-Versicherer")
+    long_overdue = today.replace(day=1) - timedelta(days=15)  # garantiert im Vormonat
+    in_current_month = today - timedelta(days=5)  # gleiche Monat — gehoert NICHT zum overdue_count
+    _make_policy_with_due(db, obj, v, praemie=100, next_main_due=long_overdue)
+    _make_policy_with_due(db, obj, v, praemie=100, next_main_due=in_current_month)
+    db.commit()
+
+    detail = get_versicherer_detail(db, v.id)
+    assert detail is not None
+    assert detail.overdue_count == 1  # nur die Police aus dem Vormonat
+
+
 def test_heatmap_marks_expiring_policy_as_warning(db, monkeypatch):
     from app.services import registries as reg_mod
 
-    today = date.today()
+    today = date.today().replace(day=15)
     monkeypatch.setattr(reg_mod, "date", type("_FakeDate", (), {
         "today": staticmethod(lambda: today),
         "max": date.max,
