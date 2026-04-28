@@ -1,6 +1,6 @@
 # Story 2.7: Versicherer-Listenansicht mit Aggregationen
 
-Status: review
+Status: done
 
 ## Story
 
@@ -392,6 +392,24 @@ Keine Blocker. Direkt implementiert.
 - `tests/test_registries_unit.py` (neu)
 - `tests/test_registries_routes_smoke.py` (neu)
 
+### Review Findings
+
+Code-Review 2026-04-28 (3 Layer: Blind Hunter / Edge Case Hunter / Acceptance Auditor). Triage: 3 Patches, 2 Deferred, ~15 Dismissed (per Spec / by design / pre-existing).
+
+**Patches (3):** alle behoben am 2026-04-28.
+
+- [x] [Review][Patch] Sidebar-Negativ-Test ist fragil: zweite Assertion `"Versicherer" not in resp.text` greift, sobald irgendwo das deutsche Wort "Versicherer" auftaucht — der href-Check allein reicht. [`tests/test_registries_routes_smoke.py:90`]
+- [x] [Review][Patch] Name-Sort ist case-sensitive — "axa" landet vor "Allianz" (ASCII A=0x41 < a=0x61). Sort-Key für `name` über `.casefold()` schicken. [`app/services/registries.py:172`]
+- [x] [Review][Patch] Sortierung ohne Tie-Break flackert bei Werte-Gleichstand (zwei Versicherer mit gleicher Schadensquote → DB-implementierungsabhängige Reihenfolge, HTMX-Re-Sort kann jedes Mal anders aussehen). Stabilen Sekundär-Schlüssel `versicherer_id` ergänzen. [`app/services/registries.py:172`]
+
+**Deferred (2):**
+
+- [x] [Review][Defer] Negative `praemie` / negative `Schadensfall.amount` produziert nonsense Aggregate (`praemie_sum < 0`, `schadensquote=0.0` per `praemie > 0`-Guard) — kein DB-CHECK, kein Service-Guard. [`app/models/police.py`] — deferred, pre-existing data-model-issue, betrifft alle Aggregations-Views.
+- [x] [Review][Defer] Schadensquote-Anzeige-Inkonsistenz bei sehr kleinen Verhältnissen: `1e-6` rendert "0.0 %", aber der `schadensquote == 0`-Mute-Style trifft nicht — Zelle wirkt visuell wie "Daten fehlen", ist aber tatsächlich gefüllt. [`app/templates/_versicherer_rows.html:17-19`] — deferred, sehr Edge, UX-Polish bei Reklamation.
+
+**Dismissed (~15):** HTMX-Sort-Toggle (per Spec AC2: fixe Richtung pro Spalte), Detail-Link auf 404 (konsistent mit Story 2.6, Story 2.8 fixt's), Performance unbounded (Spec AC6: 50 Objekte/150 Policen, 3 indizierte Queries reichen), Sort-roundtrip Substring-Check (unrealistische Konstellation), Decimal/int coalesce kosmetisch, 403-Permission-Name im Body (`permissions.py:140` ist projektweites Muster), Schadensquote 0 % bei praemie=0 (Spec AC1: "0% wenn keine Prämie"), Sidebar-active-Scope spekulativ, Decimal('0.005') (durch DB NUMERIC(12,2) auf 0.01 gerundet), Sort-Ties bei Schadensquote 0.0 (per Spec), `versicherer_id IS NULL`-Policen-Drop (by design), Test-Gap 2×2 Policen-Schadens-Matrix (Spec-Tests 8/8 vollständig), objekte_anzahl Cross-Versicherer-Overlap (theoretisch — keine Totals-Spalte heute), Object-ACL-Bypass-Test (Dev Notes: portfolio-weit, explizit dokumentiert), `order=DESC` uppercase-Akzeptanz (Scope-Creep gegen Spec-lowercase).
+
 ## Change Log
 
 - 2026-04-28: Story 2.7 implementiert — Versicherer-Listenansicht mit Aggregationen (Policen, Prämie, Schadensquote, Objekte), HTMX-Sort, Sidebar-Link, 16 Tests.
+- 2026-04-28: Code-Review (3-Layer): 3 Patches angewendet (Sidebar-Test entschlackt + Name-Sort case-insensitive via casefold + Tie-Break per versicherer_id), 2 Deferred, ~15 Dismissed. 678 Tests grün.

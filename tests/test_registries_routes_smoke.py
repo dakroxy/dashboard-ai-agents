@@ -86,4 +86,3 @@ def test_sidebar_link_hidden_for_unpermitted_user(auth_client):
     resp = auth_client.get("/")
     assert resp.status_code == 200
     assert 'href="/registries/versicherer"' not in resp.text
-    assert "Versicherer" not in resp.text

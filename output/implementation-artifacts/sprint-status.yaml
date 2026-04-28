@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-28 (Story 2.7 Versicherer-Listenansicht → review)
+# last_updated: 2026-04-28 (Story 2.7 Versicherer-Listenansicht Code-Review → done)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-28 (Story 2.7 Versicherer-Listenansicht → review)
+last_updated: 2026-04-28 (Story 2.7 Versicherer-Listenansicht Code-Review → done)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -63,7 +63,7 @@ development_status:
   2-4-menschen-notizen-admin-only: done
   2-5-due-radar-global-view: done
   2-6-due-radar-filter-deep-links: review
-  2-7-versicherer-listenansicht-mit-aggregationen: review
+  2-7-versicherer-listenansicht-mit-aggregationen: done
   2-8-versicherer-detailseite-mit-heatmap-schadensfaellen: ready-for-dev
   epic-2-retrospective: optional
 

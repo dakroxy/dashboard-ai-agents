@@ -2,6 +2,11 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of story-2.7 (2026-04-28)
+
+- **Negative `praemie` / negative `Schadensfall.amount` ohne Guard** [`app/models/police.py`, `app/services/registries.py:138-140`] — Datenmodell erlaubt negative `Numeric(12,2)`. Aggregations-Service kann dadurch `praemie_sum < 0` liefern; das `praemie > 0`-Guard zur ZeroDivision-Vermeidung springt fälschlich auch bei negativen Summen → `schadensquote=0.0` für tatsächlich kaputten Datensatz. Pre-existing Datenmodell-Lücke (betrifft alle künftigen Aggregations-Views, nicht 2.7-spezifisch). Vor Multi-Mandanten-Rollout entweder DB-CHECK-Constraint (`praemie >= 0`, `amount >= 0`) oder Service-seitige `max(Decimal('0'), ...)`-Guards.
+- **Schadensquote-Anzeige-Inkonsistenz bei sehr kleinen Verhältnissen** [`app/templates/_versicherer_rows.html:17-19`] — `schadensquote=1e-6` rendert "0.0 %" via `"%.1f"|format(schadensquote*100)`, aber der `gesamtpraemie==0` / `schadensquote==0`-Mute-Style-Check trifft nicht zu (wahrer Wert ist nicht 0). Zelle wirkt visuell wie "Daten fehlen", ist aber tatsächlich gefüllt. Sehr Edge, UX-Polish bei Reklamation. Fix: Style-Check auf `schadensquote < 0.001` lockern oder Format-Threshold einbauen.
+
 ## Deferred from: code review of story-2.6 (2026-04-28)
 
 - **Versicherer-Deep-Link 404t bis Story 2.8** [`app/templates/_due_radar_rows.html:17`] — `/registries/versicherer/{id}` existiert noch nicht; Spec akzeptiert das explizit ("Versicherer-Link: Route noch nicht implementiert"). Greift automatisch sobald 2.8 gemergt ist.

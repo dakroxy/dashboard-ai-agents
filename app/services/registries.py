@@ -84,5 +84,12 @@ def list_versicherer_aggregated(
         )
 
     safe_sort = sort if sort in _SORT_ALLOWED else "name"
-    result.sort(key=lambda r: getattr(r, safe_sort), reverse=(order == "desc"))
+
+    def _sort_key(r: VersichererAggRow) -> tuple[Any, str]:
+        primary = getattr(r, safe_sort)
+        if isinstance(primary, str):
+            primary = primary.casefold()
+        return (primary, str(r.versicherer_id))
+
+    result.sort(key=_sort_key, reverse=(order == "desc"))
     return result
