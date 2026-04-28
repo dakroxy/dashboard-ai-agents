@@ -1,0 +1,30 @@
+<tbody id="versicherer-rows">
+{% for row in rows %}
+<tr class="border-b border-slate-100 hover:bg-slate-50">
+    <td class="px-4 py-3 text-slate-900">
+        <a href="/registries/versicherer/{{ row.versicherer_id }}"
+           class="hover:text-emerald-600 transition-colors">{{ row.name }}</a>
+        {% if row.policen_anzahl == 0 %}
+        <span class="ml-2 text-xs text-slate-400 italic">ungenutzt</span>
+        {% endif %}
+    </td>
+    <td class="text-right px-4 py-3 {% if row.policen_anzahl == 0 %}text-slate-400{% else %}text-slate-700{% endif %}">
+        {{ row.policen_anzahl }}
+    </td>
+    <td class="text-right px-4 py-3 {% if row.gesamtpraemie == 0 %}text-slate-400{% else %}text-slate-700{% endif %}">
+        {{ "%.0f"|format(row.gesamtpraemie|float) }} €
+    </td>
+    <td class="text-right px-4 py-3 {% if row.schadensquote == 0 %}text-slate-400{% else %}text-slate-700{% endif %}">
+        {{ "%.1f"|format(row.schadensquote * 100) }} %
+    </td>
+    <td class="text-right px-4 py-3 {% if row.objekte_anzahl == 0 %}text-slate-400{% else %}text-slate-700{% endif %}">
+        {{ row.objekte_anzahl }}
+    </td>
+</tr>
+{% endfor %}
+{% if not rows %}
+<tr>
+    <td colspan="5" class="px-4 py-8 text-center text-slate-400">Keine Versicherer vorhanden.</td>
+</tr>
+{% endif %}
+</tbody>

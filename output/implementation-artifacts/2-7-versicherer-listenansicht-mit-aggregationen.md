@@ -1,6 +1,6 @@
 # Story 2.7: Versicherer-Listenansicht mit Aggregationen
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -21,94 +21,51 @@ damit ich Portfolio-Entscheidungen (z. B. Konsolidierung eines Anbieters) dateng
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Service `app/services/registries.py` erstellen (AC: 1, 3, 6, 7)
-  - [ ] `VersichererAggRow` Dataclass mit Feldern: `versicherer_id: uuid.UUID`, `name: str`, `policen_anzahl: int`, `gesamtpraemie: Decimal`, `gesamtschaden: Decimal`, `objekte_anzahl: int`, `schadensquote: float`
-  - [ ] `list_versicherer_aggregated(db, *, sort: str = "name", order: str = "asc") -> list[VersichererAggRow]` — drei DB-Queries, in Python mergen (Muster analog Due-Radar):
+- [x] Task 1: Service `app/services/registries.py` erstellen (AC: 1, 3, 6, 7)
+  - [x] `VersichererAggRow` Dataclass mit Feldern: `versicherer_id: uuid.UUID`, `name: str`, `policen_anzahl: int`, `gesamtpraemie: Decimal`, `gesamtschaden: Decimal`, `objekte_anzahl: int`, `schadensquote: float`
+  - [x] `list_versicherer_aggregated(db, *, sort: str = "name", order: str = "asc") -> list[VersichererAggRow]` — drei DB-Queries, in Python mergen (Muster analog Due-Radar):
     - Query 1: Alle `Versicherer` laden
     - Query 2: `select(InsurancePolicy.versicherer_id, func.count(InsurancePolicy.id), func.coalesce(func.sum(InsurancePolicy.praemie), 0), func.count(distinct(InsurancePolicy.object_id))) WHERE versicherer_id IS NOT NULL GROUP BY versicherer_id`
     - Query 3: `select(InsurancePolicy.versicherer_id, func.coalesce(func.sum(Schadensfall.amount), 0)) JOIN schadensfaelle ON ... WHERE versicherer_id IS NOT NULL GROUP BY versicherer_id`
-  - [ ] In Python: `dict`-Lookup auf versicherer_id für Query 2 + 3; Versicherer ohne Eintrag in Query 2 → `policen_anzahl=0`, `gesamtpraemie=Decimal("0")`, `objekte_anzahl=0`
-  - [ ] Schadensquote: `float(gesamtschaden / gesamtpraemie)` wenn `gesamtpraemie > 0`, sonst `0.0`. Kein ZeroDivisionError möglich.
-  - [ ] Sort-Allowlist: `_SORT_ALLOWED = {"name", "policen_anzahl", "gesamtpraemie", "schadensquote", "objekte_anzahl"}` — bei unbekanntem Sort-Key Fallback auf `"name"` (kein 422, kein SQL-Injection-Risiko)
-  - [ ] Python-Sort: `result.sort(key=lambda r: getattr(r, safe_sort), reverse=(order == "desc"))`
+  - [x] In Python: `dict`-Lookup auf versicherer_id für Query 2 + 3; Versicherer ohne Eintrag in Query 2 → `policen_anzahl=0`, `gesamtpraemie=Decimal("0")`, `objekte_anzahl=0`
+  - [x] Schadensquote: `float(gesamtschaden / gesamtpraemie)` wenn `gesamtpraemie > 0`, sonst `0.0`. Kein ZeroDivisionError möglich.
+  - [x] Sort-Allowlist: `_SORT_ALLOWED = {"name", "policen_anzahl", "gesamtpraemie", "schadensquote", "objekte_anzahl"}` — bei unbekanntem Sort-Key Fallback auf `"name"` (kein 422, kein SQL-Injection-Risiko)
+  - [x] Python-Sort: `result.sort(key=lambda r: getattr(r, safe_sort), reverse=(order == "desc"))`
 
-- [ ] Task 2: Router `app/routers/registries.py` erstellen (AC: 1, 2, 4, 8)
-  - [ ] `APIRouter(prefix="/registries", tags=["registries"])`
-  - [ ] `GET "/versicherer"` Handler: `require_permission("registries:view")`, `list_versicherer_aggregated(db)` → `templates.TemplateResponse(request, "registries_versicherer_list.html", {"rows": rows, "sort": "name", "order": "asc"})` 
-  - [ ] `GET "/versicherer/rows"` Handler: gleiche Permission, Query-Params `sort: str = "name"`, `order: str = "asc"` → `list_versicherer_aggregated(db, sort=sort, order=order)` → `templates.TemplateResponse(request, "_versicherer_rows.html", {"rows": rows})`
+- [x] Task 2: Router `app/routers/registries.py` erstellen (AC: 1, 2, 4, 8)
+  - [x] `APIRouter(prefix="/registries", tags=["registries"])`
+  - [x] `GET "/versicherer"` Handler: `require_permission("registries:view")`, `list_versicherer_aggregated(db)` → `templates.TemplateResponse(request, "registries_versicherer_list.html", {"rows": rows, "sort": "name", "order": "asc"})` 
+  - [x] `GET "/versicherer/rows"` Handler: gleiche Permission, Query-Params `sort: str = "name"`, `order: str = "asc"` → `list_versicherer_aggregated(db, sort=sort, order=order)` → `templates.TemplateResponse(request, "_versicherer_rows.html", {"rows": rows})`
 
-- [ ] Task 3: Templates erstellen (AC: 1, 2, 3, 5)
-  - [ ] `app/templates/registries_versicherer_list.html`:
-    - `{% extends "base.html" %}` + `{% block content %}`
-    - Seitenheader: "Versicherer" mit Untertitel "Portfolio-Übersicht aller Versicherer mit aggregierten Kennzahlen."
-    - `<div class="rounded-lg bg-white border border-slate-200 overflow-hidden">`
-    - `<table class="w-full text-sm">`
-    - `<thead>`: 5 Spaltenköpfe mit HTMX-Sort-Links für numerische Spalten (Policen, Prämie, Schadensquote, Objekte)
-    - `{% include "_versicherer_rows.html" %}` — **kein** `<tbody>`-Wrapper im Parent; das Fragment liefert das `<tbody id="versicherer-rows">` selbst (sonst zwei `<tbody>` mit identischer ID → HTMX-Swap-Bug, siehe Dev-Notes "HTMX-Swap + Fragment-Struktur")
-    - Leerer State: "Keine Versicherer vorhanden."-Fallback-Row ist im Fragment (`_versicherer_rows.html`) implementiert, nicht im Parent.
-  - [ ] `app/templates/_versicherer_rows.html`:
-    - Kein `{% extends %}` (Fragment)
-    - `{% for row in rows %}` Zeilen:
-      - Name-Zelle: `{{ row.name }}` + wenn `row.policen_anzahl == 0`: `<span class="ml-2 text-xs text-slate-400 italic">ungenutzt</span>`
-      - Policen-Anzahl: `{{ row.policen_anzahl }}` (rechts-ausgerichtet, text-slate-400 wenn 0)
-      - Gesamtprämie: `{{ "%.0f"|format(row.gesamtpraemie|float) }} €` (rechts, text-slate-400 wenn 0)
-      - Schadensquote: `{{ "%.1f"|format(row.schadensquote * 100) }} %` (rechts, text-slate-400 wenn 0)
-      - Objekte: `{{ row.objekte_anzahl }}` (rechts, text-slate-400 wenn 0)
-    - `{% if not rows %}`: Leere-State-Zeile "Keine Versicherer vorhanden." (colspan=5)
-  - [ ] HTMX-Sort-Links in `<thead>` — Beispiel-Muster für Spalte "Policen":
-    ```html
-    <th class="text-right px-4 py-3 font-semibold cursor-pointer select-none hover:bg-slate-100"
-        hx-get="/registries/versicherer/rows?sort=policen_anzahl&order=desc"
-        hx-target="#versicherer-rows"
-        hx-swap="outerHTML"
-        title="Nach Policen-Anzahl sortieren">
-        Policen
-    </th>
-    ```
-    Nicht-numerische Spalte "Name": ohne HTMX-Attribute (statisch, oder `order=asc`)
-  - [ ] In `app/templates/base.html` Sidebar-Eintrag nach dem Due-Radar-Block (bzw. nach dem Objekte-Block falls Due-Radar noch nicht implementiert):
-    ```html
-    {# Versicherer #}
-    {% if has_permission(user, "registries:view") %}
-    {% set active = path.startswith("/registries") %}
-    <a href="/registries/versicherer"
-       class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
-              {% if active %}bg-slate-800 text-white border-emerald-400
-              {% else %}text-slate-300 hover:bg-slate-800 hover:text-white border-transparent{% endif %}">
-        <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-        </svg>
-        Versicherer
-    </a>
-    {% endif %}
-    ```
+- [x] Task 3: Templates erstellen (AC: 1, 2, 3, 5)
+  - [x] `app/templates/registries_versicherer_list.html`: erstellt mit Header, Tabelle, HTMX-Sort-Links für alle 5 Spalten, Fragment-Include ohne eigenen tbody-Wrapper
+  - [x] `app/templates/_versicherer_rows.html`: Fragment mit tbody#versicherer-rows, ungenutzt-Badge, Leere-State-Row
+  - [x] HTMX-Sort-Links in `<thead>` für alle 4 numerischen Spalten + Name-Spalte
+  - [x] In `app/templates/base.html` Sidebar-Eintrag nach Due-Radar-Block eingefügt (registries:view, active wenn path.startswith("/registries"))
 
-- [ ] Task 4: Router in `app/main.py` registrieren (AC: 1, 4)
-  - [ ] Import: `from app.routers import registries as registries_router` (analog zu anderen Routern)
-  - [ ] `app.include_router(registries_router.router)` — nach `objects_router.router`, vor `workflows_router.router`
+- [x] Task 4: Router in `app/main.py` registrieren (AC: 1, 4)
+  - [x] Import: `from app.routers import registries as registries_router` bereits vorhanden
+  - [x] `app.include_router(registries_router.router)` bereits vorhanden
 
-- [ ] Task 5: Unit-Tests `tests/test_registries_unit.py` (AC: 7)
-  - [ ] `test_empty_list_when_no_versicherer()` — leere DB → `list_versicherer_aggregated(db) == []`
-  - [ ] `test_aggregation_counts_one_versicherer()` — 1 Versicherer, 2 Policen (praemie 100+200), 1 Schadensfall (amount 50) → `policen_anzahl=2, gesamtpraemie=Decimal("300"), gesamtschaden=Decimal("50"), schadensquote≈0.167, objekte_anzahl=1`
-  - [ ] `test_no_double_count_praemie_with_multiple_schadensfaelle()` — 1 Versicherer, 1 Police praemie=100, 2 Schadensfälle (30+20) → `gesamtpraemie=Decimal("100"), gesamtschaden=Decimal("50")` (NICHT gesamtpraemie=200)
-  - [ ] `test_schadensquote_null_safe_when_no_praemie()` — Police ohne praemie (NULL) → `schadensquote=0.0`, kein ZeroDivisionError
-  - [ ] `test_versicherer_without_policen_has_zero_counts()` — Versicherer ohne Policen → `policen_anzahl=0, gesamtpraemie=Decimal("0"), objekte_anzahl=0`
-  - [ ] `test_sort_by_policen_anzahl_desc()` — 2 Versicherer: A mit 3 Policen, B mit 1 → `sort="policen_anzahl", order="desc"` → A first
-  - [ ] `test_sort_by_name_asc_is_default()` — 2 Versicherer mit Namen "Zurich" und "Allianz" → `list_versicherer_aggregated(db)` (ohne Sort-Param) → `result[0].name == "Allianz"` (Default-Sort greift, Python-`str`-Sort ist case-sensitive asc)
-  - [ ] `test_schadensquote_zero_when_schaden_without_praemie()` — 1 Versicherer, 1 Police mit `praemie=Decimal("0")`, 1 Schadensfall `amount=Decimal("100")` → `schadensquote == 0.0` (kein ZeroDivisionError; stiller Info-Loss per AC1 intendiert "0% wenn keine Prämie")
-  - [ ] Fixtures: `Versicherer`, `InsurancePolicy`, `Schadensfall`, `Object` — direkt via `db.add(...)` anlegen (kein Write-Gate nötig — Test-Fixtures sind Row-Creation, Architektur §CD2 erlaubt). **Import-Idiom**: `from app.models import Versicherer, InsurancePolicy, Schadensfall, Object` (re-exports in `app/models/__init__.py`), nicht aus Submodulen.
+- [x] Task 5: Unit-Tests `tests/test_registries_unit.py` (AC: 7)
+  - [x] `test_empty_list_when_no_versicherer()`
+  - [x] `test_aggregation_counts_one_versicherer()`
+  - [x] `test_no_double_count_praemie_with_multiple_schadensfaelle()`
+  - [x] `test_schadensquote_null_safe_when_no_praemie()`
+  - [x] `test_versicherer_without_policen_has_zero_counts()`
+  - [x] `test_sort_by_policen_anzahl_desc()`
+  - [x] `test_sort_by_name_asc_is_default()`
+  - [x] `test_schadensquote_zero_when_schaden_without_praemie()`
 
-- [ ] Task 6: Smoke-Tests `tests/test_registries_routes_smoke.py` (AC: 4, 5, 8)
-  - [ ] **Neue Datei** `tests/test_registries_routes_smoke.py` anlegen — eigene Datei pro Feature ist die Konvention seit Story 1.3 (siehe `test_technik_routes_smoke.py`, `test_zugangscodes_routes_smoke.py`, `test_foto_routes_smoke.py`). **Nicht** in `test_steckbrief_routes_smoke.py` einfügen — dieses File ist für Objekt-Smoke-Tests reserviert.
-  - [ ] Stil: Module-Level `def test_...`-Funktionen, **keine** `class Test...`-Struktur (Projekt-Konvention, verifiziert in allen bestehenden Smoke-Test-Files).
-  - [ ] `test_unauthenticated_redirects(anon_client)` — `GET /registries/versicherer` → 302, `location` beginnt mit `/auth/google/login`
-  - [ ] `test_no_permission_returns_403(auth_client)` — `test_user` in `conftest.py:127-132` hat `registries:view` **nicht** → 403, Detail enthält `"registries:view"`
-  - [ ] `test_permitted_user_returns_200(steckbrief_admin_client)` — Fixture in `conftest.py:199-236` hat `registries:view` (Zeile 214) → 200
-  - [ ] `test_rows_fragment_unauthenticated_redirects(anon_client)` — `GET /registries/versicherer/rows` → 302
-  - [ ] `test_rows_fragment_no_permission_returns_403(auth_client)` — 403
-  - [ ] `test_rows_fragment_sort_roundtrip(steckbrief_admin_client, db)` — 2 Versicherer mit unterschiedlicher Policen-Anzahl anlegen, `GET /registries/versicherer/rows?sort=policen_anzahl&order=desc` → 200; im Response-Body steht der Versicherer mit mehr Policen vor dem anderen (End-to-End-Verifikation des Param-Mappings, AC2).
-  - [ ] `test_sidebar_link_visible_for_permitted_user(steckbrief_admin_client)` — AC5 positive: `GET /` → Body enthält `href="/registries/versicherer"`
-  - [ ] `test_sidebar_link_hidden_for_unpermitted_user(auth_client)` — AC5 negative: `GET /` → weder `href="/registries/versicherer"` noch das Wort "Versicherer" im Body (Muster: `test_steckbrief_routes_smoke.py:388-396`)
+- [x] Task 6: Smoke-Tests `tests/test_registries_routes_smoke.py` (AC: 4, 5, 8)
+  - [x] `test_unauthenticated_redirects(anon_client)`
+  - [x] `test_no_permission_returns_403(auth_client)`
+  - [x] `test_permitted_user_returns_200(steckbrief_admin_client)`
+  - [x] `test_rows_fragment_unauthenticated_redirects(anon_client)`
+  - [x] `test_rows_fragment_no_permission_returns_403(auth_client)`
+  - [x] `test_rows_fragment_sort_roundtrip(steckbrief_admin_client, db)`
+  - [x] `test_sidebar_link_visible_for_permitted_user(steckbrief_admin_client)`
+  - [x] `test_sidebar_link_hidden_for_unpermitted_user(auth_client)`
 
 ## Dev Notes
 
@@ -410,8 +367,31 @@ Immer `templates.TemplateResponse(request, "name.html", {...})` — Request als 
 
 ### Agent Model Used
 
+claude-sonnet-4-6 (1M context)
+
 ### Debug Log References
+
+Keine Blocker. Direkt implementiert.
 
 ### Completion Notes List
 
+- `app/services/registries.py` (neu): `VersichererAggRow`-Dataclass + `list_versicherer_aggregated()` mit 3 getrennten Queries + Python-Merge. `Decimal(str(...))` für SQLite/Postgres-Kompatibilität in Tests. Sort-Allowlist verhindert SQL-Injection.
+- `app/routers/registries.py` (erweitert): Zwei neue Routes `GET /versicherer` + `GET /versicherer/rows` mit `require_permission("registries:view")`.
+- Templates: `registries_versicherer_list.html` mit HTMX-Sort-Links für alle 5 Spalten; `_versicherer_rows.html` als Fragment (tbody selbst enthält id="versicherer-rows" — kein Parent-Wrapper, HTMX-outerHTML-Swap korrekt).
+- `app/templates/base.html`: Versicherer-Sidebar-Eintrag nach Due-Radar-Block.
+- `app/main.py`: Router-Import + Registration war bereits vorhanden (kein Änderungsbedarf).
+- 8 Unit-Tests + 8 Smoke-Tests, alle 16 grün. Gesamt-Suite 678 Tests, keine Regressions.
+
 ### File List
+
+- `app/services/registries.py` (neu)
+- `app/routers/registries.py` (geändert — zwei neue GET-Routen ergänzt)
+- `app/templates/registries_versicherer_list.html` (neu)
+- `app/templates/_versicherer_rows.html` (neu)
+- `app/templates/base.html` (geändert — Versicherer-Sidebar-Eintrag)
+- `tests/test_registries_unit.py` (neu)
+- `tests/test_registries_routes_smoke.py` (neu)
+
+## Change Log
+
+- 2026-04-28: Story 2.7 implementiert — Versicherer-Listenansicht mit Aggregationen (Policen, Prämie, Schadensquote, Objekte), HTMX-Sort, Sidebar-Link, 16 Tests.

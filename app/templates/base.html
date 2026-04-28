@@ -65,6 +65,20 @@
             </a>
             {% endif %}
 
+            {# Versicherer #}
+            {% if has_permission(user, "registries:view") %}
+            {% set active = path.startswith("/registries") %}
+            <a href="/registries/versicherer"
+               class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
+                      {% if active %}bg-slate-800 text-white border-emerald-400
+                      {% else %}text-slate-300 hover:bg-slate-800 hover:text-white border-transparent{% endif %}">
+                <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                Versicherer
+            </a>
+            {% endif %}
+
             {# Workflows (Konfiguration) #}
             {% if has_permission(user, "workflows:view") %}
             {% set active = path.startswith("/workflows") %}

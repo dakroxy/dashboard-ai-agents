@@ -10,11 +10,42 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User
 from app.permissions import require_permission
+from app.services.registries import list_versicherer_aggregated
 from app.services.steckbrief_policen import create_versicherer, get_all_versicherer
 from app.services.steckbrief_wartungen import create_dienstleister, get_all_dienstleister
 from app.templating import templates
 
 router = APIRouter(prefix="/registries", tags=["registries"])
+
+
+@router.get("/versicherer", response_class=HTMLResponse)
+async def versicherer_list(
+    request: Request,
+    user: User = Depends(require_permission("registries:view")),
+    db: Session = Depends(get_db),
+):
+    rows = list_versicherer_aggregated(db)
+    return templates.TemplateResponse(
+        request,
+        "registries_versicherer_list.html",
+        {"user": user, "rows": rows, "sort": "name", "order": "asc"},
+    )
+
+
+@router.get("/versicherer/rows", response_class=HTMLResponse)
+async def versicherer_rows(
+    request: Request,
+    sort: str = Query("name"),
+    order: str = Query("asc"),
+    user: User = Depends(require_permission("registries:view")),
+    db: Session = Depends(get_db),
+):
+    rows = list_versicherer_aggregated(db, sort=sort, order=order)
+    return templates.TemplateResponse(
+        request,
+        "_versicherer_rows.html",
+        {"rows": rows},
+    )
 
 
 @router.get("/versicherer/new-form", response_class=HTMLResponse)
