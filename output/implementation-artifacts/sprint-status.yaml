@@ -64,7 +64,7 @@ development_status:
   2-5-due-radar-global-view: done
   2-6-due-radar-filter-deep-links: review
   2-7-versicherer-listenansicht-mit-aggregationen: done
-  2-8-versicherer-detailseite-mit-heatmap-schadensfaellen: ready-for-dev
+  2-8-versicherer-detailseite-mit-heatmap-schadensfaellen: review
   epic-2-retrospective: optional
 
   # Epic 3: Portfolio-UX & KI-Governance-Oberflaeche

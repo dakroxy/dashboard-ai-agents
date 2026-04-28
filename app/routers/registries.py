@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Form, Query, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import User
 from app.permissions import require_permission
-from app.services.registries import list_versicherer_aggregated
+from app.services.registries import get_versicherer_detail, list_versicherer_aggregated
 from app.services.steckbrief_policen import create_versicherer, get_all_versicherer
 from app.services.steckbrief_wartungen import create_dienstleister, get_all_dienstleister
 from app.templating import templates
@@ -102,6 +102,21 @@ async def versicherer_create(
     )
     oob_clear = '<div id="new-versicherer-inline" hx-swap-oob="true"></div>'
     return HTMLResponse(content=dropdown_html + "\n" + oob_clear)
+
+
+@router.get("/versicherer/{versicherer_id}")
+async def versicherer_detail(
+    versicherer_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("registries:view")),
+) -> HTMLResponse:
+    detail = get_versicherer_detail(db, versicherer_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Versicherer nicht gefunden")
+    return templates.TemplateResponse(request, "registries_versicherer_detail.html", {
+        "detail": detail, "user": user
+    })
 
 
 @router.get("/dienstleister/new-form", response_class=HTMLResponse)

@@ -1,6 +1,6 @@
 # Story 2.8: Versicherer-Detailseite mit Heatmap & Schadensfaellen
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -23,8 +23,8 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Dataclasses + Service-Funktion in `app/services/registries.py` ergänzen (AC: 1–5, 8, 9)
-  - [ ] `PolicyDetailRow` Dataclass am Ende der Datei ergänzen:
+- [x] Task 1: Dataclasses + Service-Funktion in `app/services/registries.py` ergänzen (AC: 1–5, 8, 9)
+  - [x] `PolicyDetailRow` Dataclass am Ende der Datei ergänzen:
     ```python
     @dataclass
     class PolicyDetailRow:
@@ -38,7 +38,7 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
         days_remaining: int | None
         severity: str  # "critical" | "warning" | "normal" | "none"
     ```
-  - [ ] `SchadensfallDetailRow` Dataclass:
+  - [x] `SchadensfallDetailRow` Dataclass:
     ```python
     @dataclass
     class SchadensfallDetailRow:
@@ -49,7 +49,7 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
         amount: Decimal | None
         description: str | None
     ```
-  - [ ] `VerbundeneObjektRow` Dataclass:
+  - [x] `VerbundeneObjektRow` Dataclass:
     ```python
     @dataclass
     class VerbundeneObjektRow:
@@ -57,7 +57,7 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
         short_code: str
         name: str
     ```
-  - [ ] `HeatmapBucket` Dataclass:
+  - [x] `HeatmapBucket` Dataclass:
     ```python
     @dataclass
     class HeatmapBucket:
@@ -67,7 +67,7 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
         policy_count: int
         severity: str     # "critical" | "warning" | "normal" | "empty"
     ```
-  - [ ] `VersichererDetailData` Dataclass:
+  - [x] `VersichererDetailData` Dataclass:
     ```python
     @dataclass
     class VersichererDetailData:
@@ -81,15 +81,15 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
         verbundene_objekte: list[VerbundeneObjektRow]
         heatmap: list[HeatmapBucket]
     ```
-  - [ ] `_MONTH_ABBR_DE = ["", "Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]` als Modul-Konstante
-  - [ ] Hilfsfunktion `_build_heatmap(policen: list[PolicyDetailRow], today: date) -> list[HeatmapBucket]`:
+  - [x] `_MONTH_ABBR_DE = ["", "Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]` als Modul-Konstante
+  - [x] Hilfsfunktion `_build_heatmap(policen: list[PolicyDetailRow], today: date) -> list[HeatmapBucket]`:
     - 12 Schleifen-Iterationen i=0..11
     - Monat: `m = (today.month - 1 + i) % 12 + 1`, Jahr: `y = today.year + ((today.month - 1 + i) // 12)`
     - Policen in diesem Monat: `[p for p in policen if p.next_main_due and p.next_main_due.year == y and p.next_main_due.month == m]`
     - Severity: wenn keine Policen → `"empty"`; sonst: kleinster `days_remaining` der Policen in diesem Bucket → `< 30` → `"critical"`, `< 90` → `"warning"`, sonst `"normal"`
     - Achtung: Policies mit `days_remaining is None` (kein next_main_due) tauchen NICHT in Heatmap-Buckets auf
     - Label: `f"{_MONTH_ABBR_DE[m]} {y}"`
-  - [ ] Hauptfunktion `get_versicherer_detail(db: Session, versicherer_id: uuid.UUID) -> VersichererDetailData | None`:
+  - [x] Hauptfunktion `get_versicherer_detail(db: Session, versicherer_id: uuid.UUID) -> VersichererDetailData | None`:
     - **Step 1**: `versicherer = db.execute(select(Versicherer).where(Versicherer.id == versicherer_id)).scalar_one_or_none()` → `None` zurückgeben wenn nicht gefunden
     - **Step 2**: Policen laden mit Object via JOIN (Models via Top-Level-Import `from app.models import Object, Unit, Versicherer, InsurancePolicy, Schadensfall` — nicht aus Submodulen, siehe Dev Notes):
       ```python
@@ -152,8 +152,8 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
     - **Step 9**: `heatmap = _build_heatmap(policen, today)`
     - `VersichererDetailData` zurückgeben
 
-- [ ] Task 2: Router `app/routers/registries.py` erweitern (AC: 1, 6, 7, 10)
-  - [ ] Neuen Handler **nach** dem `/versicherer/rows`-Handler in derselben Datei einfügen:
+- [x] Task 2: Router `app/routers/registries.py` erweitern (AC: 1, 6, 7, 10)
+  - [x] Neuen Handler **nach** dem `/versicherer/rows`-Handler in derselben Datei einfügen:
     ```python
     @router.get("/versicherer/{versicherer_id}")
     async def versicherer_detail(
@@ -169,17 +169,17 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
             "detail": detail, "user": user
         })
     ```
-  - [ ] Import `get_versicherer_detail` + neue Dataclasses aus `app.services.registries` ergänzen
-  - [ ] Import `uuid` am Dateianfang ergänzen (falls noch nicht vorhanden)
+  - [x] Import `get_versicherer_detail` + neue Dataclasses aus `app.services.registries` ergänzen
+  - [x] Import `uuid` am Dateianfang ergänzen (falls noch nicht vorhanden)
 
-- [ ] Task 3: Template `app/templates/registries_versicherer_detail.html` erstellen (AC: 1–5)
-  - [ ] `{% extends "base.html" %}` + `{% block content %}`
-  - [ ] **Zurück-Link**: `<a href="/registries/versicherer" class="text-sm text-slate-500 hover:text-slate-700">← Alle Versicherer</a>` als Breadcrumb oben
-  - [ ] **Kopfbereich** (`bg-white rounded-lg border border-slate-200 p-6`):
+- [x] Task 3: Template `app/templates/registries_versicherer_detail.html` erstellen (AC: 1–5)
+  - [x] `{% extends "base.html" %}` + `{% block content %}`
+  - [x] **Zurück-Link**: `<a href="/registries/versicherer" class="text-sm text-slate-500 hover:text-slate-700">← Alle Versicherer</a>` als Breadcrumb oben
+  - [x] **Kopfbereich** (`bg-white rounded-lg border border-slate-200 p-6`):
     - `<h1>{{ detail.versicherer.name }}</h1>`
     - Kontakt/Adresse: `{% if detail.versicherer.contact_info %}...{{ detail.versicherer.contact_info.get("address", "") }}...{% endif %}`
     - 3-Spalten-Kennzahlen-Grid: Policen / Gesamtprämie / Schadensquote (Muster: `{{ "%.0f"|format(detail.gesamtpraemie|float) }} €` / `{{ "%.1f"|format(detail.schadensquote * 100) }} %`)
-  - [ ] **Ablauf-Heatmap** Abschnitt:
+  - [x] **Ablauf-Heatmap** Abschnitt:
     ```html
     <div class="bg-white rounded-lg border border-slate-200 p-6">
       <h2 class="text-sm font-semibold text-slate-700 mb-4">Ablauf-Heatmap (12 Monate)</h2>
@@ -203,32 +203,32 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
       </p>
     </div>
     ```
-  - [ ] **Policen-Tabelle** Abschnitt (`bg-white rounded-lg border border-slate-200`):
+  - [x] **Policen-Tabelle** Abschnitt (`bg-white rounded-lg border border-slate-200`):
     - Spalten: Policen-Nr. | Objekt | Prämie p.a. | Fälligkeit | Verbleibend
     - Pro Zeile: `<a href="/objects/{{ p.object_id }}">{{ p.object_short_code }}</a>`, Fälligkeit `{{ p.next_main_due.strftime("%d.%m.%Y") if p.next_main_due else "–" }}`
     - Verbleibend-Zelle farbcodiert: `{% if p.severity == 'critical' %}text-red-600 font-medium{% elif p.severity == 'warning' %}text-orange-500{% elif p.severity == 'normal' %}text-slate-600{% else %}text-slate-400{% endif %}` + Wert `{{ p.days_remaining }} Tage` oder `"–"`
     - Leerer State: `{% if not detail.policen %}<tr><td colspan="5" ...>Keine Policen vorhanden.</td></tr>{% endif %}`
-  - [ ] **Schadensfälle-Liste** Abschnitt:
+  - [x] **Schadensfälle-Liste** Abschnitt:
     - Spalten: Datum | Objekt | Einheit | Betrag | Beschreibung
     - Datum: `{{ s.occurred_at.strftime("%d.%m.%Y") if s.occurred_at else "–" }}`
     - Einheit: `{{ s.unit_number or "–" }}`
     - Betrag: `{{ "%.0f"|format(s.amount|float) }} €` if amount else `"–"`
     - Leerer State: "Keine Schadensfälle vorhanden."
-  - [ ] **Verbundene Objekte** Abschnitt:
+  - [x] **Verbundene Objekte** Abschnitt:
     - `<ul>` mit `<li>` pro Objekt: `<a href="/objects/{{ o.object_id }}" class="text-blue-600 hover:underline">{{ o.short_code }} — {{ o.name }}</a>`
     - Leerer State: "Keine verbundenen Objekte."
 
-- [ ] Task 4: Unit-Tests in `tests/test_registries_unit.py` ergänzen (AC: 9)
-  - [ ] `test_get_versicherer_detail_returns_none_for_unknown_id(db)` — nicht-existierende UUID → `None`
-  - [ ] `test_get_versicherer_detail_header_aggregations(db)` — 1 Versicherer, 2 Policen (praemie=100+200), 1 Schadensfall (amount=50) → `policen_anzahl=2`, `gesamtpraemie=Decimal("300")`, `gesamtschaden=Decimal("50")`, `schadensquote == pytest.approx(0.1667, abs=1e-3)` (50/300 = 0.1666…, exakte `float`-Assertion driftet)
-  - [ ] `test_get_versicherer_detail_heatmap_has_12_months(db)` — Versicherer ohne Policen → `len(detail.heatmap) == 12`, alle Buckets `severity="empty"`
-  - [ ] `test_heatmap_marks_expiring_policy_as_critical(db, monkeypatch)` — Police mit `next_main_due = date.today() + timedelta(days=10)` → Bucket für aktuellen Monat hat `severity="critical"`
-  - [ ] `test_heatmap_marks_overdue_policy_as_critical(db, monkeypatch)` — Police mit `next_main_due = date.today() - timedelta(days=5)` (überfällig) → Bucket für aktuellen Monat hat `severity="critical"` (negativer `days_remaining` fällt unter `< 30`)
-  - [ ] `test_heatmap_marks_expiring_policy_as_warning(db, monkeypatch)` — Police mit `next_main_due = date.today() + timedelta(days=60)` → entsprechender Bucket hat `severity="warning"`
-  - [ ] `test_schadensfaelle_sorted_newest_first(db)` — 2 Schadensfälle mit `occurred_at=date(2024,6,1)` und `occurred_at=date(2025,3,1)` → `detail.schadensfaelle[0].occurred_at == date(2025,3,1)`
-  - [ ] `test_verbundene_objekte_deduplicates(db)` — 2 Policen auf demselben Objekt → `len(detail.verbundene_objekte) == 1`
-  - [ ] `test_detail_handles_empty_contact_info(db)` — Versicherer mit `contact_info={}` (Default) → `get_versicherer_detail(...)` wirft nicht; `detail.versicherer.contact_info == {}` (Template-Seite via Smoke-Test abgedeckt)
-  - [ ] Fixtures-Muster (analog Story 2.7 `test_no_double_count_praemie_with_multiple_schadensfaelle`) — **Import-Idiom: Top-Level-Re-Exports aus `app.models` nutzen, nicht aus Submodulen** (verifiziert in `app/models/__init__.py`):
+- [x] Task 4: Unit-Tests in `tests/test_registries_unit.py` ergänzen (AC: 9)
+  - [x] `test_get_versicherer_detail_returns_none_for_unknown_id(db)` — nicht-existierende UUID → `None`
+  - [x] `test_get_versicherer_detail_header_aggregations(db)` — 1 Versicherer, 2 Policen (praemie=100+200), 1 Schadensfall (amount=50) → `policen_anzahl=2`, `gesamtpraemie=Decimal("300")`, `gesamtschaden=Decimal("50")`, `schadensquote == pytest.approx(0.1667, abs=1e-3)` (50/300 = 0.1666…, exakte `float`-Assertion driftet)
+  - [x] `test_get_versicherer_detail_heatmap_has_12_months(db)` — Versicherer ohne Policen → `len(detail.heatmap) == 12`, alle Buckets `severity="empty"`
+  - [x] `test_heatmap_marks_expiring_policy_as_critical(db, monkeypatch)` — Police mit `next_main_due = date.today() + timedelta(days=10)` → Bucket für aktuellen Monat hat `severity="critical"`
+  - [x] `test_heatmap_marks_overdue_policy_as_critical(db, monkeypatch)` — Police mit `next_main_due = date.today() - timedelta(days=5)` (überfällig) → Bucket für aktuellen Monat hat `severity="critical"` (negativer `days_remaining` fällt unter `< 30`)
+  - [x] `test_heatmap_marks_expiring_policy_as_warning(db, monkeypatch)` — Police mit `next_main_due = date.today() + timedelta(days=60)` → entsprechender Bucket hat `severity="warning"`
+  - [x] `test_schadensfaelle_sorted_newest_first(db)` — 2 Schadensfälle mit `occurred_at=date(2024,6,1)` und `occurred_at=date(2025,3,1)` → `detail.schadensfaelle[0].occurred_at == date(2025,3,1)`
+  - [x] `test_verbundene_objekte_deduplicates(db)` — 2 Policen auf demselben Objekt → `len(detail.verbundene_objekte) == 1`
+  - [x] `test_detail_handles_empty_contact_info(db)` — Versicherer mit `contact_info={}` (Default) → `get_versicherer_detail(...)` wirft nicht; `detail.versicherer.contact_info == {}` (Template-Seite via Smoke-Test abgedeckt)
+  - [x] Fixtures-Muster (analog Story 2.7 `test_no_double_count_praemie_with_multiple_schadensfaelle`) — **Import-Idiom: Top-Level-Re-Exports aus `app.models` nutzen, nicht aus Submodulen** (verifiziert in `app/models/__init__.py`):
     ```python
     import pytest
     from app.models import InsurancePolicy, Object, Schadensfall, Versicherer
@@ -237,15 +237,15 @@ damit ich Kündigungs- und Neuverhandlungs-Entscheidungen datengetrieben vorbere
     def test_get_versicherer_detail_returns_none_for_unknown_id(db):
         assert get_versicherer_detail(db, uuid.uuid4()) is None
     ```
-  - [ ] **Kein Write-Gate in Fixtures** — direkt `db.add(...)` / `db.commit()` (Registry-Row-Creation ist Write-Gate-exempt per Architektur §CD2)
+  - [x] **Kein Write-Gate in Fixtures** — direkt `db.add(...)` / `db.commit()` (Registry-Row-Creation ist Write-Gate-exempt per Architektur §CD2)
 
-- [ ] Task 5: Smoke-Tests in `tests/test_registries_routes_smoke.py` ergänzen (AC: 10)
-  - [ ] **Datei**: Story 2.7 erstellt `tests/test_registries_routes_smoke.py` als eigene Feature-Datei (Konvention seit Story 1.3 — pro Feature eine Smoke-Test-Datei). Story 2.8 fügt in diese Datei hinzu — **nicht** in `test_steckbrief_routes_smoke.py` (dort nur Objekt-Smoke-Tests).
-  - [ ] **Stil**: Module-Level `def test_...`-Funktionen, **keine** `class Test...`-Struktur (Projekt-Konvention, verifiziert in allen bestehenden Smoke-Test-Files: `test_technik_routes_smoke.py`, `test_zugangscodes_routes_smoke.py`, `test_foto_routes_smoke.py`).
-  - [ ] `test_detail_unauthenticated_redirects(anon_client)` — `GET /registries/versicherer/{uuid.uuid4()}` → 302, `location` beginnt mit `/auth/google/login`
-  - [ ] `test_detail_no_permission_returns_403(auth_client)` — `test_user` in `conftest.py` hat `registries:view` nicht → 403
-  - [ ] `test_detail_unknown_versicherer_returns_404(steckbrief_admin_client)` — `GET /registries/versicherer/{uuid.uuid4()}` → 404
-  - [ ] `test_detail_permitted_user_returns_200(steckbrief_admin_client, db)` — Versicherer via `db.add(...)` anlegen → `GET /registries/versicherer/{v.id}` → 200
+- [x] Task 5: Smoke-Tests in `tests/test_registries_routes_smoke.py` ergänzen (AC: 10)
+  - [x] **Datei**: Story 2.7 erstellt `tests/test_registries_routes_smoke.py` als eigene Feature-Datei (Konvention seit Story 1.3 — pro Feature eine Smoke-Test-Datei). Story 2.8 fügt in diese Datei hinzu — **nicht** in `test_steckbrief_routes_smoke.py` (dort nur Objekt-Smoke-Tests).
+  - [x] **Stil**: Module-Level `def test_...`-Funktionen, **keine** `class Test...`-Struktur (Projekt-Konvention, verifiziert in allen bestehenden Smoke-Test-Files: `test_technik_routes_smoke.py`, `test_zugangscodes_routes_smoke.py`, `test_foto_routes_smoke.py`).
+  - [x] `test_detail_unauthenticated_redirects(anon_client)` — `GET /registries/versicherer/{uuid.uuid4()}` → 302, `location` beginnt mit `/auth/google/login`
+  - [x] `test_detail_no_permission_returns_403(auth_client)` — `test_user` in `conftest.py` hat `registries:view` nicht → 403
+  - [x] `test_detail_unknown_versicherer_returns_404(steckbrief_admin_client)` — `GET /registries/versicherer/{uuid.uuid4()}` → 404
+  - [x] `test_detail_permitted_user_returns_200(steckbrief_admin_client, db)` — Versicherer via `db.add(...)` anlegen → `GET /registries/versicherer/{v.id}` → 200
 
 ## Dev Notes
 
@@ -404,6 +404,29 @@ claude-sonnet-4-6[1m]
 
 ### Debug Log References
 
+Route-Reihenfolge: `GET /versicherer/{versicherer_id}` muss NACH allen spezifischen `/versicherer/…`-Pfaden stehen, sonst fängt FastAPI "new-form" als UUID-Parameter ab und liefert 422 statt 200. Handler wurde ans Ende der Versicherer-Block-Routen verschoben (nach POST /versicherer).
+
+Heatmap-Test `test_heatmap_marks_expiring_policy_as_critical`: ursprünglich `heatmap[0]` geprüft (aktueller Monat), aber `today + timedelta(days=10)` kann Monatsgrenze überschreiten → Test prüft jetzt den Bucket für `due_date.year/month`.
+
 ### Completion Notes List
 
+- Task 1: 5 Dataclasses (PolicyDetailRow, SchadensfallDetailRow, VerbundeneObjektRow, HeatmapBucket, VersichererDetailData), Modul-Konstante `_MONTH_ABBR_DE`, Hilfsfunktion `_build_heatmap`, Hauptfunktion `get_versicherer_detail` mit 9-Step-Flow implementiert.
+- Task 2: Router um `GET /versicherer/{versicherer_id}` erweitert; Handler ans Ende der Versicherer-Routen gesetzt (nach POST /versicherer) um Routing-Konflikt mit /new-form zu vermeiden.
+- Task 3: Template `registries_versicherer_detail.html` erstellt mit Kopfbereich (3-Spalten-Kennzahlen-Grid), 12-Monats-Heatmap (3-Farb-Schema), Policen-Tabelle, Schadensfälle-Tabelle und Verbundene-Objekte-Liste.
+- Task 4: 9 neue Unit-Tests in `test_registries_unit.py`, alle grün.
+- Task 5: 4 neue Smoke-Tests in `test_registries_routes_smoke.py`, alle grün.
+- Vollständige Regressions-Suite: 691/691 Tests grün.
+
 ### File List
+
+- `app/services/registries.py` (geändert — neue Dataclasses + `_MONTH_ABBR_DE` + `_build_heatmap` + `get_versicherer_detail`)
+- `app/routers/registries.py` (geändert — `GET /versicherer/{versicherer_id}` Handler + Imports)
+- `app/templates/registries_versicherer_detail.html` (neu)
+- `tests/test_registries_unit.py` (geändert — 9 neue Unit-Tests)
+- `tests/test_registries_routes_smoke.py` (geändert — 4 neue Smoke-Tests)
+- `output/implementation-artifacts/2-8-versicherer-detailseite-mit-heatmap-schadensfaellen.md` (geändert — Story-Datei)
+- `output/implementation-artifacts/sprint-status.yaml` (geändert — Status → review)
+
+## Change Log
+
+- 2026-04-28: Story 2.8 implementiert — Versicherer-Detailseite mit Ablauf-Heatmap, Policen-Tabelle, Schadensfälle-Liste und Verbundene-Objekte-Abschnitt. 13 neue Tests (9 Unit + 4 Smoke), 691/691 grün.

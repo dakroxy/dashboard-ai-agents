@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="/registries/versicherer" class="text-sm text-slate-500 hover:text-slate-700">← Alle Versicherer</a>
+</div>
+
+<!-- Kopfbereich -->
+<div class="bg-white rounded-lg border border-slate-200 p-6 mb-4">
+    <h1 class="text-2xl font-bold text-slate-900">{{ detail.versicherer.name }}</h1>
+
+    {% if detail.versicherer.contact_info %}
+    {% set ci = detail.versicherer.contact_info %}
+    <div class="mt-2 text-sm text-slate-500 space-y-0.5">
+        {% if ci.get("adresse") %}<p>{{ ci.get("adresse") }}</p>{% endif %}
+        {% if ci.get("address") %}<p>{{ ci.get("address") }}</p>{% endif %}
+        {% if ci.get("email") %}<p>{{ ci.get("email") }}</p>{% endif %}
+        {% if ci.get("tel") %}<p>{{ ci.get("tel") }}</p>{% endif %}
+        {% if ci.get("phone") %}<p>{{ ci.get("phone") }}</p>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="mt-4 grid grid-cols-3 gap-4">
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-4 text-center">
+            <p class="text-xs text-slate-500 uppercase tracking-wide">Policen</p>
+            <p class="text-2xl font-bold text-slate-900 mt-1">{{ detail.policen_anzahl }}</p>
+        </div>
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-4 text-center">
+            <p class="text-xs text-slate-500 uppercase tracking-wide">Gesamtprämie p.a.</p>
+            <p class="text-2xl font-bold text-slate-900 mt-1">{{ "%.0f"|format(detail.gesamtpraemie|float) }} €</p>
+        </div>
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-4 text-center">
+            <p class="text-xs text-slate-500 uppercase tracking-wide">Schadensquote</p>
+            <p class="text-2xl font-bold text-slate-900 mt-1">{{ "%.1f"|format(detail.schadensquote * 100) }} %</p>
+        </div>
+    </div>
+</div>
+
+<!-- Ablauf-Heatmap -->
+<div class="bg-white rounded-lg border border-slate-200 p-6 mb-4">
+    <h2 class="text-sm font-semibold text-slate-700 mb-4">Ablauf-Heatmap (12 Monate)</h2>
+    <div class="grid grid-cols-12 gap-1">
+        {% for b in detail.heatmap %}
+        <div class="flex flex-col items-center" title="{{ b.label }}: {{ b.policy_count }} {% if b.policy_count == 1 %}Police{% else %}Policen{% endif %}">
+            <div class="w-full h-10 rounded
+                {% if b.severity == 'critical' %}bg-red-500
+                {% elif b.severity == 'warning' %}bg-orange-400
+                {% elif b.severity == 'normal' %}bg-green-400
+                {% else %}bg-slate-100{% endif %}">
+            </div>
+            <span class="text-xs text-slate-400 mt-1 text-center leading-tight">{{ b.label }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="text-xs text-slate-400 mt-3">
+        <span class="inline-block w-3 h-3 rounded bg-red-500 mr-1"></span>&lt; 30 Tage ·
+        <span class="inline-block w-3 h-3 rounded bg-orange-400 mr-1 ml-2"></span>&lt; 90 Tage ·
+        <span class="inline-block w-3 h-3 rounded bg-green-400 mr-1 ml-2"></span>≥ 90 Tage
+    </p>
+</div>
+
+<!-- Policen-Tabelle -->
+<div class="bg-white rounded-lg border border-slate-200 overflow-hidden mb-4">
+    <div class="px-6 py-4 border-b border-slate-200">
+        <h2 class="text-sm font-semibold text-slate-700">Policen</h2>
+    </div>
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-semibold text-slate-700">Policen-Nr.</th>
+                <th class="text-left px-4 py-3 font-semibold text-slate-700">Objekt</th>
+                <th class="text-right px-4 py-3 font-semibold text-slate-700">Prämie p.a.</th>
+                <th class="text-right px-4 py-3 font-semibold text-slate-700">Fälligkeit</th>
+                <th class="text-right px-4 py-3 font-semibold text-slate-700">Verbleibend</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+            {% if not detail.policen %}
+            <tr>
+                <td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">Keine Policen vorhanden.</td>
+            </tr>
+            {% endif %}
+            {% for p in detail.policen %}
+            <tr class="hover:bg-slate-50">
+                <td class="px-4 py-3 text-slate-700">{{ p.police_number or "–" }}</td>
+                <td class="px-4 py-3">
+                    <a href="/objects/{{ p.object_id }}" class="text-blue-600 hover:underline">{{ p.object_short_code }}</a>
+                    <span class="text-slate-400 text-xs ml-1">{{ p.object_name }}</span>
+                </td>
+                <td class="px-4 py-3 text-right text-slate-700">
+                    {% if p.praemie %}{{ "%.0f"|format(p.praemie|float) }} €{% else %}–{% endif %}
+                </td>
+                <td class="px-4 py-3 text-right text-slate-700">
+                    {{ p.next_main_due.strftime("%d.%m.%Y") if p.next_main_due else "–" }}
+                </td>
+                <td class="px-4 py-3 text-right font-medium
+                    {% if p.severity == 'critical' %}text-red-600
+                    {% elif p.severity == 'warning' %}text-orange-500
+                    {% elif p.severity == 'normal' %}text-slate-600
+                    {% else %}text-slate-400{% endif %}">
+                    {% if p.days_remaining is not none %}{{ p.days_remaining }} Tage{% else %}–{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Schadensfälle -->
+<div class="bg-white rounded-lg border border-slate-200 overflow-hidden mb-4">
+    <div class="px-6 py-4 border-b border-slate-200">
+        <h2 class="text-sm font-semibold text-slate-700">Schadensfälle</h2>
+    </div>
+    <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-semibold text-slate-700">Datum</th>
+                <th class="text-left px-4 py-3 font-semibold text-slate-700">Objekt</th>
+                <th class="text-left px-4 py-3 font-semibold text-slate-700">Einheit</th>
+                <th class="text-right px-4 py-3 font-semibold text-slate-700">Betrag</th>
+                <th class="text-left px-4 py-3 font-semibold text-slate-700">Beschreibung</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+            {% if not detail.schadensfaelle %}
+            <tr>
+                <td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">Keine Schadensfälle vorhanden.</td>
+            </tr>
+            {% endif %}
+            {% for s in detail.schadensfaelle %}
+            <tr class="hover:bg-slate-50">
+                <td class="px-4 py-3 text-slate-700 whitespace-nowrap">
+                    {{ s.occurred_at.strftime("%d.%m.%Y") if s.occurred_at else "–" }}
+                </td>
+                <td class="px-4 py-3 text-slate-700">{{ s.object_short_code }}</td>
+                <td class="px-4 py-3 text-slate-700">{{ s.unit_number or "–" }}</td>
+                <td class="px-4 py-3 text-right text-slate-700">
+                    {% if s.amount %}{{ "%.0f"|format(s.amount|float) }} €{% else %}–{% endif %}
+                </td>
+                <td class="px-4 py-3 text-slate-600">{{ s.description or "–" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Verbundene Objekte -->
+<div class="bg-white rounded-lg border border-slate-200 p-6 mb-4">
+    <h2 class="text-sm font-semibold text-slate-700 mb-3">Verbundene Objekte</h2>
+    {% if not detail.verbundene_objekte %}
+    <p class="text-sm text-slate-400">Keine verbundenen Objekte.</p>
+    {% else %}
+    <ul class="space-y-1">
+        {% for o in detail.verbundene_objekte %}
+        <li>
+            <a href="/objects/{{ o.object_id }}" class="text-blue-600 hover:underline text-sm">
+                {{ o.short_code }} — {{ o.name }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endblock %}

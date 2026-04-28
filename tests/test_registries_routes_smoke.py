@@ -86,3 +86,34 @@ def test_sidebar_link_hidden_for_unpermitted_user(auth_client):
     resp = auth_client.get("/")
     assert resp.status_code == 200
     assert 'href="/registries/versicherer"' not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Story 2.8 — Versicherer-Detailseite
+# ---------------------------------------------------------------------------
+
+def test_detail_unauthenticated_redirects(anon_client):
+    resp = anon_client.get(f"/registries/versicherer/{uuid.uuid4()}")
+    assert resp.status_code == 302
+    assert resp.headers["location"].startswith("/auth/google/login")
+
+
+def test_detail_no_permission_returns_403(auth_client):
+    resp = auth_client.get(f"/registries/versicherer/{uuid.uuid4()}")
+    assert resp.status_code == 403
+
+
+def test_detail_unknown_versicherer_returns_404(steckbrief_admin_client):
+    resp = steckbrief_admin_client.get(f"/registries/versicherer/{uuid.uuid4()}")
+    assert resp.status_code == 404
+
+
+def test_detail_permitted_user_returns_200(steckbrief_admin_client, db):
+    v = Versicherer(id=uuid.uuid4(), name="Detail-Smoke-Versicherer")
+    db.add(v)
+    db.commit()
+
+    resp = steckbrief_admin_client.get(f"/registries/versicherer/{v.id}")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Detail-Smoke-Versicherer" in resp.text
