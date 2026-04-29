@@ -87,6 +87,11 @@ context:
 
 ## Spec Change Log
 
+- **2026-04-29 — Live-Bug-Fixes (Post-Implement)**:
+  - Facilioo paginiert **1-indexed**: `_get_all_paged` startete bei `pageNumber=0`, was Facilioo mit HTTP 400 quittiert. Folge: Auswahl-Screen zeigte „Facilioo nicht erreichbar"-Banner trotz funktionierendem Token. Fix in `app/services/facilioo_client.py` (Loop ab `page=1`, Abbruch bei `page >= totalPages`). Regression-Tests `test_list_conferences_starts_at_page_one` + `test_list_conferences_walks_multiple_pages`.
+  - Sidebar-Eintrag: KI-Workflows tauchen jetzt als eigene Sidebar-Sektion auf (alle aktiven Workflows mit Resource-Access). Implementiert via Jinja-Global `sidebar_workflows(user)` in `app/templating.py` + neuer Sidebar-Block in `app/templates/base.html`. Damit greift AC1 vollstaendig (Tile + Sidebar).
+  - `Workflows`-Konfig-Sidebar wird nicht mehr faelschlich aktiv gehighlightet, wenn der User auf einer KI-Workflow-Seite ist (Active-Match entkoppelt via `ns.in_wf_path`).
+
 ## Design Notes
 
 **Aggregator-Strategie** (`fetch_conference_signature_payload`):

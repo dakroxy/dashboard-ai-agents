@@ -1,6 +1,7 @@
 """Tests fuer das ETV-Unterschriftenlisten-Modul.
 
 - Helper-Tests (Unit): Datentransformation, Vollmacht-Detection, Filename-Slug.
+- Pagination-Tests (httpx.MockTransport): Facilioo ist 1-indexed.
 - Route-Tests (TestClient): GET-Auswahl, POST-Generate, FaciliooError-Pfad,
   403 ohne Workflow-Access. WeasyPrint wird durchgehend gemockt — die echte
   Render-Pfad-Verifikation laeuft via Live-Smoke (siehe Spec Verification).
@@ -11,6 +12,7 @@ import sys
 import types
 import uuid
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,6 +22,7 @@ from app.main import app
 from app.models import ResourceAccess, User, Workflow
 from app.permissions import RESOURCE_TYPE_WORKFLOW
 from app.routers import etv_signature_list as etv_router
+from app.services import facilioo_client
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +118,94 @@ def test_format_conference_label_handles_missing_date():
 
 
 # ---------------------------------------------------------------------------
+# Pagination — Facilioo ist 1-indexed (`pageNumber=0` -> HTTP 400)
+# ---------------------------------------------------------------------------
+
+
+def _patched_facilioo_client(handler):
+    transport = httpx.MockTransport(handler)
+
+    class _Patched(httpx.AsyncClient):
+        def __init__(self, **kwargs):
+            kwargs["transport"] = transport
+            super().__init__(**kwargs)
+
+    return _Patched
+
+
+@pytest.mark.asyncio
+async def test_list_conferences_starts_at_page_one(monkeypatch):
+    """Regression: Facilioo verlangt pageNumber>=1, sonst 400.
+    Der Client darf nie pageNumber=0 anfragen."""
+    seen_pages: list[str] = []
+
+    def handler(request):
+        page = request.url.params.get("pageNumber")
+        seen_pages.append(page)
+        if page == "0":
+            return httpx.Response(
+                400,
+                json={"errors": [{"field": "PageNumber", "message": "must be >=1"}]},
+            )
+        # Eine Seite, totalPages=1 -> Loop endet.
+        return httpx.Response(
+            200,
+            json={
+                "items": [{"id": 1, "title": "ETV A"}, {"id": 2, "title": "ETV B"}],
+                "pageNumber": 1,
+                "pageSize": 100,
+                "totalPages": 1,
+                "totalCount": 2,
+            },
+        )
+
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+
+    items = await facilioo_client.list_conferences()
+    assert seen_pages == ["1"], f"Erwartet pageNumber=1, gesehen: {seen_pages}"
+    assert len(items) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_conferences_walks_multiple_pages(monkeypatch):
+    """Multi-Page: Loop iteriert solange page < totalPages."""
+
+    def handler(request):
+        page = int(request.url.params.get("pageNumber"))
+        if page == 1:
+            return httpx.Response(
+                200,
+                json={
+                    "items": [{"id": i} for i in range(1, 101)],  # 100 Items
+                    "pageNumber": 1,
+                    "totalPages": 2,
+                },
+            )
+        if page == 2:
+            return httpx.Response(
+                200,
+                json={
+                    "items": [{"id": 101}, {"id": 102}],
+                    "pageNumber": 2,
+                    "totalPages": 2,
+                },
+            )
+        return httpx.Response(400, json={"err": "unexpected page"})
+
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+
+    items = await facilioo_client.list_conferences()
+    assert len(items) == 102
+    assert items[0]["id"] == 1 and items[-1]["id"] == 102
+
+
+# ---------------------------------------------------------------------------
 # Route-Smoke-Tests
 # ---------------------------------------------------------------------------
 
@@ -164,6 +255,26 @@ def _seed_etv_workflow_with_access(db, user_id: uuid.UUID) -> Workflow:
         )
         db.commit()
     return wf
+
+
+def test_sidebar_lists_etv_workflow_for_user_with_access(
+    monkeypatch, auth_client, db, test_user
+):
+    """Sidebar muss einen Link auf den ETV-Workflow enthalten, sobald der
+    User Resource-Access auf den Workflow hat."""
+    _seed_etv_workflow_with_access(db, test_user.id)
+
+    async def fake_list():
+        return []
+
+    monkeypatch.setattr(etv_router, "list_conferences", fake_list)
+
+    resp = auth_client.get("/workflows/etv-signature-list/")
+    assert resp.status_code == 200
+    body = resp.text
+    # Sidebar-Sektion da + Link auf ETV-URL.
+    assert "KI-Workflows" in body
+    assert 'href="/workflows/etv-signature-list/"' in body
 
 
 def test_select_screen_lists_conferences(monkeypatch, auth_client, db, test_user):

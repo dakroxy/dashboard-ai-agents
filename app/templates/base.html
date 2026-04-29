@@ -79,9 +79,35 @@
             </a>
             {% endif %}
 
+            {# KI-Workflows (Resource-Access pro Workflow) #}
+            {% set sidebar_wfs = sidebar_workflows(user) %}
+            {% set ns = namespace(in_wf_path=false) %}
+            {% for wf in sidebar_wfs %}
+                {% if wf.url|length > 1 and path.startswith(wf.url.rstrip('/')) %}{% set ns.in_wf_path = true %}{% endif %}
+            {% endfor %}
+            {% if sidebar_wfs %}
+            <div class="px-6 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                KI-Workflows
+            </div>
+            {% for wf in sidebar_wfs %}
+            {% set active = path == wf.url or (wf.url|length > 1 and path.startswith(wf.url.rstrip('/'))) %}
+            <a href="{{ wf.url }}"
+               class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
+                      {% if active %}bg-slate-800 text-white border-emerald-400
+                      {% else %}text-slate-300 hover:bg-slate-800 hover:text-white border-transparent{% endif %}">
+                <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    {% if wf.icon %}<path stroke-linecap="round" stroke-linejoin="round" d="{{ wf.icon }}"/>
+                    {% else %}<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>{% endif %}
+                </svg>
+                {{ wf.name }}
+            </a>
+            {% endfor %}
+            <div class="my-2 border-t border-slate-800"></div>
+            {% endif %}
+
             {# Workflows (Konfiguration) #}
             {% if has_permission(user, "workflows:view") %}
-            {% set active = path.startswith("/workflows") %}
+            {% set active = path.startswith("/workflows") and not ns.in_wf_path %}
             <a href="/workflows/"
                class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
                       {% if active %}bg-slate-800 text-white border-emerald-400

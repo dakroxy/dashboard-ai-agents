@@ -86,14 +86,14 @@ async def _get_all_paged(
 ) -> list[Any]:
     """Lädt alle Seiten eines paginierten Facilioo-Endpunkts.
 
-    Toleriert sowohl Spring-Data-Style (``{"content": [...], "last": bool}``)
-    als auch flache Listen-Responses.
+    Facilioo paginiert **1-indexed** (`pageNumber >= 1`). Antwort-Container ist
+    `{"items": [...], "totalPages": int, "pageNumber": int, ...}`.
     """
     if params is None:
         params = {}
     params = {**params, "pageSize": _PAGE_SIZE}
     all_items: list[Any] = []
-    page = 0
+    page = 1
 
     while True:
         data = await _api_get(client, path, {**params, "pageNumber": page})
@@ -103,15 +103,13 @@ async def _get_all_paged(
             if len(data) < _PAGE_SIZE:
                 break
         elif isinstance(data, dict):
-            # Facilioo verwendet "items" als Container in der OpenAPI-3-Spec.
-            # Fallbacks fuer andere Schreibweisen.
             content = data.get("items") or data.get("content") or []
             all_items.extend(content)
             total_pages = data.get("totalPages")
             last_flag = data.get("last")
             if last_flag is True:
                 break
-            if total_pages is not None and page + 1 >= int(total_pages):
+            if total_pages is not None and page >= int(total_pages):
                 break
             if not content:
                 break

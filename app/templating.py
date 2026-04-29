@@ -11,9 +11,63 @@ from typing import Any
 
 from fastapi.templating import Jinja2Templates
 
-from app.permissions import has_permission
+from app.db import SessionLocal
+from app.models import User, Workflow
+from app.permissions import accessible_workflow_ids, has_permission
 from app.services.mietverwaltung import field_source
 from app.services.steckbrief import ProvenanceWithUser
+
+
+# Pro Workflow-Key: Sidebar-URL + Inline-SVG-Pfad. Halten wir hier zentral,
+# damit base.html (Sidebar) und index.html (Tile) nicht aus dem Tritt geraten.
+# Default gilt fuer "freshly seeded"-Workflows ohne expliziten Eintrag — sie
+# zeigen weiterhin auf die generische Workflow-Konfig-Seite, sind aber sichtbar.
+_WORKFLOW_SIDEBAR_META: dict[str, dict[str, str]] = {
+    "sepa_mandate": {
+        "url": "/documents/",
+        "icon": "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+    },
+    "mietverwaltung_setup": {
+        "url": "/cases/",
+        "icon": "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
+    },
+    "etv_signature_list": {
+        "url": "/workflows/etv-signature-list/",
+        "icon": "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+    },
+    "contact_create": {
+        "url": "/contacts/new",
+        "icon": "M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z",
+    },
+}
+
+
+def sidebar_workflows(user: User | None) -> list[dict[str, Any]]:
+    """Liefert die Workflow-Eintraege fuer die linke Sidebar.
+
+    Eigene DB-Session, damit der Helper aus jedem Template heraus aufrufbar ist
+    ohne dass die Route die Liste manuell durchreichen muss.
+    """
+    if user is None:
+        return []
+    db = SessionLocal()
+    try:
+        ids = accessible_workflow_ids(db, user)
+        if not ids:
+            return []
+        workflows = (
+            db.query(Workflow)
+            .filter(Workflow.active.is_(True), Workflow.id.in_(ids))
+            .order_by(Workflow.name.asc())
+            .all()
+        )
+    finally:
+        db.close()
+    items: list[dict[str, Any]] = []
+    for wf in workflows:
+        meta = _WORKFLOW_SIDEBAR_META.get(wf.key, {"url": f"/workflows/{wf.key}", "icon": ""})
+        items.append({"key": wf.key, "name": wf.name, "url": meta["url"], "icon": meta["icon"]})
+    return items
 
 
 def _format_iban(value: str | None) -> str:
@@ -114,4 +168,5 @@ templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["has_permission"] = has_permission
 templates.env.globals["field_source"] = field_source
 templates.env.globals["provenance_pill"] = provenance_pill
+templates.env.globals["sidebar_workflows"] = sidebar_workflows
 templates.env.filters["iban_format"] = _format_iban
