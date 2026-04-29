@@ -1,0 +1,211 @@
+"""Pflegegrad-Score-Service (Story 3.3).
+
+Berechnet einen deterministischen Pflegegrad-Score (0–100) pro Objekt aus
+Completeness und Aktualitaet (Provenance-Decay). Wird von der Detail-Route
+gecacht und von der List-View sortiert.
+"""
+from __future__ import annotations
+
+import datetime
+from dataclasses import dataclass
+from datetime import timedelta, timezone
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.models import Eigentuemer, FieldProvenance, InsurancePolicy, Object, Wartungspflicht
+
+
+# ---------------------------------------------------------------------------
+# Pflichtfeld-Katalog (Quelle der Wahrheit fuer Score-Berechnung)
+# ---------------------------------------------------------------------------
+
+# Cluster-Gewichte (Summe = 1.0)
+CLUSTER_WEIGHTS: dict[str, float] = {
+    "C1": 0.20,
+    "C4": 0.30,
+    "C6": 0.20,
+    "C8": 0.30,
+}
+
+# Scalar-Felder mit Provenance-Decay (ORM-Feldnamen auf Object)
+_C1_SCALAR: tuple[str, ...] = ("full_address", "impower_property_id")
+_C4_SCALAR: tuple[str, ...] = (
+    "shutoff_water_location",
+    "shutoff_electricity_location",
+    "heating_type",
+    "year_built",
+)
+_C6_SCALAR: tuple[str, ...] = ("last_known_balance", "reserve_current")
+
+# Union aller Scalar-Felder fuer eine einzige Provenance-Query
+_ALL_SCALAR: tuple[str, ...] = _C1_SCALAR + _C4_SCALAR + _C6_SCALAR
+
+CACHE_TTL = timedelta(minutes=5)
+
+
+# ---------------------------------------------------------------------------
+# Dataclass
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class PflegegradResult:
+    score: int
+    per_cluster: dict[str, float]
+    weakest_fields: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Hilfsfunktionen
+# ---------------------------------------------------------------------------
+
+def _ensure_utc(dt: datetime.datetime) -> datetime.datetime:
+    """Macht naive Datetimes zu UTC-aware (SQLite gibt naive zurueck)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _decay(age_days: int | None) -> float:
+    if age_days is None or age_days <= 365:
+        return 1.0
+    if age_days <= 1095:
+        return 0.5
+    return 0.1
+
+
+# ---------------------------------------------------------------------------
+# Score-Berechnung
+# ---------------------------------------------------------------------------
+
+def pflegegrad_score(obj: Object, db: Session) -> PflegegradResult:
+    now = datetime.datetime.now(tz=timezone.utc)
+
+    # -- Provenance: eine Query fuer alle Scalar-Felder --
+    provs = (
+        db.execute(
+            select(FieldProvenance)
+            .where(
+                FieldProvenance.entity_type == "object",
+                FieldProvenance.entity_id == obj.id,
+                FieldProvenance.field_name.in_(_ALL_SCALAR),
+            )
+            .order_by(FieldProvenance.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    latest_prov: dict[str, FieldProvenance] = {}
+    for prov in provs:
+        if prov.field_name not in latest_prov:
+            latest_prov[prov.field_name] = prov
+
+    # -- Relationale Counts --
+    eigentuemer_count = db.execute(
+        select(func.count()).where(Eigentuemer.object_id == obj.id)
+    ).scalar_one()
+
+    police_count = db.execute(
+        select(func.count()).where(InsurancePolicy.object_id == obj.id)
+    ).scalar_one()
+
+    wartung_count = db.execute(
+        select(func.count()).where(Wartungspflicht.object_id == obj.id)
+    ).scalar_one()
+
+    # -- Effektive Werte berechnen --
+    weakest: list[str] = []
+
+    def _scalar_effective(field: str) -> float:
+        val = getattr(obj, field)
+        if val is None:
+            weakest.append(field)
+            return 0.0
+        prov = latest_prov.get(field)
+        age = (now - _ensure_utc(prov.created_at)).days if prov is not None else None
+        eff = _decay(age)
+        if eff < 1.0:
+            weakest.append(field)
+        return eff
+
+    def _relational_effective(sentinel: str, count: int) -> float:
+        if count == 0:
+            weakest.append(sentinel)
+            return 0.0
+        return 1.0
+
+    def _jsonb_bool_effective(field: str, val: list) -> float:
+        if not val:
+            weakest.append(field)
+            return 0.0
+        return 1.0
+
+    # C1: full_address, impower_property_id, has_eigentuemer
+    c1_vals = [
+        _scalar_effective("full_address"),
+        _scalar_effective("impower_property_id"),
+        _relational_effective("has_eigentuemer", eigentuemer_count),
+    ]
+
+    # C4: 4 Technik-Felder
+    c4_vals = [
+        _scalar_effective("shutoff_water_location"),
+        _scalar_effective("shutoff_electricity_location"),
+        _scalar_effective("heating_type"),
+        _scalar_effective("year_built"),
+    ]
+
+    # C6: last_known_balance, reserve_current, sepa_mandate_refs
+    c6_vals = [
+        _scalar_effective("last_known_balance"),
+        _scalar_effective("reserve_current"),
+        _jsonb_bool_effective("sepa_mandate_refs", obj.sepa_mandate_refs or []),
+    ]
+
+    # C8: has_police, has_wartungspflicht
+    c8_vals = [
+        _relational_effective("has_police", police_count),
+        _relational_effective("has_wartungspflicht", wartung_count),
+    ]
+
+    per_cluster = {
+        "C1": sum(c1_vals) / len(c1_vals),
+        "C4": sum(c4_vals) / len(c4_vals),
+        "C6": sum(c6_vals) / len(c6_vals),
+        "C8": sum(c8_vals) / len(c8_vals),
+    }
+
+    raw_score = sum(per_cluster[k] * CLUSTER_WEIGHTS[k] for k in per_cluster)
+    score = round(raw_score * 100)
+
+    return PflegegradResult(
+        score=score,
+        per_cluster=per_cluster,
+        weakest_fields=weakest,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cache-Helper
+# ---------------------------------------------------------------------------
+
+def get_or_update_pflegegrad_cache(
+    obj: Object, db: Session
+) -> tuple[PflegegradResult, bool]:
+    """Berechnet Score + aktualisiert Cache wenn stale.
+    Returns: (result, cache_was_updated)"""
+    result = pflegegrad_score(obj, db)
+
+    now = datetime.datetime.now(tz=timezone.utc)
+    is_stale = (
+        obj.pflegegrad_score_cached is None
+        or obj.pflegegrad_score_updated_at is None
+        or (now - _ensure_utc(obj.pflegegrad_score_updated_at)) >= CACHE_TTL
+    )
+    if is_stale:
+        # direkter Cache-Write — explizite Ausnahme vom Write-Gate-Boundary (Story 3.3)
+        obj.pflegegrad_score_cached = result.score
+        obj.pflegegrad_score_updated_at = now
+        # kein db.commit() — Caller committed
+
+    return result, is_stale

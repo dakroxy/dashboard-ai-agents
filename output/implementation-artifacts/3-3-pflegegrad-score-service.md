@@ -1,6 +1,6 @@
 # Story 3.3: Pflegegrad-Score-Service
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -76,24 +76,24 @@ _(Dieser AC ist bereits durch `_invalidate_pflegegrad()` in `steckbrief_write_ga
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: `app/services/pflegegrad.py` implementieren (AC1–AC3, AC5)
-  - [ ] 1.1: `PflegegradResult`-Dataclass: `score: int`, `per_cluster: dict[str, float]`, `weakest_fields: list[str]` — `frozen=True`, `from __future__ import annotations`
-  - [ ] 1.2: Modulkonstanten definieren: `CLUSTER_WEIGHTS`, `_C1_SCALAR`, `_C4_SCALAR`, `_C6_SCALAR`, `_ALL_SCALAR` (Union der drei für Provenance-Query), `CACHE_TTL = timedelta(minutes=5)`
-  - [ ] 1.3: `pflegegrad_score(obj: Object, db: Session) -> PflegegradResult` implementieren — Formel, Decay, Relational-Counts, per_cluster-Map, weakest_fields (Details siehe Dev Notes)
-  - [ ] 1.4: `get_or_update_pflegegrad_cache(obj: Object, db: Session) -> tuple[PflegegradResult, bool]` implementieren — ruft `pflegegrad_score()` auf, schreibt Cache nur wenn stale, kein `db.commit()`. Returnt `(result, cache_was_updated)` damit der Router gezielt committen kann (siehe Dev Notes).
+- [x] Task 1: `app/services/pflegegrad.py` implementieren (AC1–AC3, AC5)
+  - [x] 1.1: `PflegegradResult`-Dataclass: `score: int`, `per_cluster: dict[str, float]`, `weakest_fields: list[str]` — `frozen=True`, `from __future__ import annotations`
+  - [x] 1.2: Modulkonstanten definieren: `CLUSTER_WEIGHTS`, `_C1_SCALAR`, `_C4_SCALAR`, `_C6_SCALAR`, `_ALL_SCALAR` (Union der drei für Provenance-Query), `CACHE_TTL = timedelta(minutes=5)`
+  - [x] 1.3: `pflegegrad_score(obj: Object, db: Session) -> PflegegradResult` implementieren — Formel, Decay, Relational-Counts, per_cluster-Map, weakest_fields (Details siehe Dev Notes)
+  - [x] 1.4: `get_or_update_pflegegrad_cache(obj: Object, db: Session) -> tuple[PflegegradResult, bool]` implementieren — ruft `pflegegrad_score()` auf, schreibt Cache nur wenn stale, kein `db.commit()`. Returnt `(result, cache_was_updated)` damit der Router gezielt committen kann (siehe Dev Notes).
 
-- [ ] Task 2: `app/routers/objects.py` — Detail-Route anpassen (AC6)
-  - [ ] 2.1: Import `pflegegrad.get_or_update_pflegegrad_cache` hinzufügen (absoluter Import)
-  - [ ] 2.2: In `object_detail()` nach dem Sparkline-Block `pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(detail.obj, db)` aufrufen
-  - [ ] 2.3: Wenn `cache_updated`: try/except um `db.commit()` wrappen, bei Exception `db.rollback()` + Warning-Log via `_logger.warning(...)` — `pflegegrad_result` ist trotzdem gültig (kein Render-Abbruch). Pattern analog `last_known_balance` (Zeile 213–221).
-  - [ ] 2.4: `"pflegegrad_result": pflegegrad_result` ins Template-Context-Dict
+- [x] Task 2: `app/routers/objects.py` — Detail-Route anpassen (AC6)
+  - [x] 2.1: Import `pflegegrad.get_or_update_pflegegrad_cache` hinzufügen (absoluter Import)
+  - [x] 2.2: In `object_detail()` nach dem Sparkline-Block `pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(detail.obj, db)` aufrufen
+  - [x] 2.3: Wenn `cache_updated`: try/except um `db.commit()` wrappen, bei Exception `db.rollback()` + Warning-Log via `_logger.warning(...)` — `pflegegrad_result` ist trotzdem gültig (kein Render-Abbruch). Pattern analog `last_known_balance` (Zeile 213–221).
+  - [x] 2.4: `"pflegegrad_result": pflegegrad_result` ins Template-Context-Dict
 
-- [ ] Task 3: `tests/test_pflegegrad_unit.py` (AC1–AC3, AC5)
-  - [ ] 3.1: `test_all_full_fresh_provenance_score_100` — AC1
-  - [ ] 3.2: `test_only_c1_filled_score_20` — AC2: prüfe score=20, per_cluster, weakest_fields enthält C4/C6/C8-Felder
-  - [ ] 3.3: `test_c4_decay_1095_days` — AC3: FieldProvenance-Rows mit `created_at = now - 1100 Tage` → C4-Completeness=0.1
-  - [ ] 3.4: `test_get_or_update_cache_population` — AC5a: leerem Cache → Cache befüllt nach Aufruf
-  - [ ] 3.5: `test_get_or_update_cache_no_write_when_fresh` — AC5b: frischer Cache → `pflegegrad_score_updated_at` unverändert, `pflegegrad_score_cached` unverändert
+- [x] Task 3: `tests/test_pflegegrad_unit.py` (AC1–AC3, AC5)
+  - [x] 3.1: `test_all_full_fresh_provenance_score_100` — AC1
+  - [x] 3.2: `test_only_c1_filled_score_20` — AC2: prüfe score=20, per_cluster, weakest_fields enthält C4/C6/C8-Felder
+  - [x] 3.3: `test_c4_decay_1095_days` — AC3: FieldProvenance-Rows mit `created_at = now - 1100 Tage` → C4-Completeness=0.1
+  - [x] 3.4: `test_get_or_update_cache_population` — AC5a: leerem Cache → Cache befüllt nach Aufruf
+  - [x] 3.5: `test_get_or_update_cache_no_write_when_fresh` — AC5b: frischer Cache → `pflegegrad_score_updated_at` unverändert, `pflegegrad_score_cached` unverändert
 
 ## Dev Notes
 
@@ -404,6 +404,19 @@ claude-sonnet-4-6 (1M context)
 
 ### Debug Log References
 
+SQLite gibt naive Datetimes zurück. `_ensure_utc()` in `pflegegrad.py` normalisiert naive Datetimes zu UTC-aware vor dem Vergleich. Test-Assertion für AC5b entsprechend angepasst.
+
+`test_detail_sql_statement_count` Schwellwert von 16 → 21 angehoben (+4 Score-Queries + 1 Cache-Commit).
+
 ### Completion Notes List
 
+Alle 3 Tasks und 5 Test-Cases implementiert. 779 Tests grün, 0 Regressions.
+
+AC4 (Cache-Invalidation bei write_field_human) durch bestehenden `test_write_gate_unit.py::test_invalidate_pflegegrad_on_object_write` abgedeckt — kein neuer Test nötig (per Story-Spec).
+
 ### File List
+
+- `app/services/pflegegrad.py` (neu)
+- `app/routers/objects.py` (geändert: Import + Pflegegrad-Block + Template-Context)
+- `tests/test_pflegegrad_unit.py` (neu)
+- `tests/test_steckbrief_routes_smoke.py` (geändert: SQL-Statement-Count-Threshold 16 → 21)

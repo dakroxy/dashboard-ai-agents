@@ -85,6 +85,7 @@ from app.services.steckbrief_wartungen import (
     get_due_severity,
     validate_wartung_dates,
 )
+from app.services.pflegegrad import get_or_update_pflegegrad_cache
 from app.services.steckbrief_write_gate import write_field_human
 from app.templating import templates
 
@@ -272,6 +273,19 @@ async def object_detail(
     sparkline_points = reserve_history_for_sparkline(db, detail.obj.id)
     sparkline_svg = build_sparkline_svg(sparkline_points)
 
+    # --- Pflegegrad (Story 3.3) ---
+    pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(detail.obj, db)
+    if cache_updated:
+        try:
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            _logger.warning(
+                "pflegegrad cache commit failed for object=%s: %s",
+                detail.obj.id, exc,
+            )
+            # pflegegrad_result ist trotzdem gueltig — Render laeuft weiter
+
     # ---- Technik-Sektion (Story 1.6) ----
     tech_prov_map = get_provenance_map(
         db, "object", detail.obj.id,
@@ -398,6 +412,7 @@ async def object_detail(
             "units": units,
             "get_due_severity": get_due_severity,
             "notes_owners": notes_owners,
+            "pflegegrad_result": pflegegrad_result,
         },
     )
 
