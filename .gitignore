@@ -36,6 +36,9 @@ Thumbs.db
 uploads/
 logs/
 
+# Node — fuer SPA-Mockups und kuenftiges SPA-Frontend
+node_modules/
+
 # BMad — User-spezifische Overrides (committed bleibt nur Team-Config)
 _bmad/config.user.toml
 _bmad/custom/config.user.toml
