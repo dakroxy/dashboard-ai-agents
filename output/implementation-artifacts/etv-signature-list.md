@@ -2,7 +2,7 @@
 title: 'ETV-Unterschriftenliste (Modul `etv_signature_list`)'
 type: 'feature'
 created: '2026-04-29'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: '4ee7d15b01d9c00d7b7183c1b8b30c5f6284bae0'
 context:
   - '{project-root}/CLAUDE.md'
