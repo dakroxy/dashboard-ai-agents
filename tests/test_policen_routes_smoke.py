@@ -555,6 +555,185 @@ def test_delete_police_from_wrong_object_returns_404(
 
 
 # ---------------------------------------------------------------------------
+# Tranche A — Permission-Gate Positiv-Path (Story 2.1)
+# Explizit benannte Admin-200-Tests fuer Create/Update/Delete. Schuetzen
+# gegen Regression bei Dependency- oder Schema-Aenderungen, die den
+# autorisierten Happy-Path brechen koennten.
+# ---------------------------------------------------------------------------
+
+def test_create_police_returns_200_for_admin_with_objects_edit(
+    db, steckbrief_admin_client, make_object
+):
+    """Tranche A: Admin mit objects:edit POSTet eine vollstaendige Police →
+    200, neue Row in DB inkl. FK auf Versicherer + Praemie."""
+    obj = make_object("POL-A-OK1")
+    v = Versicherer(id=uuid.uuid4(), name="Tranche-A Allianz", contact_info={})
+    db.add(v)
+    db.commit()
+
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen",
+        data={
+            "versicherer_id": str(v.id),
+            "police_number": "TA-001",
+            "produkt_typ": "Wohngebaeude",
+            "praemie": "850.00",
+        },
+    )
+    # Whole-Section-Render → 200, kein Redirect.
+    assert resp.status_code == 200
+
+    db.expire_all()
+    policy = db.query(InsurancePolicy).filter(InsurancePolicy.object_id == obj.id).first()
+    assert policy is not None
+    assert policy.police_number == "TA-001"
+    assert policy.produkt_typ == "Wohngebaeude"
+    assert str(policy.versicherer_id) == str(v.id)
+    from decimal import Decimal
+    assert policy.praemie == Decimal("850.00")
+
+
+def test_update_police_returns_200_for_admin(
+    db, steckbrief_admin_client, make_object
+):
+    """Tranche A: Admin PUTet eine bestehende Police mit geaendertem Feld →
+    200, neuer Wert in DB."""
+    obj = make_object("POL-A-OK2")
+    policy = InsurancePolicy(
+        id=uuid.uuid4(),
+        object_id=obj.id,
+        police_number="TA-OLD",
+    )
+    db.add(policy)
+    db.commit()
+
+    resp = steckbrief_admin_client.put(
+        f"/objects/{obj.id}/policen/{policy.id}",
+        data={
+            "police_number": "TA-NEW",
+            "praemie": "999.00",
+        },
+    )
+    assert resp.status_code == 200
+
+    db.expire_all()
+    updated = db.get(InsurancePolicy, policy.id)
+    assert updated is not None
+    assert updated.police_number == "TA-NEW"
+    from decimal import Decimal
+    assert updated.praemie == Decimal("999.00")
+
+
+def test_delete_police_returns_200_for_admin(
+    db, steckbrief_admin_client, make_object
+):
+    """Tranche A: Admin DELETEt eine bestehende Police → 200, Police-Row
+    nicht mehr in der DB."""
+    obj = make_object("POL-A-OK3")
+    policy = InsurancePolicy(
+        id=uuid.uuid4(),
+        object_id=obj.id,
+        police_number="TA-DEL",
+    )
+    db.add(policy)
+    db.commit()
+    policy_id = policy.id
+
+    resp = steckbrief_admin_client.delete(f"/objects/{obj.id}/policen/{policy_id}")
+    assert resp.status_code == 200
+
+    db.expire_all()
+    assert db.get(InsurancePolicy, policy_id) is None
+
+
+# ---------------------------------------------------------------------------
+# Tranche B — Numerische Boundaries + Form-Error-UX (Story 2.1 Review-Defer)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(
+    reason="Story 2.1 Review-Defer: _parse_decimal hat keinen Negative-Check "
+           "(notice_period_months akzeptiert ebenfalls negative Werte). "
+           "Range-Check vor Produktiv-Rollout aufnehmen."
+)
+def test_create_police_rejects_praemie_negative(
+    db, steckbrief_admin_client, make_object
+):
+    """negative Praemie -> 422, keine DB-Row."""
+    obj = make_object("POL-NEG")
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen",
+        data={"praemie": "-100"},
+    )
+    assert resp.status_code == 422
+    assert db.query(InsurancePolicy).filter(InsurancePolicy.object_id == obj.id).count() == 0
+
+
+@pytest.mark.xfail(
+    reason="Story 2.1 Review-Defer: Praemie > Numeric(12,2) fuehrt zu 500 "
+           "beim DB-Commit, kein expliziter Overflow-Check im Router."
+)
+def test_create_police_rejects_praemie_overflow(
+    db, steckbrief_admin_client, make_object
+):
+    """Praemie > 12,2 Numeric -> 422 oder klar gehandhabt (kein 500)."""
+    obj = make_object("POL-OF")
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen",
+        data={"praemie": "99999999999999.99"},
+    )
+    assert resp.status_code in {422, 400}
+    assert db.query(InsurancePolicy).filter(InsurancePolicy.object_id == obj.id).count() == 0
+
+
+@pytest.mark.xfail(
+    reason="Story 2.1 Review-Defer: notice_period_months akzeptiert negative "
+           "Werte; HTML min='0' ist nur client-side. Range-Check fehlt."
+)
+def test_create_police_rejects_notice_period_negative(
+    db, steckbrief_admin_client, make_object
+):
+    """notice_period_months=-1 -> 422, keine DB-Row."""
+    obj = make_object("POL-NMO")
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen",
+        data={"praemie": "100.00", "notice_period_months": "-1"},
+    )
+    assert resp.status_code == 422
+    assert db.query(InsurancePolicy).filter(InsurancePolicy.object_id == obj.id).count() == 0
+
+
+@pytest.mark.xfail(
+    reason="Story 2.1 Review-Defer (UX-Polish): Bei 422 wird form_error "
+           "gerendert, aber #neue-police-form bleibt class='hidden' -> User "
+           "sieht den Fehlertext ohne das Form. Sticky-Form-Visible nicht im Scope."
+)
+def test_create_police_form_error_renders_sticky_form_visible(
+    db, steckbrief_admin_client, make_object
+):
+    """Bei 422 ist die Form sichtbar (nicht hidden) und enthaelt Werte."""
+    obj = make_object("POL-STK")
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen",
+        data={
+            "police_number": "STICKY-001",
+            "start_date": "2025-06-01",
+            "next_main_due": "2025-01-01",
+        },
+    )
+    assert resp.status_code == 422
+    body = resp.text
+    # Form-Error im Body
+    assert "Ablauf-Datum" in body
+    # Form-Container darf nicht class="hidden" haben (sticky-visible)
+    # Heuristik: Sucht nach `id="neue-police-form"` ohne `hidden`-Klasse
+    assert 'id="neue-police-form" class="hidden' not in body, (
+        "Form muss sichtbar bleiben, damit User den Fehler korrigieren kann"
+    )
+    # Sticky-Form-Daten: User-Eingabe bleibt erhalten
+    assert "STICKY-001" in body
+
+
+# ---------------------------------------------------------------------------
 # Regression — write_gate_coverage
 # ---------------------------------------------------------------------------
 

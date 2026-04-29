@@ -270,3 +270,147 @@ def test_notiz_view_escapes_html_payload(db, admin_client, test_obj, test_eig):
     body = save_resp.text
     assert "<script>" not in body
     assert "&lt;script&gt;" in body or "&#x3C;script&#x3E;" in body or "&#60;script&#62;" in body
+
+
+# ---------------------------------------------------------------------------
+# Tranche C — Render-Gaps (Story 2.4)
+# Pruefen, was tatsaechlich im HTML der Detailseite rauskommt:
+#  * Owner-Name + Notiz-Text werden zusammen gerendert (Admin)
+#  * Edit-Button ist im DOM, wenn objects:edit + view_confidential vorliegen
+#  * Section komplett unsichtbar fuer User ohne view_confidential
+# ---------------------------------------------------------------------------
+
+
+def test_menschen_notizen_view_renders_owner_list_with_existing_note(
+    db, admin_client, test_obj, test_eig
+):
+    """Detailseite rendert Owner-Name UND vorhandene Notiz fuer Admin.
+
+    Setup: notes_owners = {eig.id: "Erreichbar nur abends"}.
+    Erwartung: GET /objects/{id} liefert HTML mit
+      - Section-Header "Menschen"
+      - Owner-Name "Max Mustermann"
+      - Notiz-Text "Erreichbar nur abends"
+    """
+    test_obj.notes_owners = {str(test_eig.id): "Erreichbar nur abends"}
+    db.add(test_obj)
+    db.commit()
+
+    resp = admin_client.get(f"/objects/{test_obj.id}")
+    assert resp.status_code == 200
+    body = resp.text
+
+    # Section-Header sichtbar
+    assert "Menschen" in body
+    # Owner-Name sichtbar
+    assert "Max Mustermann" in body
+    # Notiz-Text sichtbar (gerendert via _obj_notiz_view.html)
+    assert "Erreichbar nur abends" in body
+    # Section-Marker
+    assert 'data-section="menschen"' in body
+
+
+def test_menschen_notizen_view_renders_edit_button_for_admin_with_view_confidential(
+    db, admin_client, test_obj, test_eig
+):
+    """Edit-Button ist im DOM, wenn Admin objects:edit + view_confidential hat.
+
+    _obj_notiz_view.html rendert Bearbeiten-Button via HTMX:
+      hx-get="/objects/{obj.id}/menschen-notizen/{eig.id}/edit"
+    Beide Permissions sind im admin_user-Fixture gesetzt.
+    """
+    resp = admin_client.get(f"/objects/{test_obj.id}")
+    assert resp.status_code == 200
+    body = resp.text
+
+    # Bearbeiten-Button ist im DOM (textuell + HTMX-Attribut)
+    assert "Bearbeiten" in body
+    edit_url = f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}/edit"
+    assert f'hx-get="{edit_url}"' in body
+
+
+def test_menschen_notizen_view_hides_section_for_user_without_view_confidential(
+    db, normal_client, test_obj, test_eig
+):
+    """Standard-User (ohne view_confidential) sieht die Menschen-Sektion gar nicht.
+
+    Das Template `_obj_menschen.html` ist komplett in einem
+    `{% if has_permission(user, "objects:view_confidential") %}`-Block —
+    also weder Section-Header noch data-section-Marker im HTML.
+    """
+    # Pre-fill, damit ein "Leak" sichtbar waere, falls die Sektion durchrutscht.
+    test_obj.notes_owners = {str(test_eig.id): "Geheime Notiz darf nicht durch"}
+    db.add(test_obj)
+    db.commit()
+
+    resp = normal_client.get(f"/objects/{test_obj.id}")
+    assert resp.status_code == 200
+    body = resp.text
+
+    # Section-Marker NICHT vorhanden
+    assert 'data-section="menschen"' not in body
+    # Auch Section-Ueberschrift "Menschen" darf nicht im HTML stehen.
+    # (Andere Templates verwenden das Wort nicht — pruefbar im aktuellen Build.)
+    assert "Menschen" not in body
+    # Notiz-Inhalt darf erst recht nicht durchgereicht werden
+    assert "Geheime Notiz darf nicht durch" not in body
+
+
+# ---------------------------------------------------------------------------
+# Tranche A — Permission-Gate Positiv-Path (Story 2.4)
+# Admin-200-Tests fuer view-Fragment + save-Persistenz. Erfasst Regression-
+# Risiko bei Dependency-Upgrade des view_confidential-Gates.
+# ---------------------------------------------------------------------------
+
+def test_menschen_notes_view_returns_200_for_admin_with_view_confidential(
+    db, admin_client, test_obj, test_eig
+):
+    """Tranche A: Admin mit view_confidential ruft das View-Fragment einer
+    Eigentuemer-Notiz auf → 200, gespeicherter Notiz-Text wird gerendert."""
+    # Notiz vorbelegen, damit das Fragment einen sichtbaren Wert anzeigt.
+    test_obj.notes_owners = {str(test_eig.id): "Beirat, kritisch"}
+    db.add(test_obj)
+    db.commit()
+
+    resp = admin_client.get(
+        f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}/view",
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    # Container-ID fuer HTMX-outerHTML-Swap muss vorhanden sein.
+    assert f'id="notiz-{test_eig.id}"' in body
+    # Notiz-Text wird im View-Fragment gerendert.
+    assert "Beirat, kritisch" in body
+
+
+def test_menschen_notes_save_persists_for_admin(
+    db, admin_client, admin_user, test_obj, test_eig
+):
+    """Tranche A: Admin POSTet einen neuen Notiztext → 200, JSONB-Wert
+    persistiert (via Write-Gate-Reassignment) und ein AuditLog-Eintrag
+    `object_field_updated` mit `field=notes_owners` entsteht."""
+    note_text = "Schwerhoerig, lieber per Email kontaktieren"
+    resp = admin_client.post(
+        f"/objects/{test_obj.id}/menschen-notizen/{test_eig.id}",
+        data={"note": note_text},
+    )
+    assert resp.status_code == 200
+
+    # JSONB-Persistenz: Wert ist im Top-Level-Dict unter str(eig.id) gespeichert.
+    db.expire_all()
+    refreshed = db.get(Object, test_obj.id)
+    assert refreshed.notes_owners.get(str(test_eig.id)) == note_text
+
+    # AuditLog-Eintrag entsteht und referenziert das richtige Feld + Objekt.
+    audit = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.action == "object_field_updated",
+            AuditLog.entity_id == test_obj.id,
+        )
+        .order_by(AuditLog.created_at.desc())
+        .first()
+    )
+    assert audit is not None
+    assert audit.details_json["field"] == "notes_owners"
+    assert audit.user_id == admin_user.id

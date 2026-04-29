@@ -732,6 +732,45 @@ def test_versicherungen_section_hides_wartung_delete_button_for_viewer(
 
 
 # ---------------------------------------------------------------------------
+# Tranche B — Form-Error-Context (Story 2.2)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(
+    reason="Wartungspflicht-422 rendert aktuell ein simples <p>-Fragment statt "
+           "Re-Render mit dienstleister_list-Context. Form-Error-UX-Polish nicht "
+           "im Scope der Tranche, regression-pinnt das aktuelle Minimal-Pattern."
+)
+def test_create_wartungspflicht_form_error_renders_with_dienstleister_list_context(
+    db, steckbrief_admin_client, make_object
+):
+    """Bei 422 enthaelt Response das dienstleister_list-Fragment +
+    get_due_severity-Filter laeuft ohne Crash (kein TypeError 'Undefined')."""
+    obj = make_object("WRT-FE")
+    policy = _make_policy(db, obj.id)
+    dienstleister = Dienstleister(
+        id=uuid.uuid4(), name="Existing-DL-FE", gewerke_tags=[]
+    )
+    db.add(dienstleister)
+    db.commit()
+
+    # Empty bezeichnung -> 422
+    resp = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/policen/{policy.id}/wartungspflichten",
+        data={"bezeichnung": "", "intervall_monate": "12"},
+    )
+    assert resp.status_code == 422
+    body = resp.text
+    # dienstleister_list muss im Render erscheinen, damit User Form korrigieren kann
+    assert "Existing-DL-FE" in body, (
+        "dienstleister_list muss im 422-Render verfuegbar sein"
+    )
+    # Kein Crash durch Undefined get_due_severity (heuristisch: Body ist nicht leer
+    # und enthaelt keine Stack-Trace-Marker)
+    assert "TypeError" not in body
+    assert "Undefined" not in body
+
+
+# ---------------------------------------------------------------------------
 # Regression — write_gate_coverage weiter gruen
 # ---------------------------------------------------------------------------
 

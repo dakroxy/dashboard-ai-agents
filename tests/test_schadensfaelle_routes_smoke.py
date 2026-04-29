@@ -304,3 +304,68 @@ def test_form_error_keeps_user_input_sticky(db, admin_client, make_object):
     assert "Wasserschaden Ostfassade" in resp.text
     # Details automatisch geöffnet damit User die Form sieht
     assert "<details" in resp.text and "open" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Tranche B — Datum-Bounds (pre-1900) + IntegrityError-Rollback
+# ---------------------------------------------------------------------------
+
+def test_create_schadensfall_rejects_pre_1900_date(db, admin_client, make_object):
+    """occurred_at vor 1900 -> 422, kein DB-Insert."""
+    obj = make_object("SCH-PRE")
+    policy = _make_policy(db, obj.id)
+
+    resp = admin_client.post(
+        f"/objects/{obj.id}/schadensfaelle",
+        data={
+            "policy_id": str(policy.id),
+            "estimated_sum": "500",
+            "occurred_at": "1899-12-31",
+        },
+    )
+    assert resp.status_code == 422
+    body = resp.text
+    assert "1900" in body
+    assert db.query(Schadensfall).filter(Schadensfall.policy_id == policy.id).count() == 0
+
+
+def test_create_schadensfall_rolls_back_on_integrity_error(
+    db, admin_client, make_object, monkeypatch
+):
+    """Mock IntegrityError beim Commit -> 422 form-rendering, kein 500."""
+    from sqlalchemy.exc import IntegrityError
+    from app.routers import objects as router_mod
+
+    obj = make_object("SCH-IGE")
+    policy = _make_policy(db, obj.id)
+
+    # create_schadensfall faellt durch — der Commit wirft IntegrityError.
+    # Wir patchen den Commit auf der Session, aber das kollidiert mit dem
+    # Test-DB-Reset. Cleaner: db.commit-mock ueber den Router-Pfad.
+    original_create_schadensfall = router_mod.create_schadensfall
+
+    def boom_create_schadensfall(*args, **kwargs):
+        result = original_create_schadensfall(*args, **kwargs)
+        # Schadensfall ist angelegt, aber wir simulieren danach Integrity-Crash
+        # auf dem naechsten Commit-Versuch
+        raise IntegrityError("simulated", None, Exception("FK violation"))
+
+    monkeypatch.setattr(
+        router_mod, "create_schadensfall", boom_create_schadensfall
+    )
+
+    resp = admin_client.post(
+        f"/objects/{obj.id}/schadensfaelle",
+        data={
+            "policy_id": str(policy.id),
+            "estimated_sum": "500",
+            "description": "Test rollback",
+        },
+    )
+    # Erwartet 422 mit Form-Error, NICHT 500
+    assert resp.status_code == 422
+    body = resp.text
+    assert "Speichern fehlgeschlagen" in body or "fehlgeschlagen" in body.lower()
+    # Kein Schadensfall in DB (Rollback hat funktioniert)
+    db.expire_all()
+    assert db.query(Schadensfall).filter(Schadensfall.policy_id == policy.id).count() == 0

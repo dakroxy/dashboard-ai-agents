@@ -101,7 +101,7 @@
                     <span class="text-slate-400 text-xs ml-1">{{ p.object_name }}</span>
                 </td>
                 <td class="px-4 py-3 text-right text-slate-700">
-                    {% if p.praemie %}{{ "%.0f"|format(p.praemie|float) }} €{% else %}–{% endif %}
+                    {% if p.praemie is not none %}{{ "%.0f"|format(p.praemie|float) }} €{% else %}–{% endif %}
                 </td>
                 <td class="px-4 py-3 text-right text-slate-700">
                     {{ p.next_main_due.strftime("%d.%m.%Y") if p.next_main_due else "–" }}

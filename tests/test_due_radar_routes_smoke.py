@@ -136,3 +136,107 @@ def test_rows_invalid_severity_returns_422(due_radar_client):
         headers={"HX-Request": "true"},
     )
     assert resp.status_code == 422
+
+
+def test_rows_returns_outerhtml_with_tbody_id(due_radar_client):
+    """Tranche B: Fragment-Response enthaelt genau ein <tbody id="due-radar-rows">.
+
+    Hintergrund: Story 2.6 hat hx-swap auf outerHTML umgestellt, damit das
+    tbody-Element sauber ersetzt wird und keine Verschachtelung entsteht.
+    Test pinnt diese Markup-Garantie: kein nested tbody, genau ein Anker.
+    """
+    resp = due_radar_client.get(
+        "/due-radar/rows", headers={"HX-Request": "true"}
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    # Genau ein <tbody id="due-radar-rows">
+    assert body.count('<tbody id="due-radar-rows"') == 1, (
+        "Fragment muss genau einen tbody-Anker fuer outerHTML-Swap haben"
+    )
+    # Kein nested/duplicated tbody
+    assert body.count("<tbody") == 1, (
+        "Kein verschachtelter tbody — sonst wuerde HTMX-outerHTML doppelt swappen"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tranche C — Render-Gap (Story 2.5)
+# Due-Radar-Eintraege linken via /objects/{id}#versicherungen — der Anchor
+# muss als id-Attribut im Detailseiten-DOM existieren, sonst springt der
+# Browser nur an den Seitenanfang. (Retro-P1-Patch in Story 2.5 hat
+# id="versicherungen" zur <section> ergaenzt.)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def steckbrief_admin_user_for_anchor(db):
+    """Lokaler Admin-User mit objects:view, damit GET /objects/{id} 200 liefert.
+
+    `due_radar_user` reicht hier nicht — der Detail-Render braucht Stammdaten-
+    Permissions, die wir hier minimal halten (objects:view + view_confidential
+    fuer vollstaendige Section-Liste).
+    """
+    user = User(
+        id=uuid.uuid4(),
+        google_sub="google-sub-anchor-admin",
+        email="anchor-admin@dbshome.de",
+        name="Anchor Admin",
+        permissions_extra=[
+            "objects:view",
+            "objects:edit",
+            "objects:view_confidential",
+            "registries:view",
+        ],
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture
+def anchor_admin_client(db, steckbrief_admin_user_for_anchor):
+    def override_db():
+        yield db
+
+    def override_user():
+        return steckbrief_admin_user_for_anchor
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = override_user
+    app.dependency_overrides[get_optional_user] = override_user
+
+    with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        yield c
+
+    app.dependency_overrides.clear()
+
+
+def test_object_detail_renders_versicherungen_anchor(db, anchor_admin_client):
+    """Story 2.5 Retro P1: GET /objects/{id} rendert id="versicherungen" auf der
+    Versicherungs-Section, sodass Due-Radar-Links (#versicherungen) tatsaechlich
+    scrollen.
+
+    Vor dem Patch hatte die Section nur data-section="versicherungen", kein id-Attribut.
+    """
+    from app.models import Object
+
+    obj = Object(
+        id=uuid.uuid4(),
+        short_code="ANC1",
+        name="Anchor Testobjekt",
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+
+    resp = anchor_admin_client.get(f"/objects/{obj.id}")
+    assert resp.status_code == 200
+    body = resp.text
+
+    # Pflichtcheck: Anchor existiert als id auf der Versicherungs-Section
+    assert 'id="versicherungen"' in body, (
+        "Anchor 'versicherungen' fehlt im Detail-DOM — "
+        "Due-Radar-Links '/objects/{id}#versicherungen' wuerden nicht scrollen."
+    )

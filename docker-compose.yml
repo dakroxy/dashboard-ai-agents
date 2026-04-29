@@ -8,6 +8,8 @@ services:
     volumes:
       - ./app:/app/app
       - ./migrations:/app/migrations
+      - ./tests:/app/tests
+      - ./conftest.py:/app/conftest.py
       - ./alembic.ini:/app/alembic.ini
       - uploads:/app/uploads
     depends_on:

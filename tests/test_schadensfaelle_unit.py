@@ -178,6 +178,16 @@ def test_amount_validation_inf_nan_overflow(db, admin_client, obj, policy):
     assert db.query(Schadensfall).filter(Schadensfall.policy_id == policy.id).count() == 0
 
 
+def test_amount_validation_e_notation_overflow(db, admin_client, obj, policy):
+    """Tranche B: Decimal in E-Notation > 9.99e10 -> 422 statt 500."""
+    resp = admin_client.post(
+        f"/objects/{obj.id}/schadensfaelle",
+        data={"policy_id": str(policy.id), "estimated_sum": "9.99e30"},
+    )
+    assert resp.status_code == 422, "9.99e30 muss als Overflow erkannt werden"
+    assert db.query(Schadensfall).filter(Schadensfall.policy_id == policy.id).count() == 0
+
+
 # ---------------------------------------------------------------------------
 # Policy-Objekt-Mismatch (AC1)
 # ---------------------------------------------------------------------------

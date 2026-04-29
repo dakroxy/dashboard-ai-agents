@@ -439,6 +439,90 @@ def test_zugangscode_edit_accessible_for_view_confidential_user(
 
 
 # ---------------------------------------------------------------------------
+# Tranche A — Permission-Gate Positiv-Path (Story 2.0)
+# Drei explizit benannte Admin-200-Tests, die View/Edit/Save je auf einer
+# eigenen Test-Funktion verifizieren. Erfasst Regression-Risiko bei
+# Dependency-Upgrade auf das view_confidential-Gate.
+# ---------------------------------------------------------------------------
+
+def test_zugangscode_view_returns_200_for_admin_with_view_confidential(
+    db, zug_admin_client, zug_admin_user, make_zug_object
+):
+    """Tranche A: Admin mit view_confidential erhaelt das View-Fragment des
+    Zugangscodes inklusive entschluesseltem Klartext-Wert."""
+    obj = make_zug_object("ZUG-A1")
+    write_field_human(
+        db,
+        entity=obj,
+        field="entry_code_main_door",
+        value="ADMIN-VIEW-OK",
+        source="user_edit",
+        user=zug_admin_user,
+    )
+    db.commit()
+
+    resp = zug_admin_client.get(
+        f"/objects/{obj.id}/zugangscodes/view",
+        params={"field": "entry_code_main_door"},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    # View-Fragment-Container traegt die feldspezifische ID.
+    assert 'id="field-entry_code_main_door"' in body
+    # Klartext wird im Fragment dekrypted dargestellt.
+    assert "ADMIN-VIEW-OK" in body
+
+
+def test_zugangscode_edit_returns_200_for_admin_with_view_confidential(
+    db, zug_admin_client, zug_admin_user, make_zug_object
+):
+    """Tranche A: Admin mit view_confidential + objects:edit erhaelt das
+    Edit-Form-Fragment mit vorausgefuelltem Wert."""
+    obj = make_zug_object("ZUG-A2")
+    write_field_human(
+        db,
+        entity=obj,
+        field="entry_code_main_door",
+        value="ADMIN-EDIT-OK",
+        source="user_edit",
+        user=zug_admin_user,
+    )
+    db.commit()
+
+    resp = zug_admin_client.get(
+        f"/objects/{obj.id}/zugangscodes/edit",
+        params={"field": "entry_code_main_door"},
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    # Edit-Fragment enthaelt den Form-Input-Namen + dekrypteten Wert.
+    assert 'name="value"' in body
+    assert "ADMIN-EDIT-OK" in body
+
+
+def test_zugangscode_save_returns_200_for_admin_with_view_confidential(
+    db, zug_admin_client, make_zug_object
+):
+    """Tranche A: Admin POSTet einen Wert via Save-Endpoint → 200, Wert
+    persistiert verschluesselt (v1:-Praefix), Klartext nicht in DB-Spalte."""
+    obj = make_zug_object("ZUG-A3")
+    resp = zug_admin_client.post(
+        f"/objects/{obj.id}/zugangscodes/field",
+        data={"field_name": "entry_code_garage", "value": "SAVE-OK-99"},
+    )
+    assert resp.status_code == 200
+    # Save-Roundtrip rendert den frischen View-Fragment mit Klartext.
+    assert "SAVE-OK-99" in resp.text
+
+    db.expire_all()
+    refreshed = db.get(Object, obj.id)
+    assert refreshed.entry_code_garage is not None
+    assert refreshed.entry_code_garage.startswith("v1:")
+    # DB-Spalte haelt Ciphertext, nicht den Klartext.
+    assert "SAVE-OK-99" not in refreshed.entry_code_garage
+
+
+# ---------------------------------------------------------------------------
 # AC6 — Technik-Endpoint weist entry_code_* weiter ab; unbekannte Felder 400
 # ---------------------------------------------------------------------------
 

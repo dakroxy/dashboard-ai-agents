@@ -117,3 +117,58 @@ def test_detail_permitted_user_returns_200(steckbrief_admin_client, db):
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert "Detail-Smoke-Versicherer" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Tranche B — Decimal-Zero-Truthiness (Story 2.8 Review-Patch)
+# ---------------------------------------------------------------------------
+
+
+def test_versicherer_detail_renders_zero_praemie_as_value_not_dash(
+    steckbrief_admin_client, db
+):
+    """Police mit praemie=Decimal('0') rendert '0 EUR' / '0,00 EUR', NICHT '–'.
+
+    Hintergrund: Truthy-Bug aus Story 2.8 Review. Service-Code wurde via
+    `is not None`-Check gefixt, aber das Detail-Template hat weiterhin
+    `{% if p.praemie %}` — Decimal('0') ist in Jinja2 falsy (analog zu
+    Python `bool(Decimal('0')) == False`). Deshalb rendert die Praemie-Spalte
+    der Policen-Tabelle bei Null-Praemie als '–', obwohl ein expliziter
+    Null-Wert vom Versicherer gemeldet ist.
+
+    Test-Schaerfung: Wir suchen nach dem `<td>...0 €...</td>`-Pattern in der
+    Policen-Tabelle (NICHT im Header-Block, der die Gesamtpraemie ohne
+    Truthy-Check rendert).
+    """
+    import re
+
+    obj = Object(id=uuid.uuid4(), short_code="ZER1", name="Zero-Premium-Objekt")
+    v = Versicherer(id=uuid.uuid4(), name="Zero-Premium-AG")
+    p = InsurancePolicy(
+        id=uuid.uuid4(),
+        object_id=obj.id,
+        versicherer_id=v.id,
+        police_number="ZP-001",
+        praemie=Decimal("0"),
+    )
+    db.add_all([obj, v, p])
+    db.commit()
+
+    resp = steckbrief_admin_client.get(f"/registries/versicherer/{v.id}")
+    assert resp.status_code == 200
+    body = resp.text
+    # Police-Nummer sichtbar (Smoke)
+    assert "ZP-001" in body
+
+    # Schaerfung: zwischen "ZP-001" (Police-Nummer) und dem naechsten Zeilen-
+    # Wechsel muss die Praemie-Zelle "0 €" rendern, nicht "–". Der Template-
+    # Code `{% if p.praemie %}{{ ... }} €{% else %}–{% endif %}` wuerde fuer
+    # Decimal('0') den else-Zweig nehmen und "–" produzieren.
+    pn_idx = body.index("ZP-001")
+    # Naechste 500 Zeichen nach Police-Nummer = die TR der Policen-Tabelle
+    tr_segment = body[pn_idx:pn_idx + 500]
+    # In der Praemie-Zelle muss "0 €" stehen, nicht nur "–"
+    assert "0 €" in tr_segment, (
+        f"Police mit praemie=0 muss '0 €' in der Tabellen-Zeile rendern, "
+        f"nicht '–'. Body-Segment nach ZP-001: {tr_segment[:300]}"
+    )
