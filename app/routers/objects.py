@@ -21,11 +21,12 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -53,6 +54,7 @@ from app.services.steckbrief import (
     TECHNIK_HISTORIE,
     ZUGANGSCODE_FIELD_KEYS,
     ZUGANGSCODE_FIELDS,
+    ObjectListRow,
     TechnikField,
     build_sparkline_svg,
     get_object_detail,
@@ -125,7 +127,38 @@ async def list_objects(
             "title": "Objekte",
             "user": user,
             "rows": rows,
+            "sort": "short_code",
+            "order": "asc",
+            "filter_reserve": "false",
         },
+    )
+
+
+@router.get("/rows", response_class=HTMLResponse)
+async def list_objects_rows(
+    request: Request,
+    sort: str = Query("short_code"),
+    order: str = Query("asc"),
+    filter_reserve: str = Query("false"),
+    user: User = Depends(require_permission("objects:view")),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    if not request.headers.get("HX-Request"):
+        return RedirectResponse("/objects", status_code=303)
+    accessible = accessible_object_ids(db, user)
+    filter_bool = filter_reserve.lower() == "true"
+    safe_order = "desc" if order == "desc" else "asc"
+    rows = list_objects_with_unit_counts(
+        db,
+        accessible_ids=accessible,
+        sort=sort,
+        order=safe_order,
+        filter_reserve_below_target=filter_bool,
+    )
+    return templates.TemplateResponse(
+        request,
+        "_obj_table_body.html",
+        {"rows": rows, "user": user},
     )
 
 

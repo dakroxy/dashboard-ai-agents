@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from decimal import Decimal
 
 import pytest
 import sqlalchemy as sa
@@ -100,8 +101,9 @@ class _StmtCounter:
 
 def _tbody_slice(body: str) -> str:
     """Extrahiert den <tbody>-Inhalt, damit Assertions nicht auf
-    Sidebar/Header/Kommentare matchen koennen."""
-    start = body.find("<tbody>")
+    Sidebar/Header/Kommentare matchen koennen.
+    Unterstuetzt <tbody> und <tbody id="..."> (Story 3.1: id="obj-rows")."""
+    start = body.find("<tbody")
     end = body.find("</tbody>")
     assert start != -1 and end != -1, "kein <tbody> im Response"
     return body[start:end]
@@ -159,21 +161,6 @@ def test_list_renders_rows_and_links(steckbrief_admin_client, make_object):
     pos_b = tbody.find("BBB")
     pos_c = tbody.find("CCC")
     assert 0 <= pos_a < pos_b < pos_c
-
-
-def test_list_unit_count_correct(steckbrief_admin_client, make_object):
-    make_object("HAS5", units=5)
-    make_object("HAS0", units=0)
-
-    response = steckbrief_admin_client.get("/objects")
-    assert response.status_code == 200
-
-    # Pro-Row-Scope via <tr>-Grenzen, damit ">5<" garantiert aus der HAS5-Zeile
-    # kommt und nicht aus einer Nachbarzeile / Attribut (Review-Finding P6).
-    row5 = _row_for(response.text, "HAS5")
-    row0 = _row_for(response.text, "HAS0")
-    assert re.search(r">\s*5\s*<", row5), f"Unit-Count 5 fehlt in HAS5-Row: {row5}"
-    assert re.search(r">\s*0\s*<", row0), f"Unit-Count 0 fehlt in HAS0-Row: {row0}"
 
 
 def test_list_empty_state(steckbrief_admin_client):
@@ -457,3 +444,90 @@ def test_detail_sql_statement_count(
     assert counter.count <= 16, (
         f"Zu viele SQL-Statements auf Detailseite: {counter.count}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Story 3.1 — GET /objects/rows (HTMX-Fragment fuer Sort/Filter)
+# ---------------------------------------------------------------------------
+
+def test_rows_requires_login(anon_client):
+    response = anon_client.get("/objects/rows")
+    assert response.status_code == 302
+
+
+def test_rows_forbidden_without_objects_view(auth_client):
+    response = auth_client.get("/objects/rows")
+    assert response.status_code == 403
+
+
+def test_rows_direct_nav_without_htmx_redirects(steckbrief_admin_client):
+    response = steckbrief_admin_client.get("/objects/rows")
+    assert response.status_code == 303
+    assert response.headers["location"] == "/objects"
+
+
+def test_rows_htmx_request_returns_tbody_fragment(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="F001", name="Frag"))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    assert 'id="obj-rows"' in response.text
+    assert "F001" in response.text
+
+
+def test_rows_sort_by_saldo_desc_accepted(steckbrief_admin_client):
+    response = steckbrief_admin_client.get(
+        "/objects/rows?sort=saldo&order=desc",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+
+
+def test_rows_invalid_sort_key_falls_back_to_short_code(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="INV", name="Invalid Sort"))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows?sort=INVALID_KEY&order=asc",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200  # kein 500, Fallback auf short_code
+
+
+def test_rows_filter_reserve_shows_only_below_threshold(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="LOW", name="Niedrig",
+                  reserve_current=Decimal("1000"), reserve_target=Decimal("1000")))
+    db.add(Object(id=uuid.uuid4(), short_code="OK", name="Gut",
+                  reserve_current=Decimal("10000"), reserve_target=Decimal("1000")))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows?filter_reserve=true",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    assert "LOW" in response.text
+    assert "OK" not in response.text
+
+
+def test_rows_reserve_badge_rendered_for_object_below_threshold(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="BDG", name="Badge",
+                  reserve_current=Decimal("500"), reserve_target=Decimal("1000")))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows",
+        headers={"HX-Request": "true"},
+    )
+    assert "unter Zielwert" in response.text
+
+
+def test_rows_no_badge_when_reserve_above_threshold(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="NBD", name="NoBadge",
+                  reserve_current=Decimal("9000"), reserve_target=Decimal("1000")))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows",
+        headers={"HX-Request": "true"},
+    )
+    assert "unter Zielwert" not in response.text

@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, select
@@ -25,6 +26,25 @@ class ObjectRow:
     name: str
     full_address: str | None
     unit_count: int
+
+
+@dataclass(frozen=True)
+class ObjectListRow:
+    id: uuid.UUID
+    short_code: str
+    name: str
+    full_address: str | None
+    unit_count: int
+    saldo: Decimal | None
+    reserve_current: Decimal | None
+    reserve_target: Decimal | None
+    mandat_status: str              # "vorhanden" | "fehlt"
+    pflegegrad: int | None          # pflegegrad_score_cached
+
+
+_SORT_ALLOWED = frozenset({
+    "short_code", "name", "saldo", "reserve_current", "mandat_status", "pflegegrad"
+})
 
 
 @dataclass(frozen=True)
@@ -47,13 +67,21 @@ class ProvenanceWithUser:
 
 
 def list_objects_with_unit_counts(
-    db: Session, accessible_ids: set[uuid.UUID] | None
-) -> list[ObjectRow]:
-    """Liste aller sichtbaren Objekte + Anzahl Units in einer Query.
+    db: Session,
+    accessible_ids: set[uuid.UUID] | None,
+    *,
+    sort: str = "short_code",
+    order: str = "asc",
+    filter_reserve_below_target: bool = False,
+) -> list[ObjectListRow]:
+    """Liste aller sichtbaren Objekte mit erweiterten Feldern fuer Sort/Filter.
 
     `accessible_ids=None` bedeutet "keine Einschraenkung" (v1-Default, jeder
     mit `objects:view` sieht alles). Ein leeres Set heisst "keine IDs sichtbar"
     und wird ohne DB-Roundtrip mit `[]` beantwortet.
+
+    Sortierung laeuft in Python (SQLite-Kompatibilitaet, kein nullslast()).
+    NULLs landen immer am Ende — unabhaengig von `order` — via Zwei-Listen-Methode.
     """
     if accessible_ids is not None and len(accessible_ids) == 0:
         return []
@@ -64,26 +92,68 @@ def list_objects_with_unit_counts(
             Object.short_code,
             Object.name,
             Object.full_address,
+            Object.last_known_balance,
+            Object.reserve_current,
+            Object.reserve_target,
+            Object.sepa_mandate_refs,
+            Object.pflegegrad_score_cached,
             func.count(Unit.id).label("unit_count"),
         )
         .outerjoin(Unit, Unit.object_id == Object.id)
         .group_by(Object.id)
-        .order_by(Object.short_code.asc())
     )
     if accessible_ids is not None:
         stmt = stmt.where(Object.id.in_(accessible_ids))
 
-    rows = db.execute(stmt).all()
-    return [
-        ObjectRow(
-            id=row.id,
-            short_code=row.short_code,
-            name=row.name,
-            full_address=row.full_address,
-            unit_count=int(row.unit_count or 0),
+    rows: list[ObjectListRow] = [
+        ObjectListRow(
+            id=r.id,
+            short_code=r.short_code,
+            name=r.name,
+            full_address=r.full_address,
+            unit_count=int(r.unit_count or 0),
+            saldo=r.last_known_balance,
+            reserve_current=r.reserve_current,
+            reserve_target=r.reserve_target,
+            mandat_status="vorhanden" if r.sepa_mandate_refs else "fehlt",
+            pflegegrad=r.pflegegrad_score_cached,
         )
-        for row in rows
+        for r in db.execute(stmt).all()
     ]
+
+    if filter_reserve_below_target:
+        rows = [
+            r for r in rows
+            if r.reserve_current is not None
+            and r.reserve_target is not None
+            and r.reserve_current < r.reserve_target * 6
+        ]
+
+    safe_sort = sort if sort in _SORT_ALLOWED else "short_code"
+
+    if safe_sort in ("short_code", "name"):
+        rows.sort(
+            key=lambda r: (getattr(r, safe_sort).casefold(), r.short_code.casefold()),
+            reverse=(order == "desc"),
+        )
+    elif safe_sort == "mandat_status":
+        rows.sort(
+            key=lambda r: (1 if r.mandat_status == "vorhanden" else 0, r.short_code.casefold()),
+            reverse=(order == "desc"),
+        )
+    else:
+        # Numerische Felder (saldo, reserve_current, pflegegrad): NULLs immer
+        # ans Ende. Sentinel-Tuple kippt bei reverse=True — Zwei-Listen-Methode
+        # haelt NULLs in beiden Richtungen sicher am Ende.
+        non_null = [r for r in rows if getattr(r, safe_sort) is not None]
+        null_rows = [r for r in rows if getattr(r, safe_sort) is None]
+        non_null.sort(
+            key=lambda r: (float(getattr(r, safe_sort)), r.short_code.casefold()),
+            reverse=(order == "desc"),
+        )
+        rows = non_null + null_rows
+
+    return rows
 
 
 def get_object_detail(

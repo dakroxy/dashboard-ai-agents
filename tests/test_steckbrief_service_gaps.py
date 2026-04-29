@@ -17,12 +17,14 @@ from __future__ import annotations
 
 import datetime as _dt
 import uuid
+from decimal import Decimal
 
 import pytest
 
-from app.models import FieldProvenance, Object, User
+from app.models import FieldProvenance, Object, Unit, User
 from app.permissions import accessible_object_ids
 from app.services.steckbrief import (
+    ObjectListRow,
     get_provenance_map,
     list_objects_with_unit_counts,
 )
@@ -174,3 +176,108 @@ def test_accessible_object_ids_with_view_returns_all_ids_v1(db):
     db.commit()
 
     assert accessible_object_ids(db, user) == {o1.id, o2.id}
+
+
+# ---------------------------------------------------------------------------
+# ObjectListRow + list_objects_with_unit_counts (Story 3.1)
+# ---------------------------------------------------------------------------
+
+def test_list_objects_returns_objectlistrow_with_extended_fields(db):
+    db.add(Object(id=uuid.uuid4(), short_code="EXT", name="Extended",
+                  reserve_current=Decimal("5000"), reserve_target=Decimal("1000"),
+                  pflegegrad_score_cached=85))
+    db.commit()
+    result = list_objects_with_unit_counts(db, accessible_ids=None)
+    assert len(result) == 1
+    row = result[0]
+    assert isinstance(row, ObjectListRow)
+    assert row.pflegegrad == 85
+    assert row.reserve_current == Decimal("5000")
+    assert row.reserve_target == Decimal("1000")
+    assert row.mandat_status == "fehlt"  # sepa_mandate_refs default=[]
+
+
+def test_mandat_status_vorhanden_when_sepa_refs_nonempty(db):
+    db.add(Object(id=uuid.uuid4(), short_code="MND", name="Mandat",
+                  sepa_mandate_refs=[{"id": "m-1"}]))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None)
+    assert rows[0].mandat_status == "vorhanden"
+
+
+def test_mandat_status_fehlt_when_sepa_refs_empty(db):
+    db.add(Object(id=uuid.uuid4(), short_code="NOM", name="NoMandat",
+                  sepa_mandate_refs=[]))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None)
+    assert rows[0].mandat_status == "fehlt"
+
+
+def test_filter_reserve_below_target_excludes_above_threshold(db):
+    db.add(Object(id=uuid.uuid4(), short_code="ABOVE", name="Ueber Schwelle",
+                  reserve_current=Decimal("7000"), reserve_target=Decimal("1000")))
+    db.add(Object(id=uuid.uuid4(), short_code="BELOW", name="Unter Schwelle",
+                  reserve_current=Decimal("3000"), reserve_target=Decimal("1000")))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None, filter_reserve_below_target=True)
+    codes = {r.short_code for r in rows}
+    assert "BELOW" in codes
+    assert "ABOVE" not in codes
+
+
+def test_filter_reserve_excludes_null_values(db):
+    db.add(Object(id=uuid.uuid4(), short_code="NULLR", name="Null Reserve",
+                  reserve_current=None, reserve_target=Decimal("1000")))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None, filter_reserve_below_target=True)
+    assert all(r.short_code != "NULLR" for r in rows)
+
+
+def test_filter_reserve_decimal_zero_is_below_target(db):
+    db.add(Object(id=uuid.uuid4(), short_code="ZERO", name="Zero Reserve",
+                  reserve_current=Decimal("0"), reserve_target=Decimal("500")))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None, filter_reserve_below_target=True)
+    assert any(r.short_code == "ZERO" for r in rows), "Decimal('0') muss als 0 < 500*6=3000 erkannt werden"
+
+
+def test_sort_saldo_nulls_always_last_ascending(db):
+    db.add(Object(id=uuid.uuid4(), short_code="AAA", name="a", last_known_balance=Decimal("100")))
+    db.add(Object(id=uuid.uuid4(), short_code="BBB", name="b", last_known_balance=None))
+    db.add(Object(id=uuid.uuid4(), short_code="CCC", name="c", last_known_balance=Decimal("50")))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None, sort="saldo", order="asc")
+    codes = [r.short_code for r in rows]
+    assert codes[-1] == "BBB", "NULL-Saldo muss zuletzt sein (asc)"
+
+
+def test_sort_saldo_nulls_always_last_descending(db):
+    db.add(Object(id=uuid.uuid4(), short_code="AAA", name="a", last_known_balance=Decimal("100")))
+    db.add(Object(id=uuid.uuid4(), short_code="BBB", name="b", last_known_balance=None))
+    db.add(Object(id=uuid.uuid4(), short_code="CCC", name="c", last_known_balance=Decimal("50")))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None, sort="saldo", order="desc")
+    codes = [r.short_code for r in rows]
+    assert codes[-1] == "BBB", "NULL-Saldo muss zuletzt sein (desc)"
+
+
+def test_sort_tiebreaker_short_code_casefold(db):
+    db.add(Object(id=uuid.uuid4(), short_code="bbb", name="b", last_known_balance=Decimal("100")))
+    db.add(Object(id=uuid.uuid4(), short_code="AAA", name="a", last_known_balance=Decimal("100")))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None, sort="saldo", order="asc")
+    assert rows[0].short_code == "AAA"  # casefold: "aaa" < "bbb"
+
+
+def test_list_objects_unit_count_in_objectlistrow(db):
+    """ObjectListRow traegt unit_count weiter, auch wenn die Listen-UI sie
+    aktuell nicht als Spalte zeigt (Story 3.2 wird sie im Card-Layout nutzen)."""
+    obj = Object(id=uuid.uuid4(), short_code="UC5", name="Unit-Count")
+    db.add(obj)
+    db.flush()
+    for i in range(5):
+        db.add(Unit(id=uuid.uuid4(), object_id=obj.id, unit_number=f"UC5-{i}"))
+    db.commit()
+    rows = list_objects_with_unit_counts(db, accessible_ids=None)
+    target = next(r for r in rows if r.short_code == "UC5")
+    assert target.unit_count == 5

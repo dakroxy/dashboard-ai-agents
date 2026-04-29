@@ -1,28 +1,66 @@
-{# Tabellenkoerper der Objekt-Liste. Eigenes Fragment fuer spaetere HTMX-Swaps
-   (Sortierung/Filter in Story 3.1). Aktuell ohne hx-get.
-
-   Jede Zelle ist ein eigener <a>-Link statt row-onclick, damit Cmd-/Middle-Click,
-   Screen-Reader und Right-Click-Kontextmenue funktionieren (AC2). #}
-<tbody>
+{# Tabellenkoerper der Objekt-Liste. HTMX-Fragment fuer Sort/Filter (Story 3.1).
+   tbody-ID "obj-rows" ist der Swap-Target aus objects_list.html. #}
+<tbody id="obj-rows">
     {% for row in rows %}
     <tr class="border-t border-slate-100 hover:bg-slate-50">
+        <!-- Kuerzel -->
         <td class="p-0 font-medium">
             <a href="/objects/{{ row.id }}" class="block px-4 py-3 hover:underline">{{ row.short_code }}</a>
         </td>
+        <!-- Name -->
         <td class="p-0 text-slate-700">
             <a href="/objects/{{ row.id }}" class="block px-4 py-3">{{ row.name }}</a>
         </td>
-        <td class="p-0 text-slate-600">
-            <a href="/objects/{{ row.id }}" class="block px-4 py-3">{{ row.full_address or "&mdash;"|safe }}</a>
-        </td>
+        <!-- Saldo -->
         <td class="p-0 text-right text-slate-700 tabular-nums">
-            <a href="/objects/{{ row.id }}" class="block px-4 py-3">{{ row.unit_count }}</a>
+            <a href="/objects/{{ row.id }}" class="block px-4 py-3">
+                {% if row.saldo is not none %}
+                    {{ "%.0f"|format(row.saldo|float) }} &euro;
+                {% else %}
+                    <span class="text-slate-400">&mdash;</span>
+                {% endif %}
+            </a>
+        </td>
+        <!-- Ruecklage mit Badge -->
+        <td class="p-0 text-right tabular-nums">
+            <a href="/objects/{{ row.id }}" class="block px-4 py-3">
+                {% if row.reserve_current is not none %}
+                    {{ "%.0f"|format(row.reserve_current|float) }} &euro;
+                    {% if row.reserve_target is not none and row.reserve_current < row.reserve_target * 6 %}
+                        <span class="ml-1 inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-700">unter Zielwert</span>
+                    {% endif %}
+                {% else %}
+                    <span class="text-slate-400">&mdash;</span>
+                {% endif %}
+            </a>
+        </td>
+        <!-- Mandat-Status -->
+        <td class="p-0">
+            <a href="/objects/{{ row.id }}" class="block px-4 py-3">
+                {% if row.mandat_status == "vorhanden" %}
+                    <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">vorhanden</span>
+                {% else %}
+                    <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-500">fehlt</span>
+                {% endif %}
+            </a>
+        </td>
+        <!-- Pflegegrad -->
+        <td class="p-0 text-right tabular-nums">
+            <a href="/objects/{{ row.id }}" class="block px-4 py-3">
+                {% if row.pflegegrad is not none %}
+                    <span class="{% if row.pflegegrad >= 70 %}text-green-600{% elif row.pflegegrad >= 40 %}text-yellow-600{% else %}text-red-600{% endif %} font-medium">
+                        {{ row.pflegegrad }} %
+                    </span>
+                {% else %}
+                    <span class="text-slate-400">&mdash;</span>
+                {% endif %}
+            </a>
         </td>
     </tr>
     {% else %}
     <tr>
-        <td colspan="4" class="px-4 py-10 text-center text-slate-400">
-            Noch keine Objekte &mdash; warte auf Impower-Sync (Story 1.4) oder lege sie via Admin-Tool an.
+        <td colspan="6" class="px-4 py-10 text-center text-slate-400">
+            Noch keine Objekte &mdash; warte auf Impower-Sync oder lege sie via Admin-Tool an.
         </td>
     </tr>
     {% endfor %}

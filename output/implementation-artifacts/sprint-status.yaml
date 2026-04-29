@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-28 (Story 3.3 ready-for-dev)
+last_updated: 2026-04-29 (Story 3.1 review)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -69,12 +69,12 @@ development_status:
 
   # Epic 3: Portfolio-UX & KI-Governance-Oberflaeche
   epic-3: in-progress
-  3-1-objekt-liste-mit-sortierung-filter: ready-for-dev
+  3-1-objekt-liste-mit-sortierung-filter: review
   3-2-mobile-card-layout: ready-for-dev
   3-3-pflegegrad-score-service: ready-for-dev
   3-4-pflegegrad-badge-komposition-popover: ready-for-dev
-  3-5-review-queue-admin-ui-mit-filtern: backlog
-  3-6-review-queue-approve-reject: backlog
+  3-5-review-queue-admin-ui-mit-filtern: ready-for-dev
+  3-6-review-queue-approve-reject: ready-for-dev
   epic-3-retrospective: optional
 
   # Epic 4: Facilioo-Ticket-Integration (Launch-Optional)
