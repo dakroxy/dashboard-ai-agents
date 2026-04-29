@@ -14,6 +14,7 @@ Pattern bewusst an `app/services/impower.py` angelehnt:
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import httpx
@@ -25,6 +26,13 @@ _TIMEOUT = 30.0
 _MAX_RETRIES_5XX = 3
 _RETRY_DELAYS_5XX: tuple[int, ...] = (2, 5, 15)
 _PAGE_SIZE = 100
+# Safety-Cap fuer paginierte Endpunkte: bei Schema-Drift (kein totalPages,
+# kein last-Flag, content immer voll) waere die Schleife sonst unbegrenzt.
+# 500 Seiten * 100 Items = 50k Conferences — well above any realistic Pool.
+_MAX_PAGES = 500
+
+
+_logger = logging.getLogger(__name__)
 
 
 class FaciliooError(Exception):
@@ -127,6 +135,14 @@ async def _get_all_paged(
         else:
             break
 
+        if page >= _MAX_PAGES:
+            _logger.warning(
+                "Facilioo-Pagination Safety-Cap erreicht (page=%d, path=%s) — "
+                "Antwort liefert weder totalPages noch last-Flag, breche ab.",
+                page,
+                path,
+            )
+            break
         page += 1
 
     return all_items
@@ -163,6 +179,7 @@ async def list_conferences_with_properties() -> list[dict]:
         properties = await asyncio.gather(*prop_tasks, return_exceptions=True)
 
     prop_iter = iter(properties)
+    failed = 0
     for c in conferences:
         if c.get("id") is None:
             continue
@@ -173,6 +190,17 @@ async def list_conferences_with_properties() -> list[dict]:
         else:
             c["_property_number"] = None
             c["_property_name"] = None
+            if isinstance(prop, BaseException):
+                failed += 1
+    if failed:
+        # Aggregiertes Warning (kein Per-Item-Log) — bei ~30 Conferences sonst
+        # zu laut. User sieht im Dropdown "ohne WEG-Kuerzel"; Ops sieht hier
+        # ob ein Endpunkt gerade flackert.
+        _logger.warning(
+            "Facilioo /conferences/{id}/property: %d von %d Lookups fehlgeschlagen.",
+            failed,
+            len(prop_tasks),
+        )
     return conferences
 
 

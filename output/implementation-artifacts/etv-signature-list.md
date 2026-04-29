@@ -2,7 +2,7 @@
 title: 'ETV-Unterschriftenliste (Modul `etv_signature_list`)'
 type: 'feature'
 created: '2026-04-29'
-status: 'in-review'
+status: 'done'
 baseline_commit: '4ee7d15b01d9c00d7b7183c1b8b30c5f6284bae0'
 context:
   - '{project-root}/CLAUDE.md'
@@ -85,8 +85,47 @@ context:
 - Given Facilioo ist nicht erreichbar oder antwortet persistent mit 5xx/Network-Error, when der User submitted, then bleibt der Auswahl-Screen sichtbar mit roter Fehler-Meldung und HTTP-Status 200, **kein 500er**.
 - Given ein PDF wurde erfolgreich erzeugt, when ich das Audit-Log aufrufe, then existiert ein Eintrag `event="etv_signature_list_generated"` mit `conference_id` und `conference_title` in `details`.
 
+### Review Findings
+
+_Code review 2026-04-29 (3 layers: blind / edge-case / acceptance auditor) — diff `4ee7d15..f655007` narrowed to 13 ETV-Pfade._
+
+**Decision-needed (resolved):**
+
+- [x] [Review][Decision→Defer] Phase-2 gather killed PDF on single voting-group failure [`app/services/facilioo_client.py:279`] — **DEFER** (Spec AC4 verlangt exakte 8 Zeilen; halb-vollstaendige Unterschriftenliste ist juristisch schlechter als Re-Try). Bei UX-Feedback re-evaluieren.
+- [x] [Review][Decision→Patch] Mandate-Aequivalenz `party.id == propertyOwnerId` ohne Code-Doku [`app/routers/etv_signature_list.py:139-141`] — **PATCH** als Code-Comment (Verweis auf Live-Smoke PLS22, kein Logik-Change).
+
+**Patch (unbestaetigt):**
+
+- [ ] [Review][Patch] WeasyPrint render exception → 500 statt Banner (verletzt "Always: niemals 500er") [`app/routers/etv_signature_list.py:280`]
+- [ ] [Review][Patch] `_load_workflow_or_403` wirft 500 bei fehlendem Workflow-Row (verletzt "Always: niemals 500er") [`app/routers/etv_signature_list.py:46-50`]
+- [ ] [Review][Patch] `audit(entity_id=uuid.uuid4())` schreibt Random-UUID — Conference hat keine lokale Entity, also `entity_id=None` setzen [`app/routers/etv_signature_list.py:287`]
+- [ ] [Review][Patch] `_get_all_paged` Endlosschleife wenn `totalPages` None UND `last` falsy UND content immer voll — Safety-Cap `if page > 500: break` einziehen [`app/services/facilioo_client.py:109-130`]
+- [ ] [Review][Patch] `list_conferences_with_properties` schluckt FaciliooError stille (`gather(return_exceptions=True)` ohne Logging) [`app/services/facilioo_client.py:163-176`]
+- [ ] [Review][Patch] `_parse_conference_date` mischt naive/aware datetimes — `strftime("%H:%M")` rendert UTC vs Local inkonsistent (Spec AC4: "PLS22 18:30") [`app/routers/etv_signature_list.py:59-68`]
+- [ ] [Review][Patch] `_sort_key` sortiert auf raw ISO-String — Mixed Offsets (`+02:00` vs `Z`) ergeben falsche Reihenfolge [`app/routers/etv_signature_list.py:186-188`]
+- [ ] [Review][Patch] `KNOWN_AUDIT_ACTIONS` fehlt `etv_signature_list_generated` (Konvention aus `audit.py:30`) [`app/services/audit.py:30`]
+- [ ] [Review][Patch] Mandate-Aequivalenz `party.id == propertyOwnerId` per Code-Comment dokumentieren [`app/routers/etv_signature_list.py:139-141`]
+
+**Defer (pre-existing oder nicht akut, in deferred-work.md):**
+
+- [x] [Review][Defer] Phase-1 gather ohne Partial-Degradation [`app/services/facilioo_client.py:251`] — deferred, Header-Endpunkte sind alle essential, Fail-Loud verteidigbar
+- [x] [Review][Defer] `int(total_pages)` ohne try/except [`app/services/facilioo_client.py:123`] — deferred, low likelihood (Facilioo liefert immer numerisch)
+- [x] [Review][Defer] Audit committed vor StreamingResponse zugestellt [`app/routers/etv_signature_list.py:296`] — deferred, semantisch ist "Daten geladen" der Audit-Anker, nicht "Bytes empfangen"
+- [x] [Review][Defer] Content-Disposition filename nicht RFC-5987 [`app/routers/etv_signature_list.py:304`] — deferred, `_slug` strippt zu ASCII, Injection praktisch unmoeglich
+- [x] [Review][Defer] `sidebar_workflows` oeffnet eigenes `SessionLocal()` pro Render [`app/templating.py:53`] — deferred, architektonische Entscheidung mit Code-Begruendung
+- [x] [Review][Defer] Sidebar-Active prefix-startswith collision-prone [`app/templates/base.html:696-703`] — deferred, aktuell keine kollidierenden Pfade (`/contacts/new` vs nichts)
+- [x] [Review][Defer] Test `test_generate_returns_403_without_workflow_access` koennte 401/422 statt 403 schlucken [`tests/test_etv_signature_list.py:1729`] — deferred, Test-Robustheit
+- [x] [Review][Defer] WeasyPrint-Monkeypatch fragil bei Modul-Import-Refactor [`tests/test_etv_signature_list.py:1685-1696`] — deferred, Test-Robustheit
+- [x] [Review][Defer] Non-ASCII-WEG-Namen kollidieren auf Filename-Fallback [`app/routers/etv_signature_list.py:90-96`] — deferred, alle DBS-WEGs sind deutsch ASCII-fold-bar
+- [x] [Review][Defer] `list_conferences_with_properties` fanout ohne Semaphore [`app/services/facilioo_client.py:158-163`] — deferred, ~30 Conferences im Pool
+- [x] [Review][Defer] Test-Coverage 5xx vs 404 zusammengelegt — deferred, gleicher Codepfad
+- [x] [Review][Defer] Phase-2 gather killed PDF on single VG failure [`app/services/facilioo_client.py:279`] — deferred, Spec AC4 verlangt exakte 8 Zeilen → Fail-loud ist Spec-konform; bei UX-Feedback re-evaluieren
+
+**Spec-Hygiene-Notiz:** `baseline_commit: 4ee7d15` zeigt auf "Story 3.1: Objekt-Liste mit Sortierung & Filter". Zwischen baseline und HEAD liegen 5 unrelated Commits (Pflegegrad 3.2/3.3, Redeploy, Sidebar-Wording-Refactor). Bei naechstem Spec-Update den baseline auf den letzten Commit vor `35492a5 ETV-Unterschriftenliste: neues Workflow-Modul` setzen.
+
 ## Spec Change Log
 
+- **2026-04-29 — Code-Review-Patches**: 9 Findings aus dem Multi-Layer-Review (blind / edge-case / acceptance auditor) gefixt. Highlights: WeasyPrint-Render-Exception greift jetzt den Banner-Pfad (Spec-Boundary "kein 500er"), `_load_workflow_or_403` ebenso, `audit(entity_id=...)` nicht mehr garbage-UUID, `_get_all_paged` hat Safety-Cap gegen Endlosschleife, `_parse_conference_date` gibt jetzt deterministisch Europe/Berlin (AC4 18:30 stabil), `_sort_key` sortiert auf parsed datetime, `KNOWN_AUDIT_ACTIONS` registriert `etv_signature_list_generated`, Mandate-Aequivalenz-Annahme dokumentiert. Phase-2-gather-Fail-Loud bewusst deferred (Spec AC4 verlangt 8 Zeilen). Alle 795 Tests gruen. Status: `done`.
 - **2026-04-29 — Live-Bug-Fixes (Post-Implement)**:
   - Facilioo paginiert **1-indexed**: `_get_all_paged` startete bei `pageNumber=0`, was Facilioo mit HTTP 400 quittiert. Folge: Auswahl-Screen zeigte „Facilioo nicht erreichbar"-Banner trotz funktionierendem Token. Fix in `app/services/facilioo_client.py` (Loop ab `page=1`, Abbruch bei `page >= totalPages`). Regression-Tests `test_list_conferences_starts_at_page_one` + `test_list_conferences_walks_multiple_pages`.
   - Sidebar-Eintrag: KI-Workflows tauchen jetzt als eigene Sidebar-Sektion auf (alle aktiven Workflows mit Resource-Access). Implementiert via Jinja-Global `sidebar_workflows(user)` in `app/templating.py` + neuer Sidebar-Block in `app/templates/base.html`. Damit greift AC1 vollstaendig (Tile + Sidebar).

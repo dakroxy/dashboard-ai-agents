@@ -10,8 +10,8 @@ import io
 import logging
 import re
 import unicodedata
-import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -39,15 +39,21 @@ ETV_WORKFLOW_KEY = "etv_signature_list"
 router = APIRouter(prefix="/workflows/etv-signature-list", tags=["etv"])
 
 _logger = logging.getLogger(__name__)
+_BERLIN_TZ = ZoneInfo("Europe/Berlin")
+
+
+class _WorkflowMissing(Exception):
+    """Wird geworfen wenn die Workflow-Row im DB-Seed fehlt — der Caller
+    rendert den Auswahl-Screen mit Banner statt einer 500."""
 
 
 def _load_workflow_or_403(db: Session, user: User) -> Workflow:
     wf = db.query(Workflow).filter(Workflow.key == ETV_WORKFLOW_KEY).first()
     if wf is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Workflow '{ETV_WORKFLOW_KEY}' nicht gefunden.",
-        )
+        # Kein 500er ans Browser-Frame — Spec-Boundary "Always: HTTP-Errors
+        # → user-friendly Meldung, niemals 500er". Caller behandelt das
+        # ueber den Banner-Pfad.
+        raise _WorkflowMissing()
     if not can_access_resource(db, user, RESOURCE_TYPE_WORKFLOW, wf.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -57,15 +63,24 @@ def _load_workflow_or_403(db: Session, user: User) -> Workflow:
 
 
 def _parse_conference_date(raw: str | None) -> datetime | None:
+    """Parst Facilioo-Datum als tz-aware Europe/Berlin.
+
+    Facilioo liefert ISO-8601 mit oder ohne Zeitzone. ``fromisoformat`` ab
+    Python 3.11 toleriert ``Z``. Werte ohne Zone werden als Europe/Berlin
+    interpretiert (Facilioo-Server steht in DE und schreibt Termine lokal),
+    Werte mit Zone werden nach Europe/Berlin konvertiert. Damit rendern
+    ``%H:%M`` / ``%d.%m.%Y`` deterministisch (AC4: "PLS22 18:30").
+    """
     if not raw:
         return None
-    # Facilioo liefert ISO-8601, mit oder ohne Zeitzone. fromisoformat ab
-    # Python 3.11 toleriert "Z" — sicherheitshalber normalisieren.
     cleaned = raw.replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(cleaned)
+        dt = datetime.fromisoformat(cleaned)
     except ValueError:
         return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=_BERLIN_TZ)
+    return dt.astimezone(_BERLIN_TZ)
 
 
 def _format_conference_label(conf: dict) -> str:
@@ -107,6 +122,13 @@ def _build_rows(payload: dict) -> list[dict]:
 
     Vollmacht-Box ist genau dann vorgekreuzt, wenn mindestens eine Party der
     Voting-Group als ``propertyOwnerId`` in einem Mandat-Eintrag vorkommt.
+
+    Wir vergleichen ``voting_group.parties[].id`` direkt mit
+    ``mandates[].propertyOwnerId``. Live-Smoke 2026-04-29 (PLS22 Hildesheim,
+    conference_id=6944) hat exakt 3 vorgekreuzte Boxes erzeugt — genau wie
+    erwartet. Damit ist die Aequivalenz fuer den DBS-Datenstand belegt; falls
+    Facilioo das ID-Schema mal aendert (Vertreter-Parties mit eigener ID etc.),
+    wuerde sich das in falschen Box-Counts zeigen.
     """
     mandate_owner_ids = {
         m.get("propertyOwnerId")
@@ -169,7 +191,18 @@ async def select_conference(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _load_workflow_or_403(db, user)
+    try:
+        _load_workflow_or_403(db, user)
+    except _WorkflowMissing:
+        return _render_select_error(
+            request,
+            user,
+            options=[],
+            message=(
+                "ETV-Unterschriftenliste-Workflow ist in der Datenbank nicht "
+                "geseedet. Bitte App neu starten oder Admin kontaktieren."
+            ),
+        )
 
     error: str | None = None
     conferences: list[dict] = []
@@ -182,10 +215,14 @@ async def select_conference(
             "versuchen."
         )
 
-    # Sortierung: neueste zuerst (None ans Ende).
-    def _sort_key(c: dict) -> tuple[int, str]:
-        raw = c.get("date") or ""
-        return (0 if raw else 1, raw)
+    # Sortierung: neueste zuerst (None ans Ende). Sortiert auf geparstem
+    # Datum, damit gemischte Timezone-Offsets (`+02:00` vs `Z`) korrekt
+    # vergleichen — naive String-Sortierung wuerde sonst kippen.
+    def _sort_key(c: dict) -> tuple[int, float]:
+        dt = _parse_conference_date(c.get("date"))
+        if dt is None:
+            return (1, 0.0)
+        return (0, dt.timestamp())
 
     conferences_sorted = sorted(conferences, key=_sort_key)
     conferences_sorted.reverse()  # desc auf den vorhandenen Datums-Eintraegen
@@ -211,6 +248,39 @@ async def select_conference(
     )
 
 
+def _render_select_error(
+    request: Request,
+    user: User,
+    *,
+    options: list[dict],
+    message: str,
+) -> HTMLResponse:
+    """Rendert den Auswahl-Screen mit Banner — gemeinsamer Pfad fuer alle
+    User-facing-Errors auf POST/GET. HTTP 200, kein 500er."""
+    return templates.TemplateResponse(
+        request,
+        "etv_signature_list_select.html",
+        {
+            "title": "ETV-Unterschriftenliste",
+            "user": user,
+            "options": options,
+            "error": message,
+        },
+    )
+
+
+async def _options_for_error_screen() -> list[dict]:
+    try:
+        conferences = await list_conferences_with_properties()
+    except FaciliooError:
+        return []
+    return [
+        {"id": c.get("id"), "label": _format_conference_label(c)}
+        for c in conferences
+        if c.get("id") is not None
+    ]
+
+
 @router.post("/generate")
 async def generate_pdf(
     request: Request,
@@ -218,7 +288,18 @@ async def generate_pdf(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _load_workflow_or_403(db, user)
+    try:
+        _load_workflow_or_403(db, user)
+    except _WorkflowMissing:
+        return _render_select_error(
+            request,
+            user,
+            options=await _options_for_error_screen(),
+            message=(
+                "ETV-Unterschriftenliste-Workflow ist in der Datenbank nicht "
+                "geseedet. Bitte App neu starten oder Admin kontaktieren."
+            ),
+        )
 
     # WeasyPrint-Import erst hier — er zieht zur Importzeit System-Libs
     # (libpango, libcairo). So bleibt der Test-Suite-Import unbelastet,
@@ -227,10 +308,15 @@ async def generate_pdf(
         from weasyprint import HTML  # type: ignore
     except ImportError as exc:  # pragma: no cover — Build-Voraussetzung
         _logger.error("WeasyPrint-Import fehlgeschlagen: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="PDF-Renderer nicht verfuegbar. Bitte Container-Build pruefen.",
-        ) from exc
+        return _render_select_error(
+            request,
+            user,
+            options=await _options_for_error_screen(),
+            message=(
+                "PDF-Renderer (WeasyPrint) ist im Container nicht verfuegbar. "
+                "Bitte Container-Build / Image pruefen."
+            ),
+        )
 
     try:
         payload = await fetch_conference_signature_payload(conference_id)
@@ -241,29 +327,14 @@ async def generate_pdf(
             conference_id,
             exc,
         )
-        # Auswahl-Screen mit Banner, Status 200 — kein 500er.
-        try:
-            conferences = await list_conferences_with_properties()
-        except FaciliooError:
-            conferences = []
-        options = [
-            {"id": c.get("id"), "label": _format_conference_label(c)}
-            for c in conferences
-            if c.get("id") is not None
-        ]
-        message = (
-            f"Facilioo konnte die Conference '{conference_id}' nicht laden: "
-            f"{exc}"
-        )
-        return templates.TemplateResponse(
+        return _render_select_error(
             request,
-            "etv_signature_list_select.html",
-            {
-                "title": "ETV-Unterschriftenliste",
-                "user": user,
-                "options": options,
-                "error": message,
-            },
+            user,
+            options=await _options_for_error_screen(),
+            message=(
+                f"Facilioo konnte die Conference '{conference_id}' nicht "
+                f"laden: {exc}"
+            ),
         )
 
     header = _build_header(payload)
@@ -273,18 +344,35 @@ async def generate_pdf(
         {
             "header": header,
             "rows": rows,
-            "now": datetime.now(),
+            "now": datetime.now(_BERLIN_TZ),
         }
     )
 
-    pdf_bytes = HTML(string=html_str).write_pdf()
+    try:
+        pdf_bytes = HTML(string=html_str).write_pdf()
+    except Exception as exc:  # noqa: BLE001 — WeasyPrint kann beliebige Render-Errors werfen
+        _logger.exception(
+            "WeasyPrint-Render fehlgeschlagen (conf_id=%s)", conference_id
+        )
+        return _render_select_error(
+            request,
+            user,
+            options=await _options_for_error_screen(),
+            message=(
+                f"PDF-Erzeugung fuer Conference '{conference_id}' ist "
+                f"fehlgeschlagen: {type(exc).__name__}. Bitte Logs pruefen."
+            ),
+        )
 
     audit(
         db,
         user,
         "etv_signature_list_generated",
         entity_type="facilioo_conference",
-        entity_id=uuid.uuid4(),  # lokal keine Conference-Entity — Audit-only.
+        # Conference ist eine externe Entity (Facilioo) — wir haben keine
+        # lokale UUID dafuer. entity_id bleibt None, conference_id steht in
+        # details.
+        entity_id=None,
         details={
             "conference_id": conference_id,
             "conference_title": (payload.get("conference") or {}).get("title"),

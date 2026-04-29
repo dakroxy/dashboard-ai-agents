@@ -43,6 +43,8 @@ KNOWN_AUDIT_ACTIONS: list[str] = sorted(
         "role_deleted",
         # Workflows
         "workflow_edited",
+        # ETV-Unterschriftenliste
+        "etv_signature_list_generated",
         # Dokumente (SEPA-Workflow)
         "document_uploaded",
         "document_extracted",
