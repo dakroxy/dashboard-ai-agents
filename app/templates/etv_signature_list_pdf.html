@@ -67,11 +67,6 @@
   .col-mea  { width: 10%; text-align: right; }
   .col-sign { width: 27%; }
   .col-vk   { width: 15%; text-align: center; }
-  .signature-line {
-    border-bottom: 0.6pt solid #111;
-    height: 100%;
-    width: 100%;
-  }
   .checkbox {
     display: inline-block;
     width: 12pt;
@@ -133,7 +128,7 @@
         <td class="col-owner">{{ row.owner_names }}</td>
         <td class="col-unit">{{ row.units }}</td>
         <td class="col-mea">{{ row.shares }}</td>
-        <td class="col-sign"><span class="signature-line">&nbsp;</span></td>
+        <td class="col-sign"></td>
         <td class="col-vk">
           {% if row.has_mandate %}
           <span class="checkbox checked">&#10003;</span>

@@ -143,6 +143,39 @@ async def list_conferences() -> list[dict]:
         return await _get_all_paged(client, "/api/conferences")
 
 
+async def list_conferences_with_properties() -> list[dict]:
+    """Wie ``list_conferences`` plus pro Conference WEG-Kuerzel und WEG-Name.
+
+    Hintergrund: Der Conference-Listing-Endpoint liefert nur ``title``/``date``,
+    keinen WEG-Bezug. Bei generischen Titeln ("Eigentuemerversammlung 2026")
+    weiss der User im Dropdown nicht, welche WEG gemeint ist. Wir laden deshalb
+    pro Conference ``/conferences/{id}/property`` parallel nach und reichern
+    jedes Item um ``_property_number`` (z. B. "PLS22") und ``_property_name``
+    an. Bei ~30 Conferences kostet das eine Welle parallel: ~1 s.
+    """
+    async with _make_client() as client:
+        conferences = await _get_all_paged(client, "/api/conferences")
+        prop_tasks = [
+            _api_get(client, f"/api/conferences/{c['id']}/property")
+            for c in conferences
+            if c.get("id") is not None
+        ]
+        properties = await asyncio.gather(*prop_tasks, return_exceptions=True)
+
+    prop_iter = iter(properties)
+    for c in conferences:
+        if c.get("id") is None:
+            continue
+        prop = next(prop_iter, None)
+        if isinstance(prop, dict):
+            c["_property_number"] = prop.get("number")
+            c["_property_name"] = prop.get("name")
+        else:
+            c["_property_number"] = None
+            c["_property_name"] = None
+    return conferences
+
+
 async def get_conference(conf_id: int | str) -> dict:
     async with _make_client() as client:
         return await _api_get(client, f"/api/conferences/{conf_id}")

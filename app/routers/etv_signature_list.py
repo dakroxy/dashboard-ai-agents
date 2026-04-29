@@ -29,6 +29,7 @@ from app.services.facilioo_client import (
     FaciliooError,
     fetch_conference_signature_payload,
     list_conferences,
+    list_conferences_with_properties,
 )
 from app.templating import templates
 
@@ -68,13 +69,19 @@ def _parse_conference_date(raw: str | None) -> datetime | None:
 
 
 def _format_conference_label(conf: dict) -> str:
-    """Format fuer das Dropdown: 'YYYY-MM-DD HH:MM — title (state)'."""
+    """Format fuer das Dropdown: 'YYYY-MM-DD HH:MM · WEG-Kuerzel — title (state)'.
+
+    WEG-Kuerzel kommt aus ``_property_number`` (befuellt von
+    ``list_conferences_with_properties``), Fallback bleibt das alte Format.
+    """
     dt = _parse_conference_date(conf.get("date"))
     date_part = dt.strftime("%Y-%m-%d %H:%M") if dt else "ohne Datum"
     title = conf.get("title") or "ohne Titel"
     state = conf.get("state")
     state_part = f" ({state})" if state else ""
-    return f"{date_part} — {title}{state_part}"
+    weg_number = conf.get("_property_number")
+    weg_part = f" · {weg_number}" if weg_number else ""
+    return f"{date_part}{weg_part} — {title}{state_part}"
 
 
 _FILENAME_KEEP = re.compile(r"[^a-z0-9]+")
@@ -167,7 +174,7 @@ async def select_conference(
     error: str | None = None
     conferences: list[dict] = []
     try:
-        conferences = await list_conferences()
+        conferences = await list_conferences_with_properties()
     except FaciliooError as exc:
         _logger.warning("Facilioo list_conferences fehlgeschlagen: %s", exc)
         error = (
@@ -236,7 +243,7 @@ async def generate_pdf(
         )
         # Auswahl-Screen mit Banner, Status 200 — kein 500er.
         try:
-            conferences = await list_conferences()
+            conferences = await list_conferences_with_properties()
         except FaciliooError:
             conferences = []
         options = [

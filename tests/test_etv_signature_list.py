@@ -117,6 +117,18 @@ def test_format_conference_label_handles_missing_date():
     assert "ohne Datum" in etv_router._format_conference_label({"title": "X"})
 
 
+def test_format_conference_label_includes_weg_number_when_present():
+    label = etv_router._format_conference_label(
+        {
+            "title": "ETV2025",
+            "date": "2025-08-18T14:00:00Z",
+            "_property_number": "PLS22",
+        }
+    )
+    assert "PLS22" in label and "ETV2025" in label
+    assert label.index("PLS22") < label.index("ETV2025")
+
+
 # ---------------------------------------------------------------------------
 # Pagination — Facilioo ist 1-indexed (`pageNumber=0` -> HTTP 400)
 # ---------------------------------------------------------------------------
@@ -181,6 +193,69 @@ async def test_list_conferences_starts_at_page_one(monkeypatch):
     items = await facilioo_client.list_conferences()
     assert seen_pages == ["1"], f"Erwartet pageNumber=1, gesehen: {seen_pages}"
     assert len(items) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_conferences_with_properties_enriches_each_conference(monkeypatch):
+    """Pro Conference wird /conferences/{id}/property nachgeladen und
+    `_property_number` + `_property_name` ans Item gehaengt."""
+
+    def handler(request):
+        path = request.url.path
+        if path == "/api/conferences":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {"id": 1, "title": "ETV PLS22"},
+                        {"id": 2, "title": "ETV GVE1"},
+                    ],
+                    "totalPages": 1,
+                },
+            )
+        if path == "/api/conferences/1/property":
+            return httpx.Response(200, json={"number": "PLS22", "name": "WEG PLS22"})
+        if path == "/api/conferences/2/property":
+            return httpx.Response(200, json={"number": "GVE1", "name": "WEG GVE1"})
+        return httpx.Response(404, text="unexpected")
+
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+
+    items = await facilioo_client.list_conferences_with_properties()
+    assert len(items) == 2
+    assert items[0]["_property_number"] == "PLS22"
+    assert items[0]["_property_name"] == "WEG PLS22"
+    assert items[1]["_property_number"] == "GVE1"
+
+
+@pytest.mark.asyncio
+async def test_list_conferences_with_properties_tolerates_property_failure(monkeypatch):
+    """Ein einzelner Property-Fetch-Fehler darf den Listing-Aufruf nicht
+    sprengen — die Conference erscheint dann ohne WEG-Kuerzel."""
+
+    def handler(request):
+        path = request.url.path
+        if path == "/api/conferences":
+            return httpx.Response(
+                200,
+                json={"items": [{"id": 1, "title": "ETV"}], "totalPages": 1},
+            )
+        if path == "/api/conferences/1/property":
+            # 404 statt 5xx — verhindert den 22s-Retry-Pfad im Test.
+            return httpx.Response(404, text="property not found")
+        return httpx.Response(404)
+
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+
+    items = await facilioo_client.list_conferences_with_properties()
+    assert len(items) == 1
+    assert items[0]["_property_number"] is None
 
 
 @pytest.mark.asyncio
@@ -281,7 +356,7 @@ def test_sidebar_lists_etv_workflow_for_user_with_access(
     async def fake_list():
         return []
 
-    monkeypatch.setattr(etv_router, "list_conferences", fake_list)
+    monkeypatch.setattr(etv_router, "list_conferences_with_properties", fake_list)
 
     resp = auth_client.get("/workflows/etv-signature-list/")
     assert resp.status_code == 200
@@ -297,16 +372,30 @@ def test_select_screen_lists_conferences(monkeypatch, auth_client, db, test_user
 
     async def fake_list():
         return [
-            {"id": 1, "title": "ETV A", "date": "2026-05-12T18:30:00Z", "state": "PLANNED"},
-            {"id": 2, "title": "ETV B", "date": "2026-04-01T18:30:00Z", "state": "DONE"},
+            {
+                "id": 1,
+                "title": "ETV A",
+                "date": "2026-05-12T18:30:00Z",
+                "state": "PLANNED",
+                "_property_number": "PLS22",
+            },
+            {
+                "id": 2,
+                "title": "ETV B",
+                "date": "2026-04-01T18:30:00Z",
+                "state": "DONE",
+                "_property_number": "GVE1",
+            },
         ]
 
-    monkeypatch.setattr(etv_router, "list_conferences", fake_list)
+    monkeypatch.setattr(etv_router, "list_conferences_with_properties", fake_list)
 
     resp = auth_client.get("/workflows/etv-signature-list/")
     assert resp.status_code == 200
     body = resp.text
     assert "ETV A" in body and "ETV B" in body
+    # WEG-Kuerzel im Dropdown-Label sichtbar.
+    assert "PLS22" in body and "GVE1" in body
     # Sortiert desc -> ETV A (Mai) muss vor ETV B (April) im HTML stehen.
     assert body.index("ETV A") < body.index("ETV B")
 
@@ -319,7 +408,7 @@ def test_select_screen_shows_banner_when_facilioo_down(
     async def fake_list():
         raise etv_router.FaciliooError("network down", -1)
 
-    monkeypatch.setattr(etv_router, "list_conferences", fake_list)
+    monkeypatch.setattr(etv_router, "list_conferences_with_properties", fake_list)
 
     resp = auth_client.get("/workflows/etv-signature-list/")
     assert resp.status_code == 200
@@ -396,7 +485,7 @@ def test_generate_falls_back_to_banner_on_facilioo_error(
     monkeypatch.setattr(
         etv_router, "fetch_conference_signature_payload", fake_payload
     )
-    monkeypatch.setattr(etv_router, "list_conferences", fake_list)
+    monkeypatch.setattr(etv_router, "list_conferences_with_properties", fake_list)
 
     # WeasyPrint stub egal — wir kommen nicht bis zum Render.
     fake_weasy = types.ModuleType("weasyprint")
