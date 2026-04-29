@@ -1,6 +1,6 @@
 # Story 3.3: Pflegegrad-Score-Service
 
-Status: review
+Status: done
 
 ## Story
 
@@ -420,3 +420,45 @@ AC4 (Cache-Invalidation bei write_field_human) durch bestehenden `test_write_gat
 - `app/routers/objects.py` (geändert: Import + Pflegegrad-Block + Template-Context)
 - `tests/test_pflegegrad_unit.py` (neu)
 - `tests/test_steckbrief_routes_smoke.py` (geändert: SQL-Statement-Count-Threshold 16 → 21)
+
+### Review Findings
+
+Code-Review 2026-04-29 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Alle 6 Acceptance Criteria + 5 Boundary-Risiken aus der Spec sind erfuellt. 1 Patch + 16 Defer + 12 Dismiss.
+
+#### Patch
+
+- [x] [Review][Patch] `admin_user`-Fixture im neuen Test-File ist tot (kein Test konsumiert sie) — Spec erlaubt lokale Fixture, aber sie wird nicht referenziert; Dead Code [`tests/test_pflegegrad_unit.py:23-34`] — entfernt + obsolete `User`/`Object`-Imports
+
+#### Deferred
+
+- [x] [Review][Defer] Cache-Race: zwei parallele Detail-Requests koennen beide `is_stale=True` lesen und last-writer-wins committen [`app/services/pflegegrad.py:238-257`, `app/routers/objects.py:276-285`] — deferred, Architektur-Frage (Lock/Versionsspalte vor Multi-User-Rollout)
+- [x] [Review][Defer] Commit-Fail-Loop: bei Cache-Commit-Exception bleibt obj in-memory neu, naechster Request crasht wieder ohne Backoff/Circuit-Breaker [`app/routers/objects.py:276-287`] — deferred, pre-existing Pattern auch bei live_balance
+- [x] [Review][Defer] `weakest_fields` ohne Dedup/Sortierung — Story 3.4 wird die Liste fuer Badge/Popover konsumieren, dann ggf. nach Score-Beitrag sortieren [`app/services/pflegegrad.py:101-188`] — deferred bis Story 3.4
+- [x] [Review][Defer] `pflegegrad_score` wird auch bei frischem Cache komplett neuberechnet — Cache spart nur den UPDATE, alle 4 Queries laufen weiter [`app/services/pflegegrad.py:184-201`] — deferred, Performance-Frage erst relevant fuer List-View mit >50 Objekten
+- [x] [Review][Defer] `order_by(FieldProvenance.created_at.desc())` ohne stable Tie-Break (`id.desc()`) — bei gleichzeitigem Insert nicht-deterministisch [`app/services/pflegegrad.py:79`] — deferred, in Praxis vernachlaessigbar (Mikrosekunden-Granularitaet)
+- [x] [Review][Defer] `_BASE = datetime.now()` at import time bindet Bezugspunkt einmalig — bei Test-Sessions ueber Tag-Grenzen minimaler Drift moeglich [`tests/test_pflegegrad_unit.py:15-17`] — deferred, freezegun-Migration projektweit
+- [x] [Review][Defer] Fehlender Test: Provenance-Eintrag vorhanden, aber `obj.<field>` ist `None` (nach Reset/Loeschung) — Verhalten implizit, nicht explizit verifiziert — deferred, Coverage-Erweiterung in Folge-Story
+- [x] [Review][Defer] Fehlender Test: komplett leeres Objekt → Score 0, alle Sentinels in `weakest_fields` — Score-Range 0–100 untere Grenze nicht abgesichert — deferred, Coverage-Erweiterung
+- [x] [Review][Defer] Cache speichert nur `score`, nicht `per_cluster` oder `weakest_fields` — bis zur naechsten Stale-Berechnung divergieren List-View (Cache-Spalte) und Detail-View (frisch berechnet) [`app/services/pflegegrad.py:184-201`] — deferred, JSONB-Cache-Erweiterung in Story 3.4 oder Folge
+- [x] [Review][Defer] Wenn `pflegegrad_score()` selbst einen DB-Fehler wirft, bricht die gesamte Detail-Page mit 500 — kein try/except um den Service-Aufruf, nur um den Commit [`app/routers/objects.py:276-287`] — deferred, Spec-Pattern folgt live_balance (das auch nicht den Read wraps)
+- [x] [Review][Defer] `sepa_mandate_refs` mit Falsy-Items (`[None]`, `[{}]`) zaehlt als befuellt — `if not val:` triggert nicht bei `[{}]` [`app/services/pflegegrad.py:107-111`] — deferred, in Praxis nicht erwartet (Datenbank-Schema schreibt vor)
+- [x] [Review][Defer] `last_known_balance == 0` / `year_built == 0` wird als befuellt gezaehlt (`is None`-Check ignoriert 0) [`app/services/pflegegrad.py:88`] — deferred, by Spec (`is not None`) — fachlich evtl. korrekt (0€ Saldo ist trotzdem ein Konto)
+- [x] [Review][Defer] Naming-Drift: Code nutzt `_ALL_SCALAR`, Spec nennt `_ALL_SCALAR_FIELDS` [`app/services/pflegegrad.py:42`] — deferred, kosmetisch (Spec-Doku ist die Drift-Quelle)
+- [x] [Review][Defer] AC6 hat keinen dedizierten Route-Test — Smoke-Test `test_detail_sql_statement_count` deckt den Pfad implizit ab, aber kein Test verifiziert `pflegegrad_result` im Template-Context — deferred, Spec verlangt Test nicht in Task 3
+- [x] [Review][Defer] AC3-Test prueft nur `per_cluster["C4"] == 0.1`, nicht den Gesamt-Score (`round((1.0*0.20 + 0.1*0.30 + 1.0*0.20 + 1.0*0.30)*100) = 73`) — deferred, Spec verlangt nur Cluster-Wert
+- [x] [Review][Defer] Statement-Count-Threshold `<= 21` ist Obergrenze, kein Equality-Check — bei Cache-Hit waere `+4` (kein Cache-Commit-UPDATE) statt `+5` [`tests/test_steckbrief_routes_smoke.py:458`] — deferred, Test laeuft mit Frisch-Objekt korrekt durch
+
+#### Dismissed (Noise / by spec)
+
+- Decay-Schwellen `<= 365 → 1.0`, `<= 1095 → 0.5`, `> 1095 → 0.1` — Spec definiert die Schwellen exakt so (links inklusiv).
+- `timedelta.days` rundet ab — Spec definiert tagesgenaue Aufloesung.
+- Naive→UTC-Drift bei `pflegegrad_score_updated_at` — DB-Spalte ist `DateTime(timezone=True)`, `_ensure_utc` ist nur SQLite-Test-Defensive (siehe Debug Log).
+- Cluster-interne Gleichgewichtung der Felder — Spec definiert sie so (Pflichtfeld-Katalog).
+- JSONB-Felder ohne Decay (`sepa_mandate_refs`) — by Spec ("nein (JSONB-Array)" in Pflichtfeld-Katalog).
+- Relationale Counts ohne Decay (`Eigentuemer`/`InsurancePolicy`/`Wartungspflicht`) — by Spec.
+- `db.commit()` in Test-Setup — pre-existing Pattern in `test_write_gate_unit.py` und Co.
+- Test legt `InsurancePolicy`/`Wartungspflicht` ohne weitere Pflichtfelder an — Schemas sind aktuell permissiv (entspricht conftest-Pattern).
+- Python `round()` ist Banker's Rounding — Spec verlangt `round()`.
+- Future-dated `pflegegrad_score_updated_at` (Clock-Skew) — in Praxis nicht erreichbar (alle Writes via `datetime.now(tz=timezone.utc)`).
+- `raw_score > 1.0` oder `< 0` — mathematisch unmoeglich bei korrekter Cluster-Berechnung (alle `eff_i ∈ [0,1]`, alle Weights summieren auf 1.0).
+- `FieldProvenance.created_at = NULL` — Spalte ist verifiziert `nullable=False, server_default=func.now()`.

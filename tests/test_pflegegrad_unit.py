@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from app.models import Eigentuemer, FieldProvenance, InsurancePolicy, Object, User, Wartungspflicht
+from app.models import Eigentuemer, FieldProvenance, InsurancePolicy, Wartungspflicht
 from app.services.pflegegrad import (
     CACHE_TTL,
     PflegegradResult,
@@ -18,21 +18,6 @@ from app.services.pflegegrad import (
 _BASE = _dt.datetime.now(_dt.timezone.utc).replace(
     day=15, hour=12, minute=0, second=0, microsecond=0
 )
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        id=uuid.uuid4(),
-        google_sub="google-sub-pflegegrad-admin",
-        email="pflegegrad-admin@dbshome.de",
-        name="Pflegegrad Admin",
-        permissions_extra=["objects:view", "objects:edit"],
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
 
 
 def _add_scalar_provs(db, obj_id: uuid.UUID, fields: list[str], created_at: _dt.datetime):

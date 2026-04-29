@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-29 (Story 3.2 done)
+# last_updated: 2026-04-29 (Story 3.3 done)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-29 (Story 3.2 done)
+last_updated: 2026-04-29 (Story 3.3 done)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -71,7 +71,7 @@ development_status:
   epic-3: in-progress
   3-1-objekt-liste-mit-sortierung-filter: done
   3-2-mobile-card-layout: done
-  3-3-pflegegrad-score-service: review
+  3-3-pflegegrad-score-service: done
   3-4-pflegegrad-badge-komposition-popover: ready-for-dev
   3-5-review-queue-admin-ui-mit-filtern: ready-for-dev
   3-6-review-queue-approve-reject: ready-for-dev
