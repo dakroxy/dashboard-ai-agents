@@ -273,7 +273,8 @@ def test_sidebar_lists_etv_workflow_for_user_with_access(
     assert resp.status_code == 200
     body = resp.text
     # Sidebar-Sektion da + Link auf ETV-URL.
-    assert "KI-Workflows" in body
+    # Section-Header steht zwischen Versicherer-Eintrag und Workflow-Einstellungen-Link.
+    assert "Workflow-Einstellungen" in body  # neuer Konfig-Label
     assert 'href="/workflows/etv-signature-list/"' in body
 
 
