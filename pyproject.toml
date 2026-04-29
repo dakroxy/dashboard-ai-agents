@@ -20,6 +20,7 @@ dependencies = [
     "schwifty>=2024.1",
     "cryptography>=43",
     "msal>=1.28",
+    "weasyprint>=63",
 ]
 
 [project.optional-dependencies]

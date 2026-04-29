@@ -25,6 +25,7 @@ from app.routers import cases as cases_router
 from app.routers import contacts as contacts_router
 from app.routers import documents as documents_router
 from app.routers import due_radar as due_radar_router
+from app.routers import etv_signature_list as etv_signature_list_router
 from app.routers import impower as impower_router
 from app.routers import objects as objects_router
 from app.routers import registries as registries_router
@@ -89,6 +90,19 @@ _DEFAULT_WORKFLOWS: tuple[dict[str, str], ...] = (
             "aus Mietverwaltung heraus fuer Eigentuemer/Mieter)."
         ),
         "system_prompt": DEFAULT_CONTACT_CREATE_SYSTEM_PROMPT,
+    },
+    {
+        "key": "etv_signature_list",
+        "name": "ETV-Unterschriftenliste",
+        "description": (
+            "Druckfertige Unterschriftenliste fuer eine Eigentuemer-"
+            "versammlung (ETV). Liest Conferences + Voting-Groups + "
+            "Mandate aus Facilioo und rendert ein A4-Querformat-PDF. "
+            "Kein Claude — reiner Read-/Render-Pfad."
+        ),
+        # Kein KI-Modul — model/system_prompt bleiben leer (Workflow-Tabelle
+        # erlaubt keine NULL, aber leere Strings sind okay).
+        "system_prompt": "",
     },
 )
 
@@ -342,6 +356,7 @@ app.include_router(objects_router.router)
 app.include_router(registries_router.router)
 app.include_router(workflows_router.router)
 app.include_router(impower_router.router)
+app.include_router(etv_signature_list_router.router)
 app.include_router(admin_router.router)
 
 

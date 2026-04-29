@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     impower_base_url: str = "https://api.app.impower.de"
     impower_bearer_token: str = ""
 
+    # Facilioo-API (Workflow: ETV-Unterschriftenliste).
+    # Token ist ein langlebiges JWT ("platform api_token", manuell rotieren).
+    facilioo_base_url: str = "https://api.facilioo.de"
+    facilioo_bearer_token: str = ""
+
     uploads_dir: str = "uploads"
     max_upload_mb: int = 20
 

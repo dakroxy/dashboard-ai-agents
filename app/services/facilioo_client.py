@@ -1,0 +1,255 @@
+"""Facilioo Read-Client (Workflow: ETV-Unterschriftenliste).
+
+Schmaler Wrapper um die Facilioo-Public-API (Bearer-JWT). Anders als der
+Impower-Client (rate-limited, write-fähig) ist dieser Client read-only und
+nicht rate-limited — pro PDF-Druck laden wir 6 Endpunkte; das passt locker
+unter jedes vernünftige Limit.
+
+Pattern bewusst an `app/services/impower.py` angelehnt:
+- httpx.AsyncClient mit Bearer-Header.
+- 5xx + Transport-Errors retried mit Exponential-Backoff.
+- 4xx wirft :class:`FaciliooError`.
+- Errors werden über ``_sanitize_error`` kompakt gemacht (kein HTML-Dump).
+"""
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import httpx
+
+from app.config import settings
+
+
+_TIMEOUT = 30.0
+_MAX_RETRIES_5XX = 3
+_RETRY_DELAYS_5XX: tuple[int, ...] = (2, 5, 15)
+_PAGE_SIZE = 100
+
+
+class FaciliooError(Exception):
+    def __init__(self, message: str, status_code: int = -1):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _sanitize_error(resp: httpx.Response) -> str:
+    text = resp.text.strip()
+    if text.startswith("<"):
+        return (
+            f"HTTP {resp.status_code} — Facilioo-Gateway hat HTML statt JSON "
+            f"geliefert (meist Upstream-Stoerung)."
+        )
+    return text[:300]
+
+
+def _make_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url=settings.facilioo_base_url,
+        headers={
+            "Authorization": f"Bearer {settings.facilioo_bearer_token}",
+            "Accept": "application/json",
+        },
+        timeout=_TIMEOUT,
+    )
+
+
+async def _api_get(
+    client: httpx.AsyncClient,
+    path: str,
+    params: dict | None = None,
+    _attempt: int = 0,
+) -> Any:
+    try:
+        resp = await client.get(path, params=params)
+    except (httpx.TransportError, httpx.TimeoutException) as exc:
+        if _attempt < _MAX_RETRIES_5XX:
+            await asyncio.sleep(_RETRY_DELAYS_5XX[_attempt])
+            return await _api_get(client, path, params, _attempt + 1)
+        raise FaciliooError(
+            f"Verbindungsfehler zu Facilioo: {type(exc).__name__}: {exc}",
+            -1,
+        ) from exc
+
+    if 500 <= resp.status_code < 600 and _attempt < _MAX_RETRIES_5XX:
+        await asyncio.sleep(_RETRY_DELAYS_5XX[_attempt])
+        return await _api_get(client, path, params, _attempt + 1)
+
+    if resp.status_code >= 400:
+        raise FaciliooError(_sanitize_error(resp), resp.status_code)
+
+    return resp.json()
+
+
+async def _get_all_paged(
+    client: httpx.AsyncClient, path: str, params: dict | None = None
+) -> list[Any]:
+    """Lädt alle Seiten eines paginierten Facilioo-Endpunkts.
+
+    Toleriert sowohl Spring-Data-Style (``{"content": [...], "last": bool}``)
+    als auch flache Listen-Responses.
+    """
+    if params is None:
+        params = {}
+    params = {**params, "pageSize": _PAGE_SIZE}
+    all_items: list[Any] = []
+    page = 0
+
+    while True:
+        data = await _api_get(client, path, {**params, "pageNumber": page})
+
+        if isinstance(data, list):
+            all_items.extend(data)
+            if len(data) < _PAGE_SIZE:
+                break
+        elif isinstance(data, dict):
+            # Facilioo verwendet "items" als Container in der OpenAPI-3-Spec.
+            # Fallbacks fuer andere Schreibweisen.
+            content = data.get("items") or data.get("content") or []
+            all_items.extend(content)
+            total_pages = data.get("totalPages")
+            last_flag = data.get("last")
+            if last_flag is True:
+                break
+            if total_pages is not None and page + 1 >= int(total_pages):
+                break
+            if not content:
+                break
+        else:
+            break
+
+        page += 1
+
+    return all_items
+
+
+# ---------------------------------------------------------------------------
+# Public Read-Methoden — alle GETs auf api.facilioo.de
+# ---------------------------------------------------------------------------
+
+async def list_conferences() -> list[dict]:
+    """Alle Conferences (paginated). Felder u. a. id, title, date, state,
+    propertyId."""
+    async with _make_client() as client:
+        return await _get_all_paged(client, "/api/conferences")
+
+
+async def get_conference(conf_id: int | str) -> dict:
+    async with _make_client() as client:
+        return await _api_get(client, f"/api/conferences/{conf_id}")
+
+
+async def get_conference_property(conf_id: int | str) -> dict:
+    async with _make_client() as client:
+        return await _api_get(client, f"/api/conferences/{conf_id}/property")
+
+
+async def list_voting_group_shares(conf_id: int | str) -> list[dict]:
+    """Liste von ``{votingGroupId, shares}`` (MEA pro Stimmgruppe)."""
+    async with _make_client() as client:
+        data = await _api_get(
+            client, f"/api/conferences/{conf_id}/voting-groups/shares"
+        )
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return data.get("items") or data.get("content") or []
+    return []
+
+
+async def get_voting_group(vg_id: int | str) -> dict:
+    """Einzel-Voting-Group mit ``units[]`` und ``parties[]``."""
+    async with _make_client() as client:
+        return await _api_get(client, f"/api/voting-groups/{vg_id}")
+
+
+async def list_mandates(conf_id: int | str) -> list[dict]:
+    """Vollmacht-Liste: ``{propertyOwnerId, representativeId}``."""
+    async with _make_client() as client:
+        data = await _api_get(client, f"/api/conferences/{conf_id}/mandates")
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return data.get("items") or data.get("content") or []
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Aggregator fuer einen kompletten ETV-Unterschriftenlisten-Druck
+# ---------------------------------------------------------------------------
+
+async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
+    """Lädt alles, was die ETV-Unterschriftenliste pro Conference braucht.
+
+    Phase 1: Conference, Property, Voting-Group-Shares, Mandates parallel.
+    Phase 2: Voting-Group-Details parallel (eine Welle pro vg_share).
+
+    Rückgabe-Form::
+
+        {
+          "conference": {...},
+          "property": {...},
+          "voting_groups": [
+            {"voting_group": {...units, parties}, "shares": "..."},
+            ...
+          ],
+          "mandates": [...],
+        }
+    """
+    async with _make_client() as client:
+        conf_task = _api_get(client, f"/api/conferences/{conf_id}")
+        prop_task = _api_get(client, f"/api/conferences/{conf_id}/property")
+        shares_task = _api_get(
+            client, f"/api/conferences/{conf_id}/voting-groups/shares"
+        )
+        mandates_task = _api_get(
+            client, f"/api/conferences/{conf_id}/mandates"
+        )
+
+        conference, property_, shares_data, mandates_data = await asyncio.gather(
+            conf_task, prop_task, shares_task, mandates_task
+        )
+
+        if isinstance(shares_data, dict):
+            shares: list[dict] = (
+                shares_data.get("items") or shares_data.get("content") or []
+            )
+        elif isinstance(shares_data, list):
+            shares = shares_data
+        else:
+            shares = []
+
+        if isinstance(mandates_data, dict):
+            mandates: list[dict] = (
+                mandates_data.get("items") or mandates_data.get("content") or []
+            )
+        elif isinstance(mandates_data, list):
+            mandates = mandates_data
+        else:
+            mandates = []
+
+        # Phase 2: alle Voting-Groups parallel
+        vg_tasks = [
+            _api_get(client, f"/api/voting-groups/{s['votingGroupId']}")
+            for s in shares
+            if s.get("votingGroupId") is not None
+        ]
+        vg_details = await asyncio.gather(*vg_tasks) if vg_tasks else []
+
+    voting_groups = []
+    vg_index = 0
+    for s in shares:
+        if s.get("votingGroupId") is None:
+            continue
+        voting_groups.append({
+            "voting_group": vg_details[vg_index],
+            "shares": s.get("shares", ""),
+        })
+        vg_index += 1
+
+    return {
+        "conference": conference,
+        "property": property_,
+        "voting_groups": voting_groups,
+        "mandates": mandates,
+    }

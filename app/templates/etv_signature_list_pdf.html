@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>ETV-Unterschriftenliste</title>
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 12mm 12mm 14mm 12mm;
+    @bottom-right {
+      content: "Seite " counter(page) " / " counter(pages);
+      font-size: 9pt;
+      color: #555;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "DejaVu Sans", "Helvetica", "Arial", sans-serif;
+    font-size: 10pt;
+    color: #111;
+    margin: 0;
+  }
+  header {
+    border-bottom: 1.5pt solid #111;
+    padding-bottom: 6pt;
+    margin-bottom: 10pt;
+  }
+  header h1 {
+    margin: 0 0 2pt 0;
+    font-size: 16pt;
+    font-weight: 700;
+  }
+  header .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14pt;
+    font-size: 10pt;
+    color: #333;
+    margin-top: 2pt;
+  }
+  header .meta span strong { color: #111; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  thead th {
+    background: #f1f5f9;
+    border: 0.6pt solid #475569;
+    padding: 5pt 6pt;
+    text-align: left;
+    font-size: 10pt;
+    font-weight: 600;
+  }
+  tbody td {
+    border: 0.6pt solid #475569;
+    padding: 8pt 6pt;
+    vertical-align: top;
+    font-size: 10pt;
+  }
+  tbody tr {
+    page-break-inside: avoid;
+    height: 56pt;
+  }
+  .col-owner { width: 30%; }
+  .col-unit { width: 18%; }
+  .col-mea  { width: 10%; text-align: right; }
+  .col-sign { width: 27%; }
+  .col-vk   { width: 15%; text-align: center; }
+  .signature-line {
+    border-bottom: 0.6pt solid #111;
+    height: 100%;
+    width: 100%;
+  }
+  .checkbox {
+    display: inline-block;
+    width: 12pt;
+    height: 12pt;
+    border: 0.8pt solid #111;
+    margin-right: 4pt;
+    vertical-align: -2pt;
+    text-align: center;
+    line-height: 11pt;
+    font-size: 11pt;
+    font-weight: 700;
+  }
+  .checked {
+    background: #111;
+    color: #fff;
+  }
+  .empty-row td {
+    text-align: center;
+    color: #6b7280;
+    font-style: italic;
+    padding: 16pt;
+  }
+  footer {
+    position: fixed;
+    bottom: 4mm;
+    left: 12mm;
+    right: 12mm;
+    font-size: 8pt;
+    color: #6b7280;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>{{ header.weg_name }}</h1>
+  <div class="meta">
+    <span><strong>Datum:</strong> {{ header.date_label }}</span>
+    <span><strong>Uhrzeit:</strong> {{ header.time_label }}</span>
+    {% if header.location %}<span><strong>Ort:</strong> {{ header.location }}</span>{% endif %}
+    {% if header.room %}<span><strong>Raum:</strong> {{ header.room }}</span>{% endif %}
+    {% if header.title %}<span><strong>Versammlung:</strong> {{ header.title }}</span>{% endif %}
+  </div>
+</header>
+
+<table>
+  <thead>
+    <tr>
+      <th class="col-owner">Eigentuemer</th>
+      <th class="col-unit">Einheit</th>
+      <th class="col-mea">MEA</th>
+      <th class="col-sign">Unterschrift</th>
+      <th class="col-vk">Vollmacht</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% if rows %}
+      {% for row in rows %}
+      <tr>
+        <td class="col-owner">{{ row.owner_names }}</td>
+        <td class="col-unit">{{ row.units }}</td>
+        <td class="col-mea">{{ row.shares }}</td>
+        <td class="col-sign"><span class="signature-line">&nbsp;</span></td>
+        <td class="col-vk">
+          {% if row.has_mandate %}
+          <span class="checkbox checked">&#10003;</span>
+          {% else %}
+          <span class="checkbox">&nbsp;</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    {% else %}
+      <tr class="empty-row">
+        <td colspan="5">Keine Stimmgruppen hinterlegt.</td>
+      </tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<footer>
+  Erzeugt am {{ now.strftime("%d.%m.%Y %H:%M") }} &middot; Datenquelle Facilioo &middot; Vollmacht vorgekreuzt = Mandat in Facilioo hinterlegt
+</footer>
+</body>
+</html>
