@@ -48,8 +48,9 @@
         <td class="p-0 text-right tabular-nums">
             <a href="/objects/{{ row.id }}" class="block px-4 py-3">
                 {% if row.pflegegrad is not none %}
-                    <span class="{% if row.pflegegrad >= 70 %}text-green-600{% elif row.pflegegrad >= 40 %}text-yellow-600{% else %}text-red-600{% endif %} font-medium">
-                        {{ row.pflegegrad }} %
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium
+                                 {{ pflegegrad_color(row.pflegegrad) }}">
+                        {{ row.pflegegrad }}&nbsp;%
                     </span>
                 {% else %}
                     <span class="text-slate-400">&mdash;</span>

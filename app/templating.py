@@ -164,9 +164,21 @@ def provenance_pill(wrap: ProvenanceWithUser | None) -> dict[str, Any]:
     }
 
 
+def pflegegrad_color(score: int | None) -> str:
+    """Tailwind-Badge-Klassen fuer Pflegegrad-Score (bg + text + border-color ohne border-Keyword)."""
+    if score is None:
+        return "bg-slate-100 text-slate-500 border-slate-200"
+    if score >= 70:
+        return "bg-green-100 text-green-800 border-green-200"
+    if score >= 40:
+        return "bg-yellow-100 text-yellow-800 border-yellow-200"
+    return "bg-red-100 text-red-800 border-red-200"
+
+
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["has_permission"] = has_permission
 templates.env.globals["field_source"] = field_source
 templates.env.globals["provenance_pill"] = provenance_pill
+templates.env.globals["pflegegrad_color"] = pflegegrad_color
 templates.env.globals["sidebar_workflows"] = sidebar_workflows
 templates.env.filters["iban_format"] = _format_iban

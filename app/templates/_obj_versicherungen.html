@@ -102,25 +102,28 @@
     </div>
     {% endif %}
 
-    {% if policen %}
-    <div class="space-y-3">
-        {% for policy in policen %}
-        {% include "_obj_versicherungen_row.html" %}
-        {% endfor %}
-    </div>
-    {% else %}
-    <p class="text-sm text-slate-400 italic">
-        Keine Policen angelegt.
-        {% if has_permission(user, "objects:edit") %}
-        Erste Police anlegen →
-        <button type="button"
-                onclick="document.getElementById('neue-police-form').classList.remove('hidden')"
-                class="underline text-indigo-600">
-            Neue Police
-        </button>
+    <div id="policen-section">
+        {% if policen %}
+        <div class="space-y-3">
+            {% for policy in policen %}
+            {% include "_obj_versicherungen_row.html" %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-slate-400 italic">
+            Keine Policen angelegt.
+            {% if has_permission(user, "objects:edit") %}
+            Erste Police anlegen →
+            <button type="button"
+                    onclick="document.getElementById('neue-police-form').classList.remove('hidden')"
+                    class="underline text-indigo-600">
+                Neue Police
+            </button>
+            {% endif %}
+        </p>
         {% endif %}
-    </p>
-    {% endif %}
+    </div>
+    <div id="wartungen-section" class="sr-only" aria-hidden="true"></div>
 
     {# Schadensfall melden + Liste (Story 2.3) #}
     {% if has_permission(user, "objects:edit") %}

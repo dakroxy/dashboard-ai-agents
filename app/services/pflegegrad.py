@@ -43,6 +43,27 @@ _ALL_SCALAR: tuple[str, ...] = _C1_SCALAR + _C4_SCALAR + _C6_SCALAR
 
 CACHE_TTL = timedelta(minutes=5)
 
+# (deutsches Label, Anker-ID) pro weakest-field-Key.
+# Anker-IDs korrespondieren mit id="..." in den Templates (AC4).
+WEAKEST_FIELD_LABELS: dict[str, tuple[str, str]] = {
+    # C1 — Stammdaten (ids via Task 3 in Story 3.4 hinzugefuegt)
+    "full_address": ("Adresse", "#field-full_address"),
+    "impower_property_id": ("Impower-Eigenschaft", "#field-impower_property_id"),
+    "has_eigentuemer": ("Eigentuemer", "#eigentuemer-section"),
+    # C4 — Technik (ids bereits vorhanden via _obj_technik_field_view.html)
+    "shutoff_water_location": ("Absperrung Wasser", "#field-shutoff_water_location"),
+    "shutoff_electricity_location": ("Absperrung Strom", "#field-shutoff_electricity_location"),
+    "heating_type": ("Heizungstyp", "#field-heating_type"),
+    "year_built": ("Baujahr", "#field-year_built"),
+    # C6 — Finanzen (ids via Task 4 in Story 3.4 hinzugefuegt)
+    "last_known_balance": ("Kontosaldo", "#field-last_known_balance"),
+    "reserve_current": ("Ruecklage aktuell", "#field-reserve_current"),
+    "sepa_mandate_refs": ("SEPA-Mandate", "#field-sepa_mandate_refs"),
+    # C8 — Versicherungen (ids via Task 5 in Story 3.4 hinzugefuegt)
+    "has_police": ("Versicherungspolice", "#policen-section"),
+    "has_wartungspflicht": ("Wartungspflicht", "#wartungen-section"),
+}
+
 
 # ---------------------------------------------------------------------------
 # Dataclass

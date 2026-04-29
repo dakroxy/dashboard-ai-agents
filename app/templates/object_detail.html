@@ -6,7 +6,72 @@
         <h1 class="text-2xl font-semibold">{{ obj.short_code }} &middot; {{ obj.name }}</h1>
         <p class="text-sm text-slate-500 mt-1">Objekt-Detail, Cluster 1 (Stammdaten).</p>
     </div>
-    <a href="/objects" class="text-sm text-slate-500 hover:text-slate-900">&larr; Zurueck zur Liste</a>
+    <div class="flex items-center gap-4">
+        {% if pflegegrad_result %}
+        <details class="relative">
+            <summary class="cursor-pointer list-none [&::-webkit-details-marker]:hidden inline-flex items-center gap-1
+                            text-sm font-medium px-3 py-1 rounded-full border
+                            {{ pflegegrad_color(pflegegrad_result.score) }}">
+                Pflegegrad {{ pflegegrad_result.score }}&nbsp;%
+                <span class="text-xs opacity-60">&#9660;</span>
+            </summary>
+            <div class="absolute right-0 mt-2 w-80 bg-white border border-slate-200
+                        rounded-lg shadow-lg p-4 z-10 text-sm">
+                <p class="font-semibold text-slate-800 mb-2">Score-Komposition</p>
+                <table class="w-full mb-3 text-xs">
+                    <thead class="text-slate-500 border-b border-slate-100">
+                        <tr>
+                            <th class="text-left pb-1">Cluster</th>
+                            <th class="text-right pb-1">Vollstaendigkeit</th>
+                            <th class="text-right pb-1">Gewicht</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set cluster_meta = [
+                            ("C1", "Stammdaten", 20),
+                            ("C4", "Technik", 30),
+                            ("C6", "Finanzen", 20),
+                            ("C8", "Versicherungen", 30),
+                        ] %}
+                        {% for ckey, cname, cweight in cluster_meta %}
+                        {% set cpct = (pflegegrad_result.per_cluster.get(ckey, 0) * 100) | round | int %}
+                        <tr class="border-t border-slate-50">
+                            <td class="py-1 text-slate-700">{{ cname }}</td>
+                            <td class="py-1 text-right tabular-nums
+                                {% if cpct >= 70 %}text-green-700
+                                {% elif cpct >= 40 %}text-yellow-700
+                                {% else %}text-red-700{% endif %}">
+                                {{ cpct }}&nbsp;%
+                            </td>
+                            <td class="py-1 text-right text-slate-500">{{ cweight }}&nbsp;%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if pflegegrad_result.weakest_fields %}
+                <p class="font-semibold text-slate-800 mb-1">Fehlende Felder</p>
+                <ul class="space-y-0.5">
+                    {% for wf in pflegegrad_result.weakest_fields %}
+                    {% set label_anchor = weakest_field_labels.get(wf) %}
+                    {% if label_anchor %}
+                    <li>
+                        <a href="{{ label_anchor[1] }}"
+                           onclick="this.closest('details').removeAttribute('open')"
+                           class="text-sky-600 hover:text-sky-900 hover:underline">
+                            {{ label_anchor[0] }}
+                        </a>
+                    </li>
+                    {% endif %}
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-slate-500 text-xs">Alle Pflichtfelder gepflegt.</p>
+                {% endif %}
+            </div>
+        </details>
+        {% endif %}
+        <a href="/objects" class="text-sm text-slate-500 hover:text-slate-900">&larr; Zurueck zur Liste</a>
+    </div>
 </div>
 
 {% include "_obj_stammdaten.html" %}

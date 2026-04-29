@@ -1,6 +1,6 @@
 # Story 3.4: Pflegegrad-Badge & Komposition-Popover
 
-Status: ready-for-dev
+Status: done
 
 ## Abhängigkeiten
 
@@ -81,50 +81,50 @@ _(C4-Felder haben `id="field-{key}"` bereits seit Story 1.6 via `_obj_technik_fi
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1**: `pflegegrad_color()` in `app/templating.py` hinzufügen (AC1, AC5)
-  - [ ] 1.1: Funktion `pflegegrad_color(score: int | None) -> str` definieren — gibt kombinierte Tailwind-Badge-Klassen zurück (bg + text + border-color, ohne `border`-Keyword selbst)
-  - [ ] 1.2: `templates.env.globals["pflegegrad_color"] = pflegegrad_color` nach der `provenance_pill`-Zeile registrieren
+- [x] **Task 1**: `pflegegrad_color()` in `app/templating.py` hinzufügen (AC1, AC5)
+  - [x] 1.1: Funktion `pflegegrad_color(score: int | None) -> str` definieren — gibt kombinierte Tailwind-Badge-Klassen zurück (bg + text + border-color, ohne `border`-Keyword selbst)
+  - [x] 1.2: `templates.env.globals["pflegegrad_color"] = pflegegrad_color` nach der `provenance_pill`-Zeile registrieren
 
-- [ ] **Task 2**: `WEAKEST_FIELD_LABELS` in `app/services/pflegegrad.py` hinzufügen (AC3)
-  - [ ] 2.1: Dict `WEAKEST_FIELD_LABELS: dict[str, tuple[str, str]]` als Modul-Konstante definieren — Key → `(deutsches Label, Anker-ID)` für alle 12 Pflichtfeld-Keys
-  - [ ] 2.2: In `app/routers/objects.py` importieren und `"weakest_field_labels": WEAKEST_FIELD_LABELS` ins Template-Context-Dict in `object_detail()` einfügen
+- [x] **Task 2**: `WEAKEST_FIELD_LABELS` in `app/services/pflegegrad.py` hinzufügen (AC3)
+  - [x] 2.1: Dict `WEAKEST_FIELD_LABELS: dict[str, tuple[str, str]]` als Modul-Konstante definieren — Key → `(deutsches Label, Anker-ID)` für alle 12 Pflichtfeld-Keys
+  - [x] 2.2: In `app/routers/objects.py` importieren und `"weakest_field_labels": WEAKEST_FIELD_LABELS` ins Template-Context-Dict in `object_detail()` einfügen
 
-- [ ] **Task 3**: Anker-IDs in `_obj_stammdaten.html` hinzufügen (AC4)
-  - [ ] 3.1: Im `{% for item in stammdaten %}`-Loop den äußeren `<div>` zu `<div id="field-{{ item.field }}">` ändern
-  - [ ] 3.2: Die `<section>` für den Eigentuemer-Block (zweite section in dieser Datei) auf `<section id="eigentuemer-section" ...>` ändern
+- [x] **Task 3**: Anker-IDs in `_obj_stammdaten.html` hinzufügen (AC4)
+  - [x] 3.1: Im `{% for item in stammdaten %}`-Loop den äußeren `<div>` zu `<div id="field-{{ item.field }}">` ändern
+  - [x] 3.2: Die `<section>` für den Eigentuemer-Block (zweite section in dieser Datei) auf `<section id="eigentuemer-section" ...>` ändern
 
-- [ ] **Task 4**: Anker-IDs in `_obj_finanzen.html` hinzufügen (AC4)
-  - [ ] 4.1: Im `fin_mirror_fields`-Loop jeden Field-Container zu `<div id="field-{{ field.key }}">` verallgemeinern (erfasst `reserve_current`, `reserve_target`, `wirtschaftsplan_status` ohne Sonderbehandlung)
-  - [ ] 4.2: Dem Live-Saldo-Container `id="field-last_known_balance"` hinzufügen (eigener Block, nicht im Mirror-Fields-Loop)
-  - [ ] 4.3: Dem SEPA-Mandate-Container `id="field-sepa_mandate_refs"` hinzufügen
+- [x] **Task 4**: Anker-IDs in `_obj_finanzen.html` hinzufügen (AC4)
+  - [x] 4.1: Im `fin_mirror_fields`-Loop jeden Field-Container zu `<div id="field-{{ field.key }}">` verallgemeinern (erfasst `reserve_current`, `reserve_target`, `wirtschaftsplan_status` ohne Sonderbehandlung)
+  - [x] 4.2: Dem Live-Saldo-Container `id="field-last_known_balance"` hinzufügen (eigener Block, nicht im Mirror-Fields-Loop)
+  - [x] 4.3: Dem SEPA-Mandate-Container `id="field-sepa_mandate_refs"` hinzufügen
 
-- [ ] **Task 5**: Anker-IDs in `_obj_versicherungen.html` hinzufügen (AC4)
-  - [ ] 5.1: Unbedingten Wrapper `<div id="policen-section">` um die gesamte conditional Policen-Logik (`{% if policen %}...{% else %}...{% endif %}`, aktuell ab Z.105) ziehen — sodass der Anker auch dann existiert, wenn `policen=[]` (das ist genau der Fall, in dem `weakest_fields` `"has_police"` enthält)
-  - [ ] 5.2: Direkt nach dem `policen-section`-Wrapper einen leeren Anker-`<div id="wartungen-section" class="sr-only" aria-hidden="true"></div>` einfügen — Wartungspflichten leben innerhalb der Policen-`<details>`-Blöcke (`_obj_versicherungen_row.html:57`), nicht in einer eigenen Sub-Sektion; der Anker dient nur als Sprungziel und der User sieht die Policen-Liste mit aufklappbaren Wartungen
-  - [ ] 5.3: **NICHT** das bestehende `id="versicherungen"` auf der `<section>` ändern — wird von HTMX-Targets (`hx-target="[data-section='versicherungen']"`) und ggf. anderen Deep-Links referenziert
+- [x] **Task 5**: Anker-IDs in `_obj_versicherungen.html` hinzufügen (AC4)
+  - [x] 5.1: Unbedingten Wrapper `<div id="policen-section">` um die gesamte conditional Policen-Logik (`{% if policen %}...{% else %}...{% endif %}`, aktuell ab Z.105) ziehen — sodass der Anker auch dann existiert, wenn `policen=[]` (das ist genau der Fall, in dem `weakest_fields` `"has_police"` enthält)
+  - [x] 5.2: Direkt nach dem `policen-section`-Wrapper einen leeren Anker-`<div id="wartungen-section" class="sr-only" aria-hidden="true"></div>` einfügen — Wartungspflichten leben innerhalb der Policen-`<details>`-Blöcke (`_obj_versicherungen_row.html:57`), nicht in einer eigenen Sub-Sektion; der Anker dient nur als Sprungziel und der User sieht die Policen-Liste mit aufklappbaren Wartungen
+  - [x] 5.3: **NICHT** das bestehende `id="versicherungen"` auf der `<section>` ändern — wird von HTMX-Targets (`hx-target="[data-section='versicherungen']"`) und ggf. anderen Deep-Links referenziert
 
-- [ ] **Task 6**: Badge + Popover in `object_detail.html` (AC1, AC2, AC3)
-  - [ ] 6.1: Rechten Bereich des Header-`<div class="flex items-center justify-between mb-6">` zu einem `flex gap-4`-Container umbauen
-  - [ ] 6.2: `{% if pflegegrad_result %}`-Guard + `<details class="relative">`-Struktur einbauen
-  - [ ] 6.3: `<summary>` = Pill-Badge mit `pflegegrad_color(pflegegrad_result.score)` und Text `"Pflegegrad {{ pflegegrad_result.score }} %"`
-  - [ ] 6.4: Popover-Inhalt: Cluster-Kompositions-Tabelle mit 4 Zeilen (C1/C4/C6/C8) + weakest_fields-Liste mit Deep-Links über `weakest_field_labels`
-  - [ ] 6.5: `onclick` auf Deep-Links: `this.closest('details').removeAttribute('open')` — schließt Popover nach Scroll-Klick
-  - [ ] 6.6: Bestehender `<a href="/objects">← Zurück`-Link bleibt rechts neben dem Badge
+- [x] **Task 6**: Badge + Popover in `object_detail.html` (AC1, AC2, AC3)
+  - [x] 6.1: Rechten Bereich des Header-`<div class="flex items-center justify-between mb-6">` zu einem `flex gap-4`-Container umbauen
+  - [x] 6.2: `{% if pflegegrad_result %}`-Guard + `<details class="relative">`-Struktur einbauen
+  - [x] 6.3: `<summary>` = Pill-Badge mit `pflegegrad_color(pflegegrad_result.score)` und Text `"Pflegegrad {{ pflegegrad_result.score }} %"`
+  - [x] 6.4: Popover-Inhalt: Cluster-Kompositions-Tabelle mit 4 Zeilen (C1/C4/C6/C8) + weakest_fields-Liste mit Deep-Links über `weakest_field_labels`
+  - [x] 6.5: `onclick` auf Deep-Links: `this.closest('details').removeAttribute('open')` — schließt Popover nach Scroll-Klick
+  - [x] 6.6: Bestehender `<a href="/objects">← Zurück`-Link bleibt rechts neben dem Badge
 
-- [ ] **Task 7**: Listen-Badge in `_obj_table_body.html` upgraden (AC5)
-  - [ ] 7.1: Bestehenden Text-Span (`text-green-600`/`text-yellow-600`/`text-red-600`) durch Pill-Badge mit `pflegegrad_color()` ersetzen
-  - [ ] 7.2: Sicherstellen: kein `<details>`-Element in der Pflegegrad-Zelle
+- [x] **Task 7**: Listen-Badge in `_obj_table_body.html` upgraden (AC5)
+  - [x] 7.1: Bestehenden Text-Span (`text-green-600`/`text-yellow-600`/`text-red-600`) durch Pill-Badge mit `pflegegrad_color()` ersetzen
+  - [x] 7.2: Sicherstellen: kein `<details>`-Element in der Pflegegrad-Zelle
 
-- [ ] **Task 8**: Tests `tests/test_pflegegrad_badge_smoke.py` (AC1–AC5)
-  - [ ] 8.1: `test_detail_badge_green` — AC1 grün (score=85)
-  - [ ] 8.2: `test_detail_badge_yellow` — AC1 gelb (score=55)
-  - [ ] 8.3: `test_detail_badge_red` — AC1 rot (score=25)
-  - [ ] 8.4: `test_detail_no_crash_when_pflegegrad_result_none` — AC1 Edge Case
-  - [ ] 8.5: `test_detail_popover_cluster_names` — AC2
-  - [ ] 8.6: `test_detail_popover_weakest_field_links` — AC3
-  - [ ] 8.7: `test_detail_popover_empty_weakest_fields` — AC3 Edge Case (leere Liste)
-  - [ ] 8.8: `test_detail_anchor_ids_present` — AC4 (alle 8 IDs im HTML)
-  - [ ] 8.9: `test_pflegegrad_color_unit` — pflegegrad_color(85)→Grün, pflegegrad_color(55)→Gelb, pflegegrad_color(25)→Rot, pflegegrad_color(None)→Grau
+- [x] **Task 8**: Tests `tests/test_pflegegrad_badge_smoke.py` (AC1–AC5)
+  - [x] 8.1: `test_detail_badge_green` — AC1 grün (score=85)
+  - [x] 8.2: `test_detail_badge_yellow` — AC1 gelb (score=55)
+  - [x] 8.3: `test_detail_badge_red` — AC1 rot (score=25)
+  - [x] 8.4: `test_detail_no_crash_when_pflegegrad_result_none` — AC1 Edge Case
+  - [x] 8.5: `test_detail_popover_cluster_names` — AC2
+  - [x] 8.6: `test_detail_popover_weakest_field_links` — AC3
+  - [x] 8.7: `test_detail_popover_empty_weakest_fields` — AC3 Edge Case (leere Liste)
+  - [x] 8.8: `test_detail_anchor_ids_present` — AC4 (alle 8 IDs im HTML)
+  - [x] 8.9: `test_pflegegrad_color_unit` — pflegegrad_color(85)→Grün, pflegegrad_color(55)→Gelb, pflegegrad_color(25)→Rot, pflegegrad_color(None)→Grau
 
 ## Dev Notes
 
@@ -590,6 +590,43 @@ claude-sonnet-4-6 (1M context)
 
 ### Debug Log References
 
+Keine Blocker. Alle 9 Smoke-Tests auf Anhieb grün, 792 Gesamt-Tests ohne Regression.
+
 ### Completion Notes List
 
+- `pflegegrad_color()` als Jinja2-Global registriert — liefert kombinierte Tailwind-Klassen (bg+text+border-color) ohne `border`-Keyword; Template setzt `class="border {{ pflegegrad_color(...) }}"`.
+- `WEAKEST_FIELD_LABELS` als Modul-Konstante in `pflegegrad.py` nach `CACHE_TTL`; wird via Template-Context `weakest_field_labels` an `object_detail.html` übergeben.
+- Anker-IDs in 3 Templates ergänzt (Stammdaten-Loop, Eigentuemer-Section, Finanzen Mirror-Loop + Saldo-Block + SEPA-Block, Versicherungen policen/wartungen Wrapper).
+- `id="versicherungen"` auf `<section>` in `_obj_versicherungen.html` absichtlich unverändert — HTMX-Target.
+- Badge auf Listen-Seite: reiner Pill-Badge ohne `<details>` (gecachter Integer reicht, kein `PflegegradResult`).
+- Firefox-kompatibler Summary-Marker: `[&::-webkit-details-marker]:hidden` ergänzt.
+
 ### File List
+
+- `app/templating.py`
+- `app/services/pflegegrad.py`
+- `app/routers/objects.py`
+- `app/templates/object_detail.html`
+- `app/templates/_obj_stammdaten.html`
+- `app/templates/_obj_finanzen.html`
+- `app/templates/_obj_versicherungen.html`
+- `app/templates/_obj_table_body.html`
+- `tests/test_pflegegrad_badge_smoke.py` (neu)
+
+### Review Findings
+
+**Code-Review 2026-04-29** — adversarialer Review mit Blind Hunter / Edge Case Hunter / Acceptance Auditor. AC1–AC5 alle erfuellt; folgende Verbesserungen identifiziert:
+
+- [x] [Review][Patch] per_cluster KeyError-Risiko bei fehlendem Cluster-Key [app/templates/object_detail.html:39-45] — Template liest hardcoded `pflegegrad_result.per_cluster["C1"|"C4"|"C6"|"C8"]`. Wenn Service je weniger Cluster liefert (z.B. C8 deaktiviert), wirft Jinja `UndefinedError` → 500. Fix: `.get(ckey, 0)` im Template.
+- [x] [Review][Patch] Cluster-Anzeige Round-Threshold-Drift [app/templates/object_detail.html:39-45] — Threshold prueft Roh-Float (`>= 0.7`), Display rundet via `(x*100)|round|int`. Werte 0.395 / 0.6995 → User sieht "40 %"/"70 %", aber Farb-Klasse faellt eine Stufe niedriger. Fix: Threshold an gerundeter Prozentzahl (`>= 70` statt `>= 0.7`).
+- [x] [Review][Patch] Unbekannte weakest_field-Keys werden stumm verschluckt [app/templates/object_detail.html:54-65] — `{% if label_anchor %}` filtert pro Item; wenn ALLE Keys unbekannt sind, leeres `<ul>` ohne "Alle Pflichtfelder gepflegt"-Fallback. Fix: im Router auf bekannte Keys vorfiltern (`[wf for wf in weakest_fields if wf in WEAKEST_FIELD_LABELS]`).
+- [x] [Review][Patch] `test_pflegegrad_color_unit` zu schwach [tests/test_pflegegrad_badge_smoke.py:138-144] — `"green" in result` ist truthy auch wenn nur `border-green-200` verbleibt; ein versehentlicher Drop von `bg-green-100`/`text-green-800` waere unbemerkt. Fix: `bg-`, `text-`, `border-` separat asserten.
+- [x] [Review][Patch] `test_detail_popover_cluster_names` false-positive-anfaellig [tests/test_pflegegrad_badge_smoke.py:82-86] — Sucht "Stammdaten/Technik/Finanzen/Versicherungen" auf der ganzen Seite; diese Strings stehen auch als Section-Header. Test bleibt gruen, selbst wenn Popover-Tabelle kaputt. Fix: auf konkreten Popover-Kontext einschraenken (z.B. Cluster-Kuerzel + Prozentwerte gemeinsam pruefen).
+- [x] [Review][Patch] Substring-Asserts und Regex zu lose [tests/test_pflegegrad_badge_smoke.py:48,56,64,75] — `"Pflegegrad 25"` matcht auch `"Pflegegrad 250"`; Regex `Pflegegrad\s+\d+` ohne Word-Boundary. Aktuell kein Bug, aber kollidiert sobald jemand Test mit `score=10` schreibt (matcht in `Pflegegrad 100`). Fix: `\b` einsetzen oder vollstaendigeres Markup-Snippet matchen.
+- [x] [Review][Patch] Listen-Boundary `score=70` nicht render-getestet — Helper-Unit-Test deckt Boundary 70 ab, aber kein Render-Test der Liste (`_obj_table_body.html`) mit row.pflegegrad=70. Fix: kleiner Smoke-Test, der die Liste rendert und das Pill-Markup mit `bg-green-100` plus `border` validiert.
+- [x] [Review][Patch] Ungenutzter `import pytest` [tests/test_pflegegrad_badge_smoke.py:12] — Kein pytest-Marker oder -Fixture in Verwendung. Trivialer Lint-Cleanup.
+- [x] [Review][Defer] Score-Clamping <0 / >100 fehlt [app/templating.py:167-175] — heute nicht erreichbar (pflegegrad_score clampt implizit ueber Gewichtssumme), aber kein expliziter Guard. Defer als defensive Haertung.
+- [x] [Review][Defer] Pflegegrad-Cache-Commit-Fehler bleibt unsichtbar [app/routers/objects.py:278-286] — Commit-Fehler werden mit `_logger.warning` geschluckt → Listen-View bleibt stale, Detail-Badge rechnet neu → sichtbarer Diff zwischen Liste und Detail beim selben Objekt. Story-3.3-Schaden, durch 3.4-Badge erst sichtbar. Defer.
+- [x] [Review][Defer] Eindeutigkeit der `id="..."`-Werte auf Detail-Seite nicht test-geschuetzt — heute kein Konflikt zwischen Stammdaten-/Mirror-Loop-Keys (disjunkte Mengen), aber zukuenftige Erweiterung kann Duplikate erzeugen. Defer als Smoke-Test-Ausbau (HTML extrahieren, ID-Liste auf Eindeutigkeit pruefen).
+
+**Dismissed (12):** Wartungen-section sr-only Anker (Spec MVP-akzeptiert, dokumentiert in Aenderung 5.2), `impower_property_id`-Anker (Auditor verifiziert: STAMMDATEN_FIELDS enthaelt beides), href-Escaping (statisches Dict, kein User-Input), `border`-Keyword-Kontrakt (Docstring dokumentiert es), Score=None-Text (outer Guard verhindert), onclick-DOM-Coupling (funktioniert), Threshold-Duplikate (durch Helper konsolidiert), Outside-Click-Dismissal (UX nice-to-have), Reflow vs Anchor-Sprung (spekulativ), `pflegegrad_color(None)`-toter Code (defensive ok), Saldo-Anker im Kein-Impower-Zweig (kein Schaden), `weakest=[]` bei score<100 (heute nicht reproduzierbar).

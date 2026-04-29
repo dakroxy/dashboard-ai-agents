@@ -6,6 +6,7 @@ Versicherungen etc. kommen mit Stories 1.6+.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import pathlib
 import uuid
@@ -85,7 +86,7 @@ from app.services.steckbrief_wartungen import (
     get_due_severity,
     validate_wartung_dates,
 )
-from app.services.pflegegrad import get_or_update_pflegegrad_cache
+from app.services.pflegegrad import WEAKEST_FIELD_LABELS, get_or_update_pflegegrad_cache
 from app.services.steckbrief_write_gate import write_field_human
 from app.templating import templates
 
@@ -285,6 +286,15 @@ async def object_detail(
                 detail.obj.id, exc,
             )
             # pflegegrad_result ist trotzdem gueltig — Render laeuft weiter
+    # Unbekannte weakest_field-Keys ausfiltern, sonst leeres <ul> ohne Empty-State.
+    if pflegegrad_result is not None:
+        pflegegrad_result = dataclasses.replace(
+            pflegegrad_result,
+            weakest_fields=[
+                wf for wf in pflegegrad_result.weakest_fields
+                if wf in WEAKEST_FIELD_LABELS
+            ],
+        )
 
     # ---- Technik-Sektion (Story 1.6) ----
     tech_prov_map = get_provenance_map(
@@ -413,6 +423,7 @@ async def object_detail(
             "get_due_severity": get_due_severity,
             "notes_owners": notes_owners,
             "pflegegrad_result": pflegegrad_result,
+            "weakest_field_labels": WEAKEST_FIELD_LABELS,
         },
     )
 

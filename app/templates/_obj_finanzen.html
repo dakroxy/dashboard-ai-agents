@@ -15,7 +15,7 @@
     </div>
 
     {# Saldo-Block #}
-    <div class="mb-6">
+    <div id="field-last_known_balance" class="mb-6">
         {% if not obj.impower_property_id %}
             <p class="text-slate-400 text-sm">Kein Impower-Objekt verknuepft.</p>
         {% elif live_balance is not none %}
@@ -44,7 +44,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
         {% for item in fin_mirror_fields %}
             {% set pill = provenance_pill(item.prov) %}
-            <div>
+            <div id="field-{{ item.key }}">
                 <div class="text-xs uppercase tracking-wider text-slate-500 mb-1">{{ item.label }}</div>
                 <div class="flex items-center justify-between gap-3">
                     <div class="text-sm text-slate-900 truncate">
@@ -70,7 +70,7 @@
     </div>
 
     {# SEPA-Mandate (read-only) #}
-    <div class="mt-6">
+    <div id="field-sepa_mandate_refs" class="mt-6">
         {% set sepa_pill = provenance_pill(sepa_mandate_refs_prov) %}
         <div class="flex items-center justify-between mb-2">
             <h3 class="text-sm font-semibold text-slate-800">SEPA-Mandate</h3>
