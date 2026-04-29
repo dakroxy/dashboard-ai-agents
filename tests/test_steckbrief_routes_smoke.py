@@ -109,6 +109,19 @@ def _tbody_slice(body: str) -> str:
     return body[start:end]
 
 
+def _mobile_cards_slice(body: str) -> str:
+    """Extrahiert den Mobile-Card-Section-Block aus objects_list.html
+    (Story 3.2). Verhindert, dass Assertions zufaellig im Desktop-<tbody>
+    matchen. Section-Marker: <div class="block sm:hidden ...> bis zum
+    naechsten <div class="hidden sm:block ...>."""
+    start = body.find('class="block sm:hidden')
+    end = body.find('class="hidden sm:block')
+    assert start != -1, "Mobile-Card-Section nicht gefunden (block sm:hidden)"
+    assert end != -1, "Desktop-Wrapper nicht gefunden (hidden sm:block)"
+    assert start < end, "Mobile-Section steht nach Desktop-Wrapper — Layout-Reihenfolge geprueft?"
+    return body[start:end]
+
+
 def _row_for(body: str, marker: str) -> str:
     """Liefert das <tr>...</tr>-Fragment, das `marker` enthaelt."""
     tbody = _tbody_slice(body)
@@ -497,9 +510,12 @@ def test_rows_invalid_sort_key_falls_back_to_short_code(steckbrief_admin_client,
 
 
 def test_rows_filter_reserve_shows_only_below_threshold(steckbrief_admin_client, db):
-    db.add(Object(id=uuid.uuid4(), short_code="LOW", name="Niedrig",
+    # Eindeutige short_codes (>=4 Zeichen, kein Substring anderer UI-Strings),
+    # damit die Asserts nicht auf zufaellige Token im Response matchen
+    # (Review-Patch P7: frueher LOW/OK ⇒ z. B. 'LOOKING' oder 'BOOKING'-False-Positive).
+    db.add(Object(id=uuid.uuid4(), short_code="FRT001", name="Niedrig",
                   reserve_current=Decimal("1000"), reserve_target=Decimal("1000")))
-    db.add(Object(id=uuid.uuid4(), short_code="OK", name="Gut",
+    db.add(Object(id=uuid.uuid4(), short_code="FRT002", name="Gut",
                   reserve_current=Decimal("10000"), reserve_target=Decimal("1000")))
     db.commit()
     response = steckbrief_admin_client.get(
@@ -507,8 +523,9 @@ def test_rows_filter_reserve_shows_only_below_threshold(steckbrief_admin_client,
         headers={"HX-Request": "true"},
     )
     assert response.status_code == 200
-    assert "LOW" in response.text
-    assert "OK" not in response.text
+    tbody = _tbody_slice(response.text)
+    assert "FRT001" in tbody
+    assert "FRT002" not in tbody
 
 
 def test_rows_reserve_badge_rendered_for_object_below_threshold(steckbrief_admin_client, db):
@@ -531,3 +548,299 @@ def test_rows_no_badge_when_reserve_above_threshold(steckbrief_admin_client, db)
         headers={"HX-Request": "true"},
     )
     assert "unter Zielwert" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P6 — AC4 Negativfaelle (Badge nicht rendern)
+# ---------------------------------------------------------------------------
+
+def test_rows_no_badge_when_reserve_target_is_none(steckbrief_admin_client, db):
+    """AC4: kein Badge wenn reserve_target None (kein Threshold vergleichbar)."""
+    db.add(Object(id=uuid.uuid4(), short_code="NTG", name="NullTarget",
+                  reserve_current=Decimal("100"), reserve_target=None))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    row_html = _row_for(response.text, "NTG")
+    assert "unter Zielwert" not in row_html
+
+
+def test_rows_no_badge_when_reserve_current_is_none(steckbrief_admin_client, db):
+    """AC4: kein Badge wenn reserve_current None (Spalte zeigt '—')."""
+    db.add(Object(id=uuid.uuid4(), short_code="NCR", name="NullCurrent",
+                  reserve_current=None, reserve_target=Decimal("1000")))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    row_html = _row_for(response.text, "NCR")
+    assert "unter Zielwert" not in row_html
+
+
+def test_rows_badge_rendered_for_decimal_zero_reserve_when_target_positive(
+    steckbrief_admin_client, db,
+):
+    """AC4: reserve_current=Decimal('0') mit target>0 ⇒ Badge wird gerendert
+    (Decimal-Truthiness-Falle: 0 ist NOT None, 0 < target*6 = True)."""
+    db.add(Object(id=uuid.uuid4(), short_code="ZRO", name="ZeroReserve",
+                  reserve_current=Decimal("0"), reserve_target=Decimal("500")))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    row_html = _row_for(response.text, "ZRO")
+    assert "unter Zielwert" in row_html
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P6 — AC5 Negativfall (reserve_target=None vom Filter ausgeschlossen)
+# ---------------------------------------------------------------------------
+
+def test_rows_filter_excludes_objects_with_null_target(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="EXC001", name="NullTarget",
+                  reserve_current=Decimal("100"), reserve_target=None))
+    db.add(Object(id=uuid.uuid4(), short_code="EXC002", name="Below",
+                  reserve_current=Decimal("100"), reserve_target=Decimal("1000")))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows?filter_reserve=true",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    tbody = _tbody_slice(response.text)
+    assert "EXC001" not in tbody
+    assert "EXC002" in tbody
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P6 — AC6 Filter + Sort kombinierbar
+# ---------------------------------------------------------------------------
+
+def test_rows_filter_and_sort_combined_keeps_filter_and_sorts_result(
+    steckbrief_admin_client, db,
+):
+    """AC6: Bei aktivem Filter und gewaehltem Sort werden BEIDE angewendet —
+    nur unterhalb-Schwelle UND in der gewuenschten Reihenfolge."""
+    # 3 Objekte unter Schwelle (reserve_current < target*6=6000), absteigend nach Saldo:
+    db.add(Object(id=uuid.uuid4(), short_code="FS001", name="x",
+                  reserve_current=Decimal("100"), reserve_target=Decimal("1000"),
+                  last_known_balance=Decimal("10")))
+    db.add(Object(id=uuid.uuid4(), short_code="FS002", name="y",
+                  reserve_current=Decimal("100"), reserve_target=Decimal("1000"),
+                  last_known_balance=Decimal("1000")))
+    db.add(Object(id=uuid.uuid4(), short_code="FS003", name="z",
+                  reserve_current=Decimal("100"), reserve_target=Decimal("1000"),
+                  last_known_balance=Decimal("500")))
+    # 1 Objekt UEBER Schwelle, hoher Saldo — darf trotz Sort nicht erscheinen:
+    db.add(Object(id=uuid.uuid4(), short_code="FS999", name="hi",
+                  reserve_current=Decimal("99999"), reserve_target=Decimal("1000"),
+                  last_known_balance=Decimal("99999")))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows?sort=saldo&order=desc&filter_reserve=true",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    tbody = _tbody_slice(response.text)
+    # FS999 ist ueber Schwelle ⇒ raus (nur Filter-Effekt)
+    assert "FS999" not in tbody
+    # Reihenfolge der gefilterten Objekte: FS002 (1000) > FS003 (500) > FS001 (10)
+    pos_2 = tbody.find("FS002")
+    pos_3 = tbody.find("FS003")
+    pos_1 = tbody.find("FS001")
+    assert 0 <= pos_2 < pos_3 < pos_1
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch D1 — Fragment liefert tbody primary + thead/filter-bar via OOB
+# ---------------------------------------------------------------------------
+
+def test_rows_fragment_includes_oob_thead_for_indicator_refresh(
+    steckbrief_admin_client, db,
+):
+    """Damit ↑/↓-Indikator und hx-get-URLs nach jedem Sort aktualisiert werden,
+    muss die Fragment-Response neben dem tbody auch <thead hx-swap-oob='true'>
+    enthalten (Review-Patch D1)."""
+    db.add(Object(id=uuid.uuid4(), short_code="OOB001", name="oob"))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows?sort=saldo&order=desc",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    # tbody ist primaeres Swap-Target
+    assert 'id="obj-rows"' in body
+    # thead und filter-bar via OOB
+    assert 'id="obj-head"' in body
+    assert 'hx-swap-oob="true"' in body
+    assert 'id="obj-filter-bar"' in body
+    # Sort-Indikator zeigt aktuellen Stand: saldo desc ⇒ ↓ (Unicode arrow,
+    # nicht HTML-Entity — sonst escaped Jinja-Autoescape den Pfeil zu &amp;darr;).
+    assert "↓" in body
+
+
+def test_rows_fragment_filter_label_reflects_six_months(steckbrief_admin_client):
+    """Review-Patch D2: Filter-Option-Label heisst 'Ruecklage < 6 Monatsbeitraege'
+    (statt unklarem 'Ruecklage < Zielwert'), passt zur tatsaechlichen Bedingung."""
+    response = steckbrief_admin_client.get(
+        "/objects/rows",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    assert "6 Monatsbeitr" in response.text  # 'Monatsbeitraege' mit umlaut-encoded
+
+
+def test_list_full_page_filter_label_reflects_six_months(steckbrief_admin_client):
+    """Same on the full-page render."""
+    response = steckbrief_admin_client.get("/objects")
+    assert response.status_code == 200
+    assert "6 Monatsbeitr" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P3+P4 — case-insensitive order/filter_reserve im Router
+# ---------------------------------------------------------------------------
+
+def test_rows_order_param_accepts_uppercase(steckbrief_admin_client, db):
+    """?order=DESC soll als desc interpretiert werden (frueher: silently asc)."""
+    db.add(Object(id=uuid.uuid4(), short_code="OA001", name="a", last_known_balance=Decimal("10")))
+    db.add(Object(id=uuid.uuid4(), short_code="OA002", name="b", last_known_balance=Decimal("100")))
+    db.commit()
+    response = steckbrief_admin_client.get(
+        "/objects/rows?sort=saldo&order=DESC",
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200
+    tbody = _tbody_slice(response.text)
+    # Sort desc auf Saldo: 100 vor 10 ⇒ OA002 vor OA001
+    assert tbody.find("OA002") < tbody.find("OA001")
+
+
+def test_rows_filter_reserve_accepts_truthy_synonyms(steckbrief_admin_client, db):
+    """?filter_reserve=1 / yes / on werden alle als True interpretiert."""
+    db.add(Object(id=uuid.uuid4(), short_code="FT001", name="below",
+                  reserve_current=Decimal("100"), reserve_target=Decimal("1000")))
+    db.add(Object(id=uuid.uuid4(), short_code="FT002", name="above",
+                  reserve_current=Decimal("99999"), reserve_target=Decimal("1000")))
+    db.commit()
+    for truthy in ("1", "yes", "TRUE", " on "):
+        response = steckbrief_admin_client.get(
+            f"/objects/rows?filter_reserve={truthy.strip().replace(' ', '%20')}",
+            headers={"HX-Request": "true"},
+        )
+        assert response.status_code == 200
+        tbody = _tbody_slice(response.text)
+        assert "FT001" in tbody, f"filter_reserve={truthy!r} sollte Filter aktivieren"
+        assert "FT002" not in tbody, f"filter_reserve={truthy!r} sollte Filter aktivieren"
+
+
+# ---------------------------------------------------------------------------
+# Story 3.2 — Mobile Card-Layout + Heizungs-Hotline Tap-to-Call
+# ---------------------------------------------------------------------------
+
+def test_list_mobile_card_section_present(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="MOB1", name="Mobil Eins"))
+    db.commit()
+    response = steckbrief_admin_client.get("/objects")
+    assert response.status_code == 200
+    assert "sm:hidden" in response.text, "Mobile Card-Section nicht gefunden (class sm:hidden fehlt)"
+    assert "hidden sm:block" in response.text, "Desktop-Table-Toggle nicht gefunden"
+
+
+def test_list_mobile_cards_contain_required_fields(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="MOB2", name="Mobil Zwei",
+                  last_known_balance=Decimal("1234"), pflegegrad_score_cached=75))
+    db.commit()
+    response = steckbrief_admin_client.get("/objects")
+    assert response.status_code == 200
+    mobile = _mobile_cards_slice(response.text)
+    assert "MOB2" in mobile, "short_code fehlt in Mobile-Card-Section"
+    assert "Mobil Zwei" in mobile, "name fehlt in Mobile-Card-Section"
+    assert "1234" in mobile, "Saldo fehlt in Mobile-Card-Section"
+    assert "75%" in mobile, "Pflegegrad-Prozentwert fehlt in Mobile-Card-Section"
+
+
+def test_list_mobile_cards_have_min_touch_target(steckbrief_admin_client, db):
+    """AC1: Touch-Target jeder Card >= 44 px (via min-h-[44px]).
+    Regression-Schutz, falls die Klasse beim Design-Refactor entfernt wird."""
+    db.add(Object(id=uuid.uuid4(), short_code="TAP1", name="Touch Target"))
+    db.commit()
+    response = steckbrief_admin_client.get("/objects")
+    assert response.status_code == 200
+    mobile = _mobile_cards_slice(response.text)
+    assert "min-h-[44px]" in mobile, (
+        "Touch-Target-Klasse min-h-[44px] fehlt in Mobile-Card-Section (AC1)"
+    )
+
+
+def test_detail_heating_hotline_renders_tel_link(steckbrief_admin_client, db):
+    obj = Object(id=uuid.uuid4(), short_code="HOT1", name="Hotline Test",
+                 heating_hotline="040 123456")
+    db.add(obj)
+    db.commit()
+    response = steckbrief_admin_client.get(f"/objects/{obj.id}")
+    assert response.status_code == 200
+    assert 'href="tel:040 123456"' in response.text
+
+
+def test_detail_heating_hotline_empty_shows_no_tel_link(steckbrief_admin_client, db):
+    obj = Object(id=uuid.uuid4(), short_code="HOT2", name="Hotline Leer",
+                 heating_hotline=None)
+    db.add(obj)
+    db.commit()
+    response = steckbrief_admin_client.get(f"/objects/{obj.id}")
+    assert response.status_code == 200
+    assert 'href="tel:' not in response.text
+
+
+def test_detail_photo_container_has_scroll_snap_classes(steckbrief_admin_client, db):
+    obj = Object(id=uuid.uuid4(), short_code="PH01", name="Photo Test")
+    db.add(obj)
+    db.commit()
+    response = steckbrief_admin_client.get(f"/objects/{obj.id}")
+    assert response.status_code == 200
+    assert "snap-x" in response.text
+    assert "snap-mandatory" in response.text
+
+
+def test_technik_field_save_heating_hotline_tel_kind_no_500(steckbrief_admin_client, db):
+    obj = Object(id=uuid.uuid4(), short_code="TEL1", name="Tel Test")
+    db.add(obj)
+    db.commit()
+    response = steckbrief_admin_client.post(
+        f"/objects/{obj.id}/technik/field",
+        data={"field_name": "heating_hotline", "value": "040 99887766"},
+    )
+    assert response.status_code == 200, (
+        "500 deutet auf fehlenden 'tel'-Zweig in parse_technik_value() hin — Task 1.1 pruefen"
+    )
+    assert 'href="tel:040 99887766"' in response.text
+
+
+def test_list_desktop_table_still_rendered_after_mobile_addition(steckbrief_admin_client, db):
+    db.add(Object(id=uuid.uuid4(), short_code="DSK1", name="Desktop Eins"))
+    db.commit()
+    response = steckbrief_admin_client.get("/objects")
+    assert response.status_code == 200
+    assert "hidden sm:block" in response.text
+    assert "<table" in response.text
+    assert 'id="obj-rows"' in response.text
+
+
+def test_technik_field_edit_form_renders_type_tel_for_hotline(steckbrief_admin_client, db):
+    obj = Object(id=uuid.uuid4(), short_code="EDT1", name="Edit Tel Test")
+    db.add(obj)
+    db.commit()
+    response = steckbrief_admin_client.get(
+        f"/objects/{obj.id}/technik/edit?field=heating_hotline"
+    )
+    assert response.status_code == 200
+    assert 'type="tel"' in response.text

@@ -7,7 +7,12 @@
     <div class="flex items-center justify-between gap-3">
         <div class="text-sm text-slate-900 truncate">
             {% if field.value is not none and field.value != "" %}
-                {{ field.value }}
+                {% if field.kind == "tel" %}
+                    <a href="tel:{{ field.value }}"
+                       class="text-green-600 hover:text-green-700 underline font-medium">{{ field.value }}</a>
+                {% else %}
+                    {{ field.value }}
+                {% endif %}
             {% else %}
                 <span class="text-slate-400">&mdash;</span>
             {% endif %}

@@ -1,0 +1,7 @@
+{# Fragment-Response fuer HTMX-Sort/Filter (Story 3.1, Review-Patch D1).
+   tbody ist primaeres Swap-Target (#obj-rows); thead und filter-bar werden
+   via `hx-swap-oob="true"` aktualisiert, damit ↑/↓-Indikator, hx-get-URLs
+   und "Filter aktiv"-Pille nach jedem Sort/Filter den korrekten Stand zeigen. #}
+{% include "_obj_table_body.html" %}
+{% include "_obj_table_head.html" %}
+{% include "_obj_filter_bar.html" %}

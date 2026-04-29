@@ -26,7 +26,9 @@ from app.permissions import accessible_object_ids
 from app.services.steckbrief import (
     ObjectListRow,
     get_provenance_map,
+    is_reserve_below_target,
     list_objects_with_unit_counts,
+    normalize_sort_order,
 )
 
 
@@ -281,3 +283,218 @@ def test_list_objects_unit_count_in_objectlistrow(db):
     rows = list_objects_with_unit_counts(db, accessible_ids=None)
     target = next(r for r in rows if r.short_code == "UC5")
     assert target.unit_count == 5
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P5 — `reserve_below_target` als single source of truth
+# ---------------------------------------------------------------------------
+
+def test_is_reserve_below_target_decimal_zero_is_below_when_target_positive():
+    """Decimal('0') ist NOT None und 0 < target*6 ⇒ True (Truthiness-Falle)."""
+    assert is_reserve_below_target(Decimal("0"), Decimal("500")) is True
+
+
+def test_is_reserve_below_target_none_inputs_return_false():
+    assert is_reserve_below_target(None, Decimal("500")) is False
+    assert is_reserve_below_target(Decimal("100"), None) is False
+    assert is_reserve_below_target(None, None) is False
+
+
+def test_is_reserve_below_target_threshold_inclusive_boundary():
+    # Genau am Schwellwert (current == target * 6) ⇒ NICHT below (strict <)
+    assert is_reserve_below_target(Decimal("6000"), Decimal("1000")) is False
+    # Knapp drueber ⇒ NICHT below
+    assert is_reserve_below_target(Decimal("6001"), Decimal("1000")) is False
+    # Knapp drunter ⇒ below
+    assert is_reserve_below_target(Decimal("5999"), Decimal("1000")) is True
+
+
+def test_object_list_row_carries_reserve_below_target_field(db):
+    """ObjectListRow.reserve_below_target wird vorberechnet, damit das Template
+    nicht eigenstaendig die Schwelle berechnet (Review-Patch P5)."""
+    db.add(Object(id=uuid.uuid4(), short_code="RBT1", name="below",
+                  reserve_current=Decimal("500"), reserve_target=Decimal("1000")))
+    db.add(Object(id=uuid.uuid4(), short_code="RBT2", name="above",
+                  reserve_current=Decimal("9000"), reserve_target=Decimal("1000")))
+    db.add(Object(id=uuid.uuid4(), short_code="RBT3", name="null-current",
+                  reserve_current=None, reserve_target=Decimal("1000")))
+    db.add(Object(id=uuid.uuid4(), short_code="RBT4", name="null-target",
+                  reserve_current=Decimal("100"), reserve_target=None))
+    db.commit()
+    rows = {r.short_code: r for r in list_objects_with_unit_counts(db, accessible_ids=None)}
+    assert rows["RBT1"].reserve_below_target is True
+    assert rows["RBT2"].reserve_below_target is False
+    assert rows["RBT3"].reserve_below_target is False
+    assert rows["RBT4"].reserve_below_target is False
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P3+P4 — normalize_sort_order Helper
+# ---------------------------------------------------------------------------
+
+def test_normalize_sort_order_unknown_sort_falls_back_to_short_code():
+    safe_sort, _ = normalize_sort_order("INVALID_KEY", "asc")
+    assert safe_sort == "short_code"
+
+
+def test_normalize_sort_order_order_case_insensitive():
+    assert normalize_sort_order("saldo", "DESC")[1] == "desc"
+    assert normalize_sort_order("saldo", "Desc")[1] == "desc"
+    assert normalize_sort_order("saldo", "  desc ")[1] == "desc"
+    assert normalize_sort_order("saldo", "ASC")[1] == "asc"
+
+
+def test_normalize_sort_order_unknown_order_falls_back_to_asc():
+    assert normalize_sort_order("saldo", "BLA")[1] == "asc"
+    assert normalize_sort_order("saldo", "")[1] == "asc"
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P5 — Filter-Excludes auch reserve_target=None
+# ---------------------------------------------------------------------------
+
+def test_filter_reserve_excludes_null_target(db):
+    """AC5 Negativfall: reserve_target=None schliesst Objekt vom Filter aus
+    (kein Threshold vergleichbar)."""
+    db.add(Object(id=uuid.uuid4(), short_code="NTGT", name="Null Target",
+                  reserve_current=Decimal("100"), reserve_target=None))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, filter_reserve_below_target=True
+    )
+    assert all(r.short_code != "NTGT" for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P2 — Tiebreaker bleibt ASC auch bei order=desc
+# ---------------------------------------------------------------------------
+
+def test_sort_tiebreaker_stable_on_descending_numeric(db):
+    """Bei gleichem Saldo soll short_code IMMER ASC bleiben, auch bei order=desc.
+    Frueher kehrte reverse=True den ganzen Tuple-Key um (Tiebreaker auch desc)."""
+    db.add(Object(id=uuid.uuid4(), short_code="ZZZ", name="z", last_known_balance=Decimal("100")))
+    db.add(Object(id=uuid.uuid4(), short_code="AAA", name="a", last_known_balance=Decimal("100")))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="saldo", order="desc"
+    )
+    # Beide Saldi sind identisch; Tiebreaker auf short_code ASC erwartet.
+    assert rows[0].short_code == "AAA"
+    assert rows[1].short_code == "ZZZ"
+
+
+def test_sort_tiebreaker_stable_on_descending_string(db):
+    """name-Sort desc: bei gleichem name bleibt short_code asc."""
+    db.add(Object(id=uuid.uuid4(), short_code="ZZZ", name="Same", last_known_balance=Decimal("0")))
+    db.add(Object(id=uuid.uuid4(), short_code="AAA", name="Same", last_known_balance=Decimal("0")))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="name", order="desc"
+    )
+    same_rows = [r for r in rows if r.name == "Same"]
+    assert [r.short_code for r in same_rows] == ["AAA", "ZZZ"]
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P1 — null_rows werden auch nach short_code sortiert
+# ---------------------------------------------------------------------------
+
+def test_sort_numeric_null_rows_are_sorted_by_short_code(db):
+    """Mehrere NULL-Saldo-Objekte: Reihenfolge muss deterministisch sein
+    (short_code asc), nicht zufaellig nach DB-Order."""
+    db.add(Object(id=uuid.uuid4(), short_code="ZZZ", name="z", last_known_balance=None))
+    db.add(Object(id=uuid.uuid4(), short_code="AAA", name="a", last_known_balance=None))
+    db.add(Object(id=uuid.uuid4(), short_code="MMM", name="m", last_known_balance=None))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="saldo", order="asc"
+    )
+    null_codes = [r.short_code for r in rows if r.saldo is None]
+    assert null_codes == ["AAA", "MMM", "ZZZ"]
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P6 — sort=name primaere casefold-Sortierung
+# ---------------------------------------------------------------------------
+
+def test_sort_by_name_uses_casefold_primary(db):
+    """name=asc mit gemischter Gross-/Kleinschreibung: ascii-Ordering wuerde
+    'BBB' vor 'aaa' setzen (Grossbuchstaben-Codepoints kleiner). casefold
+    gleicht das aus → erwartet ist alphabetisch unabhaengig vom Case."""
+    db.add(Object(id=uuid.uuid4(), short_code="X1", name="aaa"))
+    db.add(Object(id=uuid.uuid4(), short_code="X2", name="BBB"))
+    db.add(Object(id=uuid.uuid4(), short_code="X3", name="ccc"))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="name", order="asc"
+    )
+    assert [r.short_code for r in rows] == ["X1", "X2", "X3"]
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P6 — sort=mandat_status Reihenfolge
+# ---------------------------------------------------------------------------
+
+def test_sort_by_mandat_status_asc_puts_fehlt_first(db):
+    """mandat_status asc: 'fehlt' (0) < 'vorhanden' (1)."""
+    db.add(Object(id=uuid.uuid4(), short_code="MV", name="vorh",
+                  sepa_mandate_refs=[{"id": "x"}]))
+    db.add(Object(id=uuid.uuid4(), short_code="MF", name="fehlt",
+                  sepa_mandate_refs=[]))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="mandat_status", order="asc"
+    )
+    assert rows[0].mandat_status == "fehlt"
+    assert rows[1].mandat_status == "vorhanden"
+
+
+def test_sort_by_mandat_status_desc_puts_vorhanden_first(db):
+    db.add(Object(id=uuid.uuid4(), short_code="MV", name="vorh",
+                  sepa_mandate_refs=[{"id": "x"}]))
+    db.add(Object(id=uuid.uuid4(), short_code="MF", name="fehlt",
+                  sepa_mandate_refs=[]))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="mandat_status", order="desc"
+    )
+    assert rows[0].mandat_status == "vorhanden"
+    assert rows[1].mandat_status == "fehlt"
+
+
+def test_sort_by_mandat_status_tiebreaker_short_code_asc_in_desc(db):
+    """Bei gleichem mandat_status (alle 'fehlt') bleibt short_code ASC,
+    auch wenn Primary-Sort desc ist."""
+    db.add(Object(id=uuid.uuid4(), short_code="ZZZ", name="z", sepa_mandate_refs=[]))
+    db.add(Object(id=uuid.uuid4(), short_code="AAA", name="a", sepa_mandate_refs=[]))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="mandat_status", order="desc"
+    )
+    assert [r.short_code for r in rows] == ["AAA", "ZZZ"]
+
+
+# ---------------------------------------------------------------------------
+# Review-Patch P6 — Saldo-Reihenfolge der non-null-Werte tatsaechlich pruefen
+# ---------------------------------------------------------------------------
+
+def test_sort_saldo_desc_puts_largest_first(db):
+    db.add(Object(id=uuid.uuid4(), short_code="S1", name="s1", last_known_balance=Decimal("10")))
+    db.add(Object(id=uuid.uuid4(), short_code="S2", name="s2", last_known_balance=Decimal("100")))
+    db.add(Object(id=uuid.uuid4(), short_code="S3", name="s3", last_known_balance=Decimal("50")))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="saldo", order="desc"
+    )
+    assert [r.short_code for r in rows] == ["S2", "S3", "S1"]
+
+
+def test_sort_saldo_asc_puts_smallest_first(db):
+    db.add(Object(id=uuid.uuid4(), short_code="S1", name="s1", last_known_balance=Decimal("10")))
+    db.add(Object(id=uuid.uuid4(), short_code="S2", name="s2", last_known_balance=Decimal("100")))
+    db.add(Object(id=uuid.uuid4(), short_code="S3", name="s3", last_known_balance=Decimal("50")))
+    db.commit()
+    rows = list_objects_with_unit_counts(
+        db, accessible_ids=None, sort="saldo", order="asc"
+    )
+    assert [r.short_code for r in rows] == ["S1", "S3", "S2"]

@@ -18,7 +18,7 @@
             else (field.value if field.value is not none else "") %}
         <input id="input-{{ field.key }}"
                name="value"
-               type="{{ 'number' if field.kind == 'int_year' else 'text' }}"
+               type="{{ 'number' if field.kind == 'int_year' else ('tel' if field.kind == 'tel' else 'text') }}"
                value="{{ current_value }}"
                {% if field.kind == 'int_year' %}min="1800" max="3000" step="1"{% endif %}
                class="block w-full rounded border {{ 'border-rose-300' if error else 'border-slate-300' }} px-2 py-1 text-sm">

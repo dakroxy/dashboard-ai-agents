@@ -38,13 +38,44 @@ class ObjectListRow:
     saldo: Decimal | None
     reserve_current: Decimal | None
     reserve_target: Decimal | None
-    mandat_status: str              # "vorhanden" | "fehlt"
-    pflegegrad: int | None          # pflegegrad_score_cached
+    mandat_status: str                  # "vorhanden" | "fehlt"
+    pflegegrad: int | None              # pflegegrad_score_cached
+    reserve_below_target: bool          # vorberechnete Badge-/Filter-Bedingung
 
 
 _SORT_ALLOWED = frozenset({
     "short_code", "name", "saldo", "reserve_current", "mandat_status", "pflegegrad"
 })
+
+# Schwellwert: "Ruecklage unter Zielwert" = unter 6 Monatsbeitraegen
+# (`reserve_target` ist der monatliche Soll-Wert, siehe docs/data-models.md:349).
+RESERVE_TARGET_MONTHS: int = 6
+
+
+def is_reserve_below_target(
+    reserve_current: Decimal | None, reserve_target: Decimal | None
+) -> bool:
+    """Single source of truth fuer die Badge-/Filter-Bedingung.
+
+    Wird vom Service (Filter, vorberechnetes ObjectListRow-Feld) und von Tests
+    konsumiert. Frueher dupliziert in Service + Template — nach Review-Patch P5
+    nur noch hier. None-handling explizit (Decimal('0')-Truthiness-Falle).
+    """
+    if reserve_current is None or reserve_target is None:
+        return False
+    return reserve_current < reserve_target * RESERVE_TARGET_MONTHS
+
+
+def normalize_sort_order(sort: str, order: str) -> tuple[str, str]:
+    """Normalisiert Query-Parameter fuer Sort/Order.
+
+    - `sort` faellt auf 'short_code' zurueck, wenn er nicht in `_SORT_ALLOWED` ist.
+    - `order` ist case-insensitive und whitespace-toleranzbehaftet (DESC/desc/' desc'
+      werden alle als 'desc' interpretiert).
+    """
+    safe_sort = sort if sort in _SORT_ALLOWED else "short_code"
+    safe_order = "desc" if order.strip().lower() == "desc" else "asc"
+    return safe_sort, safe_order
 
 
 @dataclass(frozen=True)
@@ -117,43 +148,52 @@ def list_objects_with_unit_counts(
             reserve_target=r.reserve_target,
             mandat_status="vorhanden" if r.sepa_mandate_refs else "fehlt",
             pflegegrad=r.pflegegrad_score_cached,
+            reserve_below_target=is_reserve_below_target(
+                r.reserve_current, r.reserve_target
+            ),
         )
         for r in db.execute(stmt).all()
     ]
 
     if filter_reserve_below_target:
-        rows = [
-            r for r in rows
-            if r.reserve_current is not None
-            and r.reserve_target is not None
-            and r.reserve_current < r.reserve_target * 6
-        ]
+        rows = [r for r in rows if r.reserve_below_target]
 
-    safe_sort = sort if sort in _SORT_ALLOWED else "short_code"
+    safe_sort, safe_order = normalize_sort_order(sort, order)
+    is_desc = safe_order == "desc"
+
+    # Zwei-Phasen Stable-Sort: Tiebreaker-Pass zuerst (immer ASC nach short_code),
+    # dann Primary-Pass mit reverse=is_desc. Pythons Sort ist stable, also bleibt
+    # bei gleichem Primary-Key die Tiebreaker-Reihenfolge erhalten — auch bei
+    # reverse=True. Ohne diesen Trick wuerde reverse=True den Tiebreaker mit
+    # umkehren (Review-Patch P2).
 
     if safe_sort in ("short_code", "name"):
-        rows.sort(
-            key=lambda r: (getattr(r, safe_sort).casefold(), r.short_code.casefold()),
-            reverse=(order == "desc"),
-        )
-    elif safe_sort == "mandat_status":
-        rows.sort(
-            key=lambda r: (1 if r.mandat_status == "vorhanden" else 0, r.short_code.casefold()),
-            reverse=(order == "desc"),
-        )
-    else:
-        # Numerische Felder (saldo, reserve_current, pflegegrad): NULLs immer
-        # ans Ende. Sentinel-Tuple kippt bei reverse=True — Zwei-Listen-Methode
-        # haelt NULLs in beiden Richtungen sicher am Ende.
-        non_null = [r for r in rows if getattr(r, safe_sort) is not None]
-        null_rows = [r for r in rows if getattr(r, safe_sort) is None]
-        non_null.sort(
-            key=lambda r: (float(getattr(r, safe_sort)), r.short_code.casefold()),
-            reverse=(order == "desc"),
-        )
-        rows = non_null + null_rows
+        rows.sort(key=lambda r: r.short_code.casefold())
+        rows.sort(key=lambda r: getattr(r, safe_sort).casefold(), reverse=is_desc)
+        return rows
 
-    return rows
+    if safe_sort == "mandat_status":
+        rows.sort(key=lambda r: r.short_code.casefold())
+        rows.sort(
+            key=lambda r: 1 if r.mandat_status == "vorhanden" else 0,
+            reverse=is_desc,
+        )
+        return rows
+
+    # Numerische Felder (saldo, reserve_current, pflegegrad): NULLs immer
+    # ans Ende. Sentinel-Tuple kippt bei reverse=True — Zwei-Listen-Methode
+    # haelt NULLs in beiden Richtungen sicher am Ende. NULL-Liste explizit
+    # nach short_code sortieren, sonst Reihenfolge non-deterministisch
+    # (Review-Patch P1).
+    non_null = [r for r in rows if getattr(r, safe_sort) is not None]
+    null_rows = [r for r in rows if getattr(r, safe_sort) is None]
+    non_null.sort(key=lambda r: r.short_code.casefold())
+    non_null.sort(
+        key=lambda r: float(getattr(r, safe_sort)),
+        reverse=is_desc,
+    )
+    null_rows.sort(key=lambda r: r.short_code.casefold())
+    return non_null + null_rows
 
 
 def get_object_detail(
@@ -353,7 +393,7 @@ TECHNIK_HEIZUNG: tuple[TechnikField, ...] = (
     TechnikField("heating_type", "Heizungs-Typ", "text"),
     TechnikField("year_heating", "Baujahr Heizung", "int_year"),
     TechnikField("heating_company", "Wartungsfirma", "text"),
-    TechnikField("heating_hotline", "Stoerungs-Hotline", "text"),
+    TechnikField("heating_hotline", "Stoerungs-Hotline", "tel"),
 )
 TECHNIK_HISTORIE: tuple[TechnikField, ...] = (
     TechnikField("year_built", "Baujahr Gebaeude", "int_year"),
@@ -400,7 +440,7 @@ def parse_technik_value(field_key: str, raw: str) -> tuple[Any | None, str | Non
         if not (1800 <= year <= current_year + 1):
             return None, f"Jahr muss zwischen 1800 und {current_year + 1} liegen."
         return year, None
-    if field.kind == "text":
+    if field.kind in ("text", "tel"):
         if len(stripped) > field.max_len:
             return None, f"Maximal {field.max_len} Zeichen erlaubt."
         return stripped, None

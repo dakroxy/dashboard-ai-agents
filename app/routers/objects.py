@@ -61,6 +61,7 @@ from app.services.steckbrief import (
     get_provenance_map,
     has_any_impower_provenance,
     list_objects_with_unit_counts,
+    normalize_sort_order,
     parse_technik_value,
     parse_zugangscode_value,
     reserve_history_for_sparkline,
@@ -134,6 +135,9 @@ async def list_objects(
     )
 
 
+_FILTER_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+
+
 @router.get("/rows", response_class=HTMLResponse)
 async def list_objects_rows(
     request: Request,
@@ -146,19 +150,29 @@ async def list_objects_rows(
     if not request.headers.get("HX-Request"):
         return RedirectResponse("/objects", status_code=303)
     accessible = accessible_object_ids(db, user)
-    filter_bool = filter_reserve.lower() == "true"
-    safe_order = "desc" if order == "desc" else "asc"
+    safe_sort, safe_order = normalize_sort_order(sort, order)
+    filter_bool = filter_reserve.strip().lower() in _FILTER_TRUE_VALUES
     rows = list_objects_with_unit_counts(
         db,
         accessible_ids=accessible,
-        sort=sort,
+        sort=safe_sort,
         order=safe_order,
         filter_reserve_below_target=filter_bool,
     )
+    # Fragment liefert tbody (primary swap) + thead und filter-bar via OOB,
+    # damit ↑/↓-Indikator, hx-get-URLs und "Filter aktiv"-Pille nach jedem
+    # Sort/Filter aktuell sind (Review-Patch D1).
     return templates.TemplateResponse(
         request,
-        "_obj_table_body.html",
-        {"rows": rows, "user": user},
+        "_obj_table_swap.html",
+        {
+            "rows": rows,
+            "user": user,
+            "sort": safe_sort,
+            "order": safe_order,
+            "filter_reserve": "true" if filter_bool else "false",
+            "oob_swap": True,
+        },
     )
 
 

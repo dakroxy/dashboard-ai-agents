@@ -1,0 +1,27 @@
+{# Filter-Bar mit Hidden-Inputs fuer Sort-State und Filter-Dropdown.
+   Bei `oob_swap=True` (Fragment-Response) wird der ganze Block via
+   `hx-swap-oob="true"` ausgetauscht — sonst friert die "Filter aktiv"-Pille
+   nach einem Filter-Wechsel ein und die hidden inputs zeigen den Initial-
+   Stand statt des aktuellen Sorts (Review-Patch D1). #}
+<div id="obj-filter-bar"{% if oob_swap %} hx-swap-oob="true"{% endif %}>
+  <input type="hidden" id="sort-state" name="sort" value="{{ sort }}">
+  <input type="hidden" id="order-state" name="order" value="{{ order }}">
+  <div class="flex items-center gap-4 mb-4">
+    <label class="flex items-center gap-2 text-sm text-slate-600">Filter:
+      <select id="filter-reserve-select"
+              name="filter_reserve"
+              class="border border-slate-300 rounded px-2 py-1 text-sm"
+              hx-get="/objects/rows"
+              hx-target="#obj-rows"
+              hx-swap="outerHTML"
+              hx-trigger="change"
+              hx-include="#sort-state, #order-state">
+        <option value="false" {% if filter_reserve == "false" %}selected{% endif %}>Alle Objekte</option>
+        <option value="true"  {% if filter_reserve == "true"  %}selected{% endif %}>R&uuml;cklage &lt; 6 Monatsbeitr&auml;ge</option>
+      </select>
+    </label>
+    {% if filter_reserve == "true" %}
+    <span class="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">Filter aktiv</span>
+    {% endif %}
+  </div>
+</div>

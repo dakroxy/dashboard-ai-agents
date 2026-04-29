@@ -2,6 +2,25 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of 3-2-mobile-card-layout (2026-04-29)
+
+- **`tel:`-URI Format-Härtung im href** [`app/templates/_obj_technik_field_view.html:11`] — `<a href="tel:{{ field.value }}">` ohne Whitespace-Strip / Format-Validierung. Browser tolerieren `+49 (40) 12 34-56` mit Klammern und Leerzeichen meist, aber RFC-3966 strenggenommen nicht konform; iOS Safari < 15 kann den Wählvorgang in seltenen Fällen abbrechen. Härtung: Template-Filter `replace(' ', '')` für href oder serverseitige Validation in `parse_technik_value` für `kind="tel"`.
+- **Mobile-Layout verwirft `?filter_reserve=true` Bookmark-State** [`app/templates/objects_list.html`] — Wenn ein User auf Desktop einen gefilterten Link kopiert und auf Mobile öffnet, sieht er alle Objekte (Mobile-Cards lesen `rows` ohne Filter). Spec markiert "kein HTMX/Filter auf Mobile" bewusst als MVP, aber URL-State wird stillschweigend ignoriert. Fix: Filter-Pill auch im Mobile-Block rendern oder `list_objects` muss Query an Service durchreichen.
+- **Mobile-Card pflegegrad ohne Range-Cap** [`app/templates/objects_list.html:29-31`] — `{{ row.pflegegrad }}%` mit Buckets `>= 70` / `>= 40` / sonst. Wenn Service falsche Werte liefert (>100 oder negativ), rendert die UI inkonsistent (`-15%` als rot, `150%` als grün). Score-Bounds gehören in den Service (Story 3.3 Pflegegrad-Score-Service).
+- **`TechnikField.max_len=500` für `kind="tel"` zu großzügig** [`app/services/steckbrief.py:286`] — Default schützt nicht vor Copy-Paste-Unfällen (z.B. Hotline + Anschrift in einer Eingabe). Eigener `TechnikField(..., kind="tel", max_len=30)` oder Format-Regex (`^[0-9+()\s/-]{3,30}$`) im parse-Branch eingrenzen.
+- **iOS scroll-snap mit `min-w` für Snap-Konsistenz** [`app/templates/_obj_technik.html:60-67`] — `snap-start flex-none`-Wrapper haben unterschiedliche Breiten (96px Photo-Card vs Upload-Form). Auf älterem iOS Safari kann das ungewollte Snap-Glitches auslösen. Fix: explizites `min-w-[6rem]` auf den Snap-Wrappern. Cosmetic Edge-Case.
+
+## Deferred from: code review of story-3.1 (2026-04-29)
+
+- **Keine Pagination in `/objects` und `/objects/rows`** — Pre-existing in `list_objects`; bei wachsendem Portfolio (>500 Objekte) wird Server-side-Sort + Voll-DOM-Swap teuer. Story 3.2 (Mobile Card-Layout) oder eigene Story fuer Pagination/Lazy-Loading.
+- **A11y fehlt an Sort-Headern** — Kein `aria-sort`, kein `tabindex`, kein Keyboard-Handler. `<th>` sind mausgebundene Buttons. Pattern projektweit konsistent fehlend; gehoert in eine zentrale A11y-Pass-Story.
+- **`accessible_object_ids(db, user)` pro Request neu berechnet** [`app/routers/objects.py`] — Bei jedem Sort-/Filter-Klick wird die Permission-Set-Query erneut ausgefuehrt. Pre-existing pattern in allen Routes; ggf. Request-scoped Cache als Optimierung.
+- **`hx-push-url` fehlt fuer Bookmarking/Backbutton** [`app/templates/objects_list.html`] — Sort/Filter-State persistiert nicht in Browser-History. Pre-existing pattern, projektweit nicht verwendet.
+- **Kein `hx-indicator` fuer Loading-Feedback** [`app/templates/objects_list.html`] — Sort-/Filter-Klicks haben keine visuelle Latenz-Rueckmeldung. Pre-existing pattern.
+- **Money-Format `"%.0f"` ohne Tausenderpunkt** [`app/templates/_obj_table_body.html`] — `1234567` statt `1.234.567 €`. Konsistent mit `_versicherer_rows.html` und anderen Listen; UX-Polish-Kandidat.
+- **`/objects` Voll-Page ignoriert `?sort`/`?order`/`?filter_reserve` Query-Params** [`app/routers/objects.py`] — Deeplinks zu sortierten/gefilterten Views unmoeglich; nur via HTMX-Fragment moeglich. Spec-Pseudo-Code-Verhalten 1:1 uebernommen.
+- **Spec-interner Widerspruch: numerische Sort-Default** [`output/implementation-artifacts/3-1-objekt-liste-mit-sortierung-filter.md`] — Pseudo-Code Task 2.3 hat `order=asc` Default; Dev Note "Sort-Default fuer numerische Spalten" sagt erster Klick desc. Implementierung folgt beidem; funktioniert aktuell nur, weil Toggle eh kaputt ist (siehe Decision-Finding zu OOB-Swap).
+
 ## Deferred from: code review of story-2.8 (2026-04-28)
 
 - **Negative Praemie / negative Schaden nicht sanitiziert** [`app/services/registries.py:229,274`] — `gesamtpraemie` / `gesamtschaden` werden naiv akkumuliert. Der `gesamtpraemie > 0`-Guard fuer Division-by-Zero greift bei negativen Summen falsch (Quote = 0). In Praxis nicht erwartet, aber wieder ein Datenmodell-Aspekt (siehe gleiche Note aus Story 2.7).

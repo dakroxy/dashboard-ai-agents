@@ -1,6 +1,6 @@
 # Story 3.1: Objekt-Liste mit Sortierung & Filter
 
-Status: review
+Status: done
 
 ## Story
 
@@ -888,22 +888,46 @@ Service: `ObjectListRow` + `_SORT_ALLOWED` + erweiterter `list_objects_with_unit
 
 Alle 6 Dateien geändert, keine neuen Dateien angelegt. 28 neue Tests (10 Service-Unit + 9 neue Smoke + 1 Unit-Count-Coverage-Ersatz). `test_list_unit_count_correct` entfernt und durch Service-Test `test_list_objects_unit_count_in_objectlistrow` ersetzt. `_tbody_slice` auf `body.find("<tbody")` umgestellt, damit `<tbody id="obj-rows">` gefunden wird. Decimal("0")-Truthiness-Falle in Filter und Template via `is not none` korrekt behandelt. Zwei-Listen-NULL-sort hält NULLs in asc+desc am Ende. 727 Tests grün, keine Regressionen.
 
+### Review Findings
+
+Code-Review am 2026-04-29 (3 Reviewer-Layer: Blind Hunter, Edge Case Hunter, Acceptance Auditor).
+
+- [x] [Review][Patch] Sort-Toggle und ↑/↓-Indikator nach erstem Klick eingefroren [`app/templates/objects_list.html`] — Fragment-Response liefert jetzt tbody (primary swap) + `<thead hx-swap-oob="true">` + `<div id="obj-filter-bar" hx-swap-oob="true">` über das neue Partial `_obj_table_swap.html`. Damit re-evaluiert Jinja die `hx-get`/`onclick`-URLs und den ↑/↓-Indikator nach jedem Sort. Sub-Bug nebenbei: HTML-Entity-Pfeile `&uarr;`/`&darr;` im `{{ ... }}` wurden von Autoescape zu `&amp;darr;` verstümmelt — auf Unicode-Pfeile `↑`/`↓` umgestellt.
+- [x] [Review][Patch] Filter-Label auf "Rücklage < 6 Monatsbeiträge" geändert [`app/templates/_obj_filter_bar.html`] — deckt sich mit AC4-Wording.
+- [x] [Review][Patch] `null_rows` werden nun nach `short_code.casefold()` sortiert [`app/services/steckbrief.py`] — deterministische Reihenfolge auch bei mehreren NULLs.
+- [x] [Review][Patch] Tiebreaker-Reverse-Problem behoben [`app/services/steckbrief.py`] — Zwei-Phasen Stable-Sort (Tiebreaker zuerst asc, dann Primary mit reverse). Gilt für String-, mandat_status- und numerischen Branch. Tests `test_sort_tiebreaker_stable_on_descending_numeric/string` decken es ab.
+- [x] [Review][Patch] `order` und `filter_reserve` Query-Parameter case-insensitive [`app/routers/objects.py`] — neuer Helper `normalize_sort_order()` in `app/services/steckbrief.py` (`safe_order` toleriert Whitespace+Case); `filter_bool` nimmt `true`/`1`/`yes`/`on`. Tests `test_normalize_sort_order_*`, `test_rows_order_param_accepts_uppercase`, `test_rows_filter_reserve_accepts_truthy_synonyms`.
+- [x] [Review][Patch] Threshold-Logik konsolidiert [`app/services/steckbrief.py`, `app/templates/_obj_table_body.html`] — neue Konstante `RESERVE_TARGET_MONTHS = 6`, neuer Helper `is_reserve_below_target()`, vorberechnetes Feld `ObjectListRow.reserve_below_target`. Template prüft `{% if row.reserve_below_target %}` statt eigene Berechnung.
+- [x] [Review][Patch] Test-Lücken geschlossen — neue Tests: AC4 Negativfälle (`test_rows_no_badge_when_reserve_*_is_none`), AC4 Decimal(0)-Badge im HTML (`test_rows_badge_rendered_for_decimal_zero_*`), AC5 Negativfall (`test_rows_filter_excludes_objects_with_null_target`), AC6 Filter+Sort kombiniert (`test_rows_filter_and_sort_combined_keeps_filter_and_sorts_result`), Saldo-Reihenfolge tatsächlich verifiziert (`test_sort_saldo_*_puts_*_first`), `sort=mandat_status` (3 Tests), `sort=name` casefold primär (`test_sort_by_name_uses_casefold_primary`), OOB-Fragment-Struktur (`test_rows_fragment_includes_oob_thead_for_indicator_refresh`).
+- [x] [Review][Patch] Substring-Asserts gehärtet [`tests/test_steckbrief_routes_smoke.py`] — short_codes `LOW`/`OK` durch `FRT001`/`FRT002` ersetzt; Asserts laufen über `_tbody_slice` statt `response.text`, sodass Sidebar/Filter-Bar-Strings nicht stören.
+- [x] [Review][Defer] Keine Pagination — Pre-existing in `list_objects`; bei wachsendem Portfolio relevant. — deferred, pre-existing
+- [x] [Review][Defer] A11y fehlt: kein `aria-sort`, `tabindex`, Keyboard-Handler an `<th>`-Sortheadern — projektweit konsistent fehlend. — deferred, pre-existing
+- [x] [Review][Defer] `accessible_object_ids(db, user)` pro Request neu berechnet — pre-existing pattern in allen Routes. — deferred, pre-existing
+- [x] [Review][Defer] `hx-push-url` für Bookmarking/Backbutton — pre-existing pattern, projektweit nicht verwendet. — deferred, pre-existing
+- [x] [Review][Defer] Kein `hx-indicator` für Loading-Feedback bei Sort/Filter — pre-existing pattern. — deferred, pre-existing
+- [x] [Review][Defer] Money-Format `"%.0f"` ohne Tausenderpunkt — pre-existing Listen-Pattern (`_versicherer_rows.html`). — deferred, pre-existing
+- [x] [Review][Defer] `/objects` Voll-Page ignoriert `?sort`/`?order`/`?filter_reserve` Query-Params — Deeplinks zu sortierten/filterten Views unmöglich. Spec-Pseudo-Code-Verhalten. — deferred, pre-existing
+- [x] [Review][Defer] Spec-interner Widerspruch: numerische Sort-Default — Pseudo-Code Task 2.3 hat `order=asc` Default, Dev Note "Sort-Default für numerische Spalten" sagt erster Klick desc. Implementierung folgt beidem (Default asc, Toggle-Logic schickt desc beim ersten Klick auf numerische Spalte) — funktioniert nur deshalb, weil Toggle eh kaputt ist (siehe Decision-Finding 1). — deferred, pre-existing
+
 ## Change Log
 
 - 2026-04-29: Story 3.1 implementiert — `ObjectListRow`, Sort/Filter-Service, `/objects/rows`-Route, HTMX-Templates, 28 neue Tests (Daniel Kroll)
+- 2026-04-29: Code-Review-Patches angewandt — OOB-Swap für Sort-Indikator/-Toggle (D1), Filter-Label "< 6 Monatsbeiträge" (D2), Stable-Sort mit Tiebreaker (P1+P2), case-insensitive Query-Params (P3+P4), `is_reserve_below_target()` als Single Source (P5), 26 zusätzliche Tests für AC-Lücken und Helper (P6+P7+P8). Status auf `done` (Daniel Kroll).
 
 ## Neue Dateien
 
-_(keine)_
+- `app/templates/_obj_table_head.html` — Sort-Header-Partial (extracted für OOB-Swap)
+- `app/templates/_obj_filter_bar.html` — Filter-Bar-Partial (extracted für OOB-Swap)
+- `app/templates/_obj_table_swap.html` — Fragment-Response-Wrapper (tbody + OOB thead/filter-bar)
 
 ## Geänderte Dateien
 
-- `app/services/steckbrief.py`
-- `app/routers/objects.py`
-- `app/templates/objects_list.html`
-- `app/templates/_obj_table_body.html`
-- `tests/test_steckbrief_service_gaps.py`
-- `tests/test_steckbrief_routes_smoke.py`
+- `app/services/steckbrief.py` — `RESERVE_TARGET_MONTHS`, `is_reserve_below_target()`, `normalize_sort_order()`, `ObjectListRow.reserve_below_target`, Stable-Sort-Refactor
+- `app/routers/objects.py` — nutzt `normalize_sort_order()`, neuer Filter-Truthy-Set, rendert `_obj_table_swap.html` mit `oob_swap=True`
+- `app/templates/objects_list.html` — verschlankt auf Includes
+- `app/templates/_obj_table_body.html` — `row.reserve_below_target` statt eigener Schwellenrechnung
+- `tests/test_steckbrief_service_gaps.py` — +14 Tests (Helper-Coverage, Stable-Sort, Tiebreaker, Null-Sort, casefold)
+- `tests/test_steckbrief_routes_smoke.py` — +12 Tests (AC4/AC5/AC6, OOB-Fragment, Filter-Label, case-insensitive Params); fragile `LOW`/`OK`-Asserts durch eindeutige short_codes + `_tbody_slice` ersetzt
 
 ## References
 
