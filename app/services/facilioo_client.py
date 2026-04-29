@@ -44,10 +44,21 @@ def _sanitize_error(resp: httpx.Response) -> str:
 
 
 def _make_client() -> httpx.AsyncClient:
+    token = (settings.facilioo_bearer_token or "").strip()
+    if not token:
+        # Frueh raus mit klarer Meldung — sonst wuerde httpx den Header
+        # `"Bearer "` als LocalProtocolError ablehnen, der Retry-Pfad zieht
+        # 22 s (2+5+15 s Backoff) Wartezeit pro Aufruf. Passiert in der Praxis,
+        # wenn das Prod-.env die Variable nicht gesetzt hat.
+        raise FaciliooError(
+            "FACILIOO_BEARER_TOKEN ist nicht gesetzt. "
+            "Bitte im Elestio-UI / .env nachtragen.",
+            -1,
+        )
     return httpx.AsyncClient(
         base_url=settings.facilioo_base_url,
         headers={
-            "Authorization": f"Bearer {settings.facilioo_bearer_token}",
+            "Authorization": f"Bearer {token}",
             "Accept": "application/json",
         },
         timeout=_TIMEOUT,

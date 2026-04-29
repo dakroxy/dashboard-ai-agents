@@ -134,6 +134,20 @@ def _patched_facilioo_client(handler):
 
 
 @pytest.mark.asyncio
+async def test_missing_token_raises_immediately_no_retry_wait(monkeypatch):
+    """Ohne Token soll der Client SOFORT failen — sonst zieht der httpx-
+    LocalProtocolError-Retry 22 s pro Aufruf (Bug, der in Prod gesehen wurde)."""
+    import time
+    from app.services import facilioo_client as fc
+    monkeypatch.setattr(fc.settings, "facilioo_bearer_token", "")
+    t0 = time.time()
+    with pytest.raises(fc.FaciliooError) as exc_info:
+        await fc.list_conferences()
+    assert (time.time() - t0) < 0.5, "Muss unter 500 ms scheitern, kein Retry"
+    assert "nicht gesetzt" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
 async def test_list_conferences_starts_at_page_one(monkeypatch):
     """Regression: Facilioo verlangt pageNumber>=1, sonst 400.
     Der Client darf nie pageNumber=0 anfragen."""
