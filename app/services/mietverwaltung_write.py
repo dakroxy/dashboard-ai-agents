@@ -38,6 +38,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.db import SessionLocal
 from app.models import Case
+from app.services._time import today_local
 from app.services.audit import audit
 from app.services.impower import (
     ImpowerError,
@@ -293,7 +294,7 @@ async def _write_property_owner_contract(
             "property_id oder owner_id fehlt beim PROPERTY_OWNER-Contract.", -1,
         )
     mc = state.get("management_contract") or {}
-    today = datetime.date.today().isoformat()
+    today = today_local().isoformat()
     payload = [
         {
             "propertyId": ir["property_id"],

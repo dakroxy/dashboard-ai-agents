@@ -11,6 +11,8 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.models import InsurancePolicy, Object, Schadensfall, Unit, Versicherer
+from app.services._severity import WartungSeverity
+from app.services._time import today_local
 
 _SORT_ALLOWED = frozenset({"name", "policen_anzahl", "gesamtpraemie", "schadensquote", "objekte_anzahl"})
 
@@ -113,7 +115,7 @@ class PolicyDetailRow:
     praemie: Decimal | None
     next_main_due: date | None
     days_remaining: int | None
-    severity: str  # "critical" | "warning" | "normal" | "none"
+    severity: str  # WartungSeverity-Wert (StrEnum, str-kompatibel)
 
 
 @dataclass
@@ -139,7 +141,7 @@ class HeatmapBucket:
     month: int
     label: str        # z.B. "Apr 2026"
     policy_count: int
-    severity: str     # "critical" | "warning" | "normal" | "empty"
+    severity: str     # WartungSeverity-Wert (StrEnum, str-kompatibel)
 
 
 @dataclass
@@ -166,17 +168,17 @@ def _build_heatmap(policen: list[PolicyDetailRow], today: date) -> list[HeatmapB
             if p.next_main_due and p.next_main_due.year == y and p.next_main_due.month == m
         ]
         if not bucket_policen:
-            severity = "empty"
+            severity = WartungSeverity.EMPTY
         else:
             min_days = min(
                 p.days_remaining for p in bucket_policen if p.days_remaining is not None
             )
             if min_days < 30:
-                severity = "critical"
+                severity = WartungSeverity.CRITICAL
             elif min_days < 90:
-                severity = "warning"
+                severity = WartungSeverity.WARNING
             else:
-                severity = "normal"
+                severity = WartungSeverity.NORMAL
         buckets.append(HeatmapBucket(
             year=y,
             month=m,
@@ -214,19 +216,19 @@ def get_versicherer_detail(
     policen_raw = db.execute(policen_q).all()
 
     # Step 3
-    today = date.today()
+    today = today_local()
     policen: list[PolicyDetailRow] = []
     gesamtpraemie = Decimal("0")
     for r in policen_raw:
         dr = (r.next_main_due - today).days if r.next_main_due else None
         if dr is None:
-            sev = "none"
+            sev = WartungSeverity.NONE
         elif dr < 30:
-            sev = "critical"
+            sev = WartungSeverity.CRITICAL
         elif dr < 90:
-            sev = "warning"
+            sev = WartungSeverity.WARNING
         else:
-            sev = "normal"
+            sev = WartungSeverity.NORMAL
         gesamtpraemie += Decimal(str(r.praemie)) if r.praemie is not None else Decimal("0")
         policen.append(PolicyDetailRow(
             policy_id=r.id,

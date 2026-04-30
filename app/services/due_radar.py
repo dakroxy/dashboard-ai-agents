@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import InsurancePolicy, Object, Versicherer, Wartungspflicht
+from app.services._severity import DueRadarSeverity
+from app.services._time import today_local
 
 
 @dataclass(frozen=True)
@@ -19,16 +21,16 @@ class DueRadarEntry:
     object_short_code: str
     due_date: date
     days_remaining: int
-    severity: str
+    severity: str  # DueRadarSeverity-Wert (StrEnum, str-kompatibel)
     title: str
     link_url: str
     versicherer_id: uuid.UUID | None = None
 
 
-def _severity(days_remaining: int) -> str:
+def _severity(days_remaining: int) -> DueRadarSeverity:
     if days_remaining < 30:
-        return "< 30 Tage"
-    return "< 90 Tage"
+        return DueRadarSeverity.LT30
+    return DueRadarSeverity.LT90
 
 
 def list_due_within(
@@ -46,7 +48,7 @@ def list_due_within(
     if not accessible_object_ids:
         return []
 
-    today = date.today()
+    today = today_local()
     cutoff = today + timedelta(days=days)
     entries: list[DueRadarEntry] = []
 
@@ -122,9 +124,9 @@ def list_due_within(
             )
 
     # Severity-Filter in Python (days_remaining wird erst nach DB-Load berechnet)
-    if severity == "< 30 Tage":
+    if severity == DueRadarSeverity.LT30:
         entries = [e for e in entries if e.days_remaining < 30]
-    elif severity == "< 90 Tage":
+    elif severity == DueRadarSeverity.LT90:
         entries = [e for e in entries if e.days_remaining < 90]
 
     entries.sort(key=lambda e: e.due_date)

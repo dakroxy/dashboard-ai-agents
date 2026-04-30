@@ -6,7 +6,15 @@ The test DB is SQLite in-memory (StaticPool so all sessions share one connection
 from __future__ import annotations
 
 import os
+import time
 import uuid
+
+# Story 4.0 / AC8 — Test-Container-Timezone auf Europe/Berlin pinnen, BEVOR
+# irgendwo date.today() oder datetime.now() bei Modul-Import laeuft. Damit
+# liefert date.today() in Tests dasselbe Datum wie today_local() im Service —
+# Tagesrand-Flake durch UTC-vs-Berlin-Drift ausgeschlossen.
+os.environ["TZ"] = "Europe/Berlin"
+time.tzset()
 
 # Set env vars before any app import so pydantic-settings picks them up.
 os.environ.setdefault("APP_ENV", "development")

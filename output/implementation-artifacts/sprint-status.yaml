@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-30 (Story 3.6 done — 12 Code-Review-Patches angewendet, 851 Tests grün)
+# last_updated: 2026-04-30 (Story 4.0 done — Code-Hygiene-Helpers + Triage)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-30 (Story 3.6 done — 12 Code-Review-Patches angewendet, 851 Tests grün)
+last_updated: 2026-04-30 (Story 4.0 done — Code-Hygiene-Helpers + Triage)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -75,12 +75,13 @@ development_status:
   3-4-pflegegrad-badge-komposition-popover: done
   3-5-review-queue-admin-ui-mit-filtern: done
   3-6-review-queue-approve-reject: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: Facilioo-Ticket-Integration (Launch-Optional)
   epic-4: in-progress
+  4-0-code-hygiene-helpers-und-triage: done
   4-1-facilioo-api-spike: ready-for-dev
-  4-2-facilioo-client-mit-retry-rate-gate: backlog
-  4-3-1-min-poll-job-mit-delta-support: backlog
-  4-4-facilioo-tickets-am-objekt-detail: backlog
+  4-2-facilioo-client-mit-retry-rate-gate: ready-for-dev
+  4-3-1-min-poll-job-mit-delta-support: ready-for-dev
+  4-4-facilioo-tickets-am-objekt-detail: ready-for-dev
   epic-4-retrospective: optional

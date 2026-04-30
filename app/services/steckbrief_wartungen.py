@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import InsurancePolicy, User, Wartungspflicht
 from app.models.registry import Dienstleister
+from app.services._severity import WartungSeverity
+from app.services._time import today_local
 from app.services.audit import audit
 from app.services.steckbrief_write_gate import write_field_human
 
@@ -35,14 +37,14 @@ def get_wartungspflichten_for_policy(
     return list(db.execute(stmt).scalars().unique().all())
 
 
-def get_due_severity(next_due_date: date | None) -> str | None:
+def get_due_severity(next_due_date: date | None) -> WartungSeverity | None:
     if next_due_date is None:
         return None
-    today = date.today()
+    today = today_local()
     if next_due_date <= today + timedelta(days=30):
-        return "critical"
+        return WartungSeverity.CRITICAL
     if next_due_date <= today + timedelta(days=90):
-        return "warning"
+        return WartungSeverity.WARNING
     return None
 
 
