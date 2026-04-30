@@ -24,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, select, update
+from sqlalchemy import String, cast, func, select, update
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -911,16 +911,26 @@ def _localize_run(run: dict) -> dict:
 def _load_error_budget_alert(db: Session, *, job_name: str) -> dict | None:
     """Liest den juengsten error_budget_exceeded-Alert fuer einen Job (letzte 24 h).
 
+    SQL-seitiger Filter auf job + alert via cast/LIKE — Postgres- und
+    SQLite-Test-Setup tauglich. Doppelte Python-Filter-Pruefung als Defensive
+    falls LIKE-Match zu breit triggert.
+
     Gibt das details_json-Dict zurueck wenn vorhanden, sonst None.
     """
     window_start = datetime.now(tz=timezone.utc) - timedelta(hours=24)
+    details_text = cast(AuditLog.details_json, String)
     rows = (
-        db.query(AuditLog)
-        .filter(
-            AuditLog.action == "sync_failed",
-            AuditLog.created_at >= window_start,
+        db.execute(
+            select(AuditLog)
+            .where(
+                AuditLog.action == "sync_failed",
+                AuditLog.created_at >= window_start,
+                details_text.like(f'%"job": "{job_name}"%'),
+                details_text.like('%"alert": "error_budget_exceeded"%'),
+            )
+            .order_by(AuditLog.created_at.desc())
         )
-        .order_by(AuditLog.created_at.desc())
+        .scalars()
         .all()
     )
     for row in rows:
@@ -973,7 +983,7 @@ async def sync_status_home(
             "alert": None,
             "counter_labels": {
                 "tickets_inserted": None, "tickets_updated": None,
-                "tickets_archived": None, "tickets_unmapped": None,
+                "tickets_archived": None, "objects_unmapped": None,
             },
         },
         {
@@ -988,7 +998,7 @@ async def sync_status_home(
                 "tickets_inserted": "Neu",
                 "tickets_updated": "Aktualisiert",
                 "tickets_archived": "Archiviert",
-                "tickets_unmapped": "Ohne Mapping",
+                "objects_unmapped": "Ohne Facilioo-Mapping",
             },
         },
     ]
@@ -1017,7 +1027,10 @@ async def trigger_mirror_run(
     `job_name`-Form-Param entscheidet welcher Job gestartet wird.
     Unbekannter Job-Name → 400. Default: steckbrief_impower_mirror
     (Backwards-Compat zu Story 1.4, kein Breaking Change).
+    Leerer / whitespace-only String wird als Default behandelt — HTML-Forms
+    schicken bei leerem Feld einen leeren String, nicht 'None'.
     """
+    job_name = (job_name or "").strip() or _MIRROR_JOB_NAME
     if job_name == _FACILIOO_JOB_NAME:
         background_tasks.add_task(run_facilioo_mirror)
     elif job_name == _MIRROR_JOB_NAME:

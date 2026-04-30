@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-30 (Story 4.2 Code-Review → done)
+# last_updated: 2026-04-30 (Story 4.3 Code-Review → done)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-30 (Story 4.2 Code-Review → done)
+last_updated: 2026-04-30 (Story 4.3 Code-Review → done)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -82,6 +82,6 @@ development_status:
   4-0-code-hygiene-helpers-und-triage: done
   4-1-facilioo-api-spike: done
   4-2-facilioo-client-mit-retry-rate-gate: done
-  4-3-1-min-poll-job-mit-delta-support: review
+  4-3-1-min-poll-job-mit-delta-support: done
   4-4-facilioo-tickets-am-objekt-detail: ready-for-dev
   epic-4-retrospective: optional

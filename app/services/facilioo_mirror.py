@@ -19,28 +19,25 @@ import asyncio
 import logging
 import time
 import uuid
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import String, cast, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import SessionLocal
-from app.models import Object
+from app.models import AuditLog, Object
 from app.models.facilioo import FaciliooTicket
-from app.services import facilioo as facilioo_svc
+from app.services._sync_common import SyncRunResult, strip_html_error
 from app.services.audit import audit
 from app.services.facilioo import (
     FaciliooError,
     _get_all_paged,
-    _get_properties_cached,
     _make_client,
     derive_status,
     parse_facilioo_datetime,
 )
-from app.services._sync_common import SyncRunResult, strip_html_error
 
 
 _logger = logging.getLogger(__name__)
@@ -48,13 +45,15 @@ _logger = logging.getLogger(__name__)
 _JOB_NAME = "facilioo_ticket_mirror"
 _POLL_RUN_TIMEOUT_SECONDS = 5 * 60  # 5 min — Worst-Case aus Story 4.2 + Diff
 
-# ETag-State (in-memory, kein Persist — nach Restart leer, naechster Tick
-# laedt voll, akzeptable ueberzaehlige Iteration, siehe Dev Notes).
-_last_etag: str | None = None
-
 # Lazy-Lock + Task (analog steckbrief_impower_mirror.py:77-91).
 _poller_lock: asyncio.Lock | None = None
 _poller_task: asyncio.Task | None = None
+
+# Properties-Cache (TTL 5 min) — reduziert /api/properties-Calls von 1440/Tag
+# auf ~288/Tag. Boundary-konform hier (im Mirror-Modul) statt in facilioo.py.
+_properties_cache: list[dict] | None = None
+_properties_cache_ts: float = 0.0
+_PROPERTIES_CACHE_TTL: float = 5 * 60.0
 
 
 def _get_poller_lock() -> asyncio.Lock:
@@ -68,6 +67,25 @@ def _reset_poller_lock_for_tests() -> None:
     """Test-Hook: Lock droppen, damit Lazy-Getter im naechsten Lauf frisch baut."""
     global _poller_lock
     _poller_lock = None
+
+
+def _reset_properties_cache_for_tests() -> None:
+    """Test-Hook: Properties-Cache leeren."""
+    global _properties_cache, _properties_cache_ts
+    _properties_cache = None
+    _properties_cache_ts = 0.0
+
+
+async def _get_properties_cached(client: Any) -> list[dict]:
+    """Gibt gecachte Facilioo-Property-Liste zurueck (TTL 5 min)."""
+    global _properties_cache, _properties_cache_ts
+    now = time.monotonic()
+    if _properties_cache is not None and (now - _properties_cache_ts) < _PROPERTIES_CACHE_TTL:
+        return _properties_cache
+    props = await _get_all_paged(client, "/api/properties")
+    _properties_cache = props
+    _properties_cache_ts = time.monotonic()
+    return props
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +113,12 @@ def _write_audit(
         )
         db.commit()
     except Exception:
+        # Session in invalid-state → rollback bevor close, sonst risk Connection-
+        # Pool-Reuse-Fehler bei naechstem checkout.
+        try:
+            db.rollback()
+        except Exception:
+            pass
         _logger.exception("audit write failed (action=%s, run_id=%s)", action, run_id)
     finally:
         db.close()
@@ -108,7 +132,6 @@ async def _fetch_all_ticket_bundles(
     client: Any,
     db_factory: Any,
     counters: dict[str, Any],
-    etag_meta: dict[str, Any],
 ) -> list[dict]:
     """Ladet Tickets fuer alle Objects mit Facilioo-Mapping.
 
@@ -116,49 +139,38 @@ async def _fetch_all_ticket_bundles(
       {object_id, impower_property_id, tickets: [...]}
 
     Unmapped Objects (kein passender externalId in Facilioo) werden in
-    counters["unmapped_objects"] gesammelt — kein INSERT.
+    counters["unmapped_objects"] gesammelt — kein Ticket-Fetch.
+    Doppelte impower_property_ids in der DB werden geloggt + dedupliziert
+    (zweites Object wird uebersprungen, sonst UNIQUE-Konflikt auf facilioo_id).
+    Per-Property-Fehler im Ticket-Fetch isolieren wir, damit eine kaputte
+    Property nicht den ganzen Tick killt.
     """
-    global _last_etag
-
-    # ETag-Probe (Shortcircuit bei 304 — Facilioo unterstuetzt das Stand
-    # 2026-04-30 nicht, aber der Code-Pfad ist vorbereitet fuer spaeteren Support).
-    if settings.facilioo_etag_enabled and _last_etag is not None:
-        result = await facilioo_svc._api_get(
-            client, "/api/properties",
-            params={"pageNumber": 1, "pageSize": 1},
-            etag=_last_etag,
-            return_response=True,
-        )
-        body, hdrs, status = result
-        etag_meta["etag_used"] = True
-        if status == 304:
-            etag_meta["etag_unchanged"] = True
-            return []
-        new_etag = (hdrs or {}).get("etag") or (hdrs or {}).get("ETag")
-        if new_etag:
-            _last_etag = new_etag
-            etag_meta["new_etag"] = new_etag
-
     # Eigenschaften-Cache laden (5-min-TTL — ~288 Calls/Tag statt 1440).
     all_properties = await _get_properties_cached(client)
 
     # Mapping: impower_property_id (numerischer String) → Facilioo-property-id (int).
-    # Haertung analog Spike-Abschnitt "Mapping-Algorithmus":
-    #   - leerer/fehlender externalId → skip
-    #   - nicht-numerischer externalId → skip
+    # Defensive Validierung:
+    #   - prop ist dict
+    #   - prop["id"] ist int
+    #   - externalId ist non-empty + nur Ziffern
     #   - Duplicate externalId → WARN + ersten Eintrag behalten
     impower_to_facilioo: dict[str, int] = {}
     for prop in all_properties:
+        if not isinstance(prop, dict):
+            continue
+        pid = prop.get("id")
+        if not isinstance(pid, int):
+            continue
         ext = (prop.get("externalId") or "").strip()
         if not ext.isdigit():
             continue
         if ext in impower_to_facilioo:
             _logger.warning(
                 "Facilioo duplicate externalId=%s (property_id=%s) — skipped",
-                ext, prop.get("id"),
+                ext, pid,
             )
             continue
-        impower_to_facilioo[ext] = prop["id"]
+        impower_to_facilioo[ext] = pid
 
     # Objects aus DB laden.
     db = db_factory()
@@ -172,8 +184,16 @@ async def _fetch_all_ticket_bundles(
         db.close()
 
     bundles: list[dict] = []
+    seen_pids: set[str] = set()  # Dedup gegen UNIQUE-Konflikte auf facilioo_id
     for obj in objects:
         pid_str = str(obj.impower_property_id)
+        if pid_str in seen_pids:
+            _logger.warning(
+                "Object %s teilt impower_property_id=%s mit fruehrer Object-Row — skipped",
+                obj.id, pid_str,
+            )
+            continue
+        seen_pids.add(pid_str)
         facilioo_id = impower_to_facilioo.get(pid_str)
         if facilioo_id is None:
             counters["unmapped_objects"].append({
@@ -181,31 +201,25 @@ async def _fetch_all_ticket_bundles(
                 "impower_property_id": pid_str,
             })
             continue
-        tickets = await _get_all_paged(
-            client, f"/api/properties/{facilioo_id}/processes"
-        )
+        try:
+            tickets = await _get_all_paged(
+                client, f"/api/properties/{facilioo_id}/processes"
+            )
+        except FaciliooError as exc:
+            # Per-Property-Failure-Isolation: kaputte Property kippt nicht den
+            # gesamten Tick. Audit + weiter zur naechsten Property.
+            err_msg = strip_html_error(f"{type(exc).__name__}: {exc}")
+            counters["property_fetch_failures"].append({
+                "object_id": str(obj.id),
+                "impower_property_id": pid_str,
+                "error": err_msg,
+            })
+            continue
         bundles.append({
             "object_id": obj.id,
             "impower_property_id": pid_str,
             "tickets": tickets,
         })
-
-    # Nach erfolgreicher Full-Pull-Iteration: ETag fuer naechsten Lauf captur:
-    # Falls Facilioo irgendwann ETag unterstuetzt, liegt er im Response-Header.
-    if settings.facilioo_etag_enabled and etag_meta.get("new_etag") is None:
-        try:
-            _, hdrs, status = await facilioo_svc._api_get(
-                client, "/api/properties",
-                params={"pageNumber": 1, "pageSize": 1},
-                return_response=True,
-            )
-            if status == 200:
-                new_etag = (hdrs or {}).get("etag") or (hdrs or {}).get("ETag")
-                if new_etag:
-                    _last_etag = new_etag
-                    etag_meta["new_etag"] = new_etag
-        except Exception:
-            pass
 
     return bundles
 
@@ -221,9 +235,10 @@ def _reconcile_object_tickets(
 ) -> None:
     """INSERT neuer, UPDATE geaenderter, ARCHIVE fehlender Tickets fuer 1 Object.
 
-    Two-Phase-Sicherheit: Archivierung (SET is_archived=True) erfolgt nur,
-    wenn der komplette Ticket-Pull fuer dieses Object erfolgreich war.
-    Partieller Pull (Exception) wird vom Aufrufer als Fehler behandelt.
+    Two-Phase-Sicherheit:
+      - Archivierung (SET is_archived=True) erfolgt nur, wenn der API-Pull
+        Tickets geliefert hat. Bei API-Empty-Response trotz aktiver DB-Tickets
+        skipt der Archive-Sweep (Mass-Archive-Schutz, audit anomaly).
     """
     object_id: uuid.UUID = bundle["object_id"]
     api_tickets: list[dict] = bundle["tickets"]
@@ -235,23 +250,42 @@ def _reconcile_object_tickets(
             select(FaciliooTicket).where(FaciliooTicket.object_id == object_id)
         ).scalars().all()
     }
+    active_existing_count = sum(1 for t in existing.values() if not t.is_archived)
 
     api_facilioo_ids: set[str] = set()
 
     for raw in api_tickets:
-        facilioo_id = str(raw.get("id", ""))
+        # Defensive: id muss int oder non-empty-String sein, sonst skip.
+        raw_id = raw.get("id")
+        if not isinstance(raw_id, (int, str)):
+            continue
+        facilioo_id = str(raw_id).strip()
         if not facilioo_id or facilioo_id == "None":
             continue
         api_facilioo_ids.add(facilioo_id)
 
         new_status = derive_status(raw)
-        new_title = raw.get("subject") or ""
+        # Defensive: subject coerce zu String (Facilioo-DTO-Drift-Schutz).
+        new_title = str(raw.get("subject") or "")
         new_is_archived = new_status == "deleted"
         new_last_modified = parse_facilioo_datetime(raw.get("lastModified"))
 
         ticket = existing.get(facilioo_id)
         if ticket is None:
-            # INSERT
+            # Globaler Cross-Object-Lookup: ein Ticket kann von einer Property
+            # zu einer anderen wandern (z. B. Rebooking). UNIQUE(facilioo_id)
+            # wuerde den blinden INSERT killen — wir holen das Ticket und
+            # haengen es an das neue Object.
+            ticket = db.execute(
+                select(FaciliooTicket).where(
+                    FaciliooTicket.facilioo_id == facilioo_id
+                )
+            ).scalars().first()
+            if ticket is not None:
+                ticket.object_id = object_id
+
+        if ticket is None:
+            # INSERT (echtes neues Ticket, weder lokal-pro-Object noch global)
             ticket = FaciliooTicket(
                 id=uuid.uuid4(),
                 object_id=object_id,
@@ -264,41 +298,44 @@ def _reconcile_object_tickets(
             )
             db.add(ticket)
             counters["tickets_inserted"] += 1
-        else:
-            # UPDATE: nur wenn lastModified neuer als gespeicherter Wert
-            # ODER wenn gespeicherter Wert fehlt (Legacy-Row ohne lastModified).
-            should_update = (
-                ticket.facilioo_last_modified is None
-                or new_last_modified is None
-                or (
-                    new_last_modified is not None
-                    and ticket.facilioo_last_modified is not None
-                    and new_last_modified > _aware(ticket.facilioo_last_modified)
-                )
-            )
-            if should_update and (
-                ticket.status != new_status
-                or ticket.title != new_title
-                or ticket.is_archived != new_is_archived
-                or ticket.facilioo_last_modified != new_last_modified
-            ):
-                ticket.status = new_status
-                ticket.title = new_title
-                ticket.raw_payload = raw
-                ticket.is_archived = new_is_archived
+            continue
+
+        # UPDATE — semantischer Diff (status/title/is_archived) ODER
+        # progressed lastModified. Beide Pfade muenden in dieselbe
+        # Update-Logik (Re-Aktivierung wird mit-erfasst, kein elif-Toter-Pfad).
+        new_lm_aware = _aware(new_last_modified) if new_last_modified is not None else None
+        old_lm_aware = _aware(ticket.facilioo_last_modified) if ticket.facilioo_last_modified is not None else None
+
+        # P-D4: Wenn neuer lastModified None ist (Parser-Fehler, Drift),
+        # progressed=False — sonst wuerde das Ticket bei jedem Tick re-written.
+        lastmod_progressed = new_lm_aware is not None and (
+            old_lm_aware is None or new_lm_aware > old_lm_aware
+        )
+        semantic_changed = (
+            ticket.status != new_status
+            or ticket.title != new_title
+            or ticket.is_archived != new_is_archived
+        )
+
+        if lastmod_progressed or semantic_changed:
+            ticket.status = new_status
+            ticket.title = new_title
+            ticket.raw_payload = raw
+            ticket.is_archived = new_is_archived
+            if new_last_modified is not None:
                 ticket.facilioo_last_modified = new_last_modified
-                counters["tickets_updated"] += 1
-            elif ticket.is_archived and not new_is_archived:
-                # Re-Aktivierung: Ticket war archiviert, taucht wieder in API auf.
-                ticket.is_archived = False
-                ticket.status = new_status
-                ticket.title = new_title
-                ticket.raw_payload = raw
-                ticket.facilioo_last_modified = new_last_modified
-                counters["tickets_updated"] += 1
+            counters["tickets_updated"] += 1
 
     # ARCHIVE: DB-Tickets, die nicht mehr in der API-Response sind.
-    # Nur wenn Pull vollstaendig war (Two-Phase: Exception-Pfad archiviert nicht).
+    # Mass-Archive-Schutz: Wenn API leer geliefert hat UND wir aktive DB-Tickets
+    # haben, ist das verdaechtig (Facilioo-Hick) — wir archivieren NICHT.
+    if not api_tickets and active_existing_count > 0:
+        counters["archive_skipped_empty_api"].append({
+            "object_id": str(object_id),
+            "active_tickets_count": active_existing_count,
+        })
+        return
+
     for facilioo_id, ticket in existing.items():
         if facilioo_id not in api_facilioo_ids and not ticket.is_archived:
             ticket.is_archived = True
@@ -306,6 +343,8 @@ def _reconcile_object_tickets(
 
 
 def _aware(dt: datetime) -> datetime:
+    """Coerce naive datetime auf UTC-aware. SQLite-Tests strippen tzinfo;
+    Postgres-Prod liefert tzaware. Beide Wege landen hier symmetrisch."""
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
@@ -315,84 +354,92 @@ def _aware(dt: datetime) -> datetime:
 # Error-Budget (AC5)
 # ---------------------------------------------------------------------------
 
-def _check_error_budget(run_id: uuid.UUID, db_factory: Any) -> dict | None:
+async def _check_error_budget(run_id: uuid.UUID, db_factory: Any) -> dict | None:
     """Prueft ob das Error-Budget in den letzten 24 h ueberschritten wurde.
 
-    Query auf audit_log aggregiert per run_id. Threshold: > 10 % (default)
-    fehlgeschlagene Laeufe bei N >= 10 Laeufen. Idempotenz: in den letzten
-    24 h schon ein alert=error_budget_exceeded fuer diesen Job → kein zweiter.
+    Lädt Audit-Rows der letzten N Stunden und aggregiert pro run_id. Threshold:
+    > 10 % (default) fehlgeschlagene Laeufe bei N >= 10 *abgeschlossenen* Laeufen.
+
+    Run-Counting: nur Runs mit `sync_finished` ODER `sync_failed`-Audit zaehlen
+    als completed. Pure `sync_started`-Runs (mid-flight oder gecrashed) zaehlen
+    NICHT in `total_runs`, sonst deflationiert die Failure-Rate.
+
+    Idempotenz: in den letzten 24 h schon ein alert=error_budget_exceeded fuer
+    diesen Job → kein zweiter Alert. Job-Filter wird im SQL-WHERE per JSON-cast
+    ausgewertet (Postgres-tauglich; SQLite-Tests nutzen TEXT-Spalte).
 
     Fehler in dieser Funktion werden geloggt und nicht propagiert (Risiko 6:
     der Loop darf nicht sterben wenn die Budget-Query fehlschlaegt).
     """
-    from app.models import AuditLog
-    from sqlalchemy import text as sa_text
-
     window_hours = settings.facilioo_error_budget_window_hours
     threshold = settings.facilioo_error_budget_threshold
-    min_sample = settings.facilioo_error_budget_min_sample
+    min_sample = max(1, settings.facilioo_error_budget_min_sample)
 
     try:
         db = db_factory()
         try:
-            # SQLite (Tests) und Postgres unterstuetzen JSON-Extraktion unterschiedlich.
-            # Wir laden die relevanten Rows und aggregieren in Python.
-            from datetime import timedelta
             window_start = datetime.now(tz=timezone.utc) - timedelta(hours=window_hours)
 
+            # SQL-Filter auf JSON-Job-Key. Postgres: JSONB->>'job', SQLite-Test:
+            # JSONB ist als TEXT gerendert, der CAST + LIKE-Match faengt das.
+            # Wir laden nur die fuer diesen Job relevanten Rows.
             rows = db.execute(
                 select(AuditLog).where(
                     AuditLog.action.in_(("sync_started", "sync_finished", "sync_failed")),
                     AuditLog.created_at >= window_start,
+                    cast(AuditLog.details_json, String).like(f'%"job": "{_JOB_NAME}"%'),
                 )
             ).scalars().all()
 
             # Pro run_id aggregieren.
             runs: dict[str, dict] = {}
+            existing_alert = False
             for row in rows:
                 details = row.details_json or {}
                 if details.get("job") != _JOB_NAME:
+                    # Defensive: doppelter Filter falls SQL-LIKE zu breit matcht
                     continue
                 rid = details.get("run_id")
                 if not rid:
                     continue
-                if rid not in runs:
-                    runs[rid] = {"fetch_failed": False, "items_failed": False, "sync_failed": False}
+                state = runs.setdefault(rid, {
+                    "completed": False,
+                    "fetch_failed": False,
+                    "items_failed": False,
+                    "sync_failed_marker": False,
+                })
                 if row.action == "sync_finished":
+                    state["completed"] = True
                     if details.get("fetch_failed"):
-                        runs[rid]["fetch_failed"] = True
+                        state["fetch_failed"] = True
                     if (details.get("objects_failed") or 0) > 0:
-                        runs[rid]["items_failed"] = True
-                elif row.action == "sync_failed" and details.get("alert") != "error_budget_exceeded":
-                    runs[rid]["sync_failed"] = True
+                        state["items_failed"] = True
+                elif row.action == "sync_failed":
+                    if details.get("alert") == "error_budget_exceeded":
+                        existing_alert = True
+                    else:
+                        state["completed"] = True
+                        state["sync_failed_marker"] = True
 
-            total_runs = len(runs)
+            # Idempotenz: schon ein Alert in den letzten 24 h?
+            if existing_alert:
+                return None
+
+            completed_runs = [r for r in runs.values() if r["completed"]]
+            total_runs = len(completed_runs)
             if total_runs < min_sample:
+                return None
+            if total_runs == 0:  # paranoia ZeroDiv-Guard
                 return None
 
             failed_runs = sum(
-                1 for r in runs.values()
-                if r["fetch_failed"] or r["items_failed"] or r["sync_failed"]
+                1 for r in completed_runs
+                if r["fetch_failed"] or r["items_failed"] or r["sync_failed_marker"]
             )
             failure_rate = failed_runs / total_runs
 
             if failure_rate <= threshold:
                 return None
-
-            # Idempotenz: schon ein Alert in den letzten 24 h?
-            existing_alert = db.execute(
-                select(AuditLog).where(
-                    AuditLog.action == "sync_failed",
-                    AuditLog.created_at >= window_start,
-                )
-            ).scalars().all()
-            for row in existing_alert:
-                details = row.details_json or {}
-                if (
-                    details.get("job") == _JOB_NAME
-                    and details.get("alert") == "error_budget_exceeded"
-                ):
-                    return None  # Schon ein Alert vorhanden.
 
             # Alert schreiben.
             alert_details = {
@@ -446,7 +493,9 @@ async def run_facilioo_mirror(
     started_at = datetime.now(tz=timezone.utc)
     result = SyncRunResult(job_name=_JOB_NAME, run_id=run_id, started_at=started_at)
 
-    # --- Lock-Check (atomar in Single-Thread-asyncio) ---
+    # Lock-Check: in single-thread-asyncio race-frei, weil zwischen .locked()
+    # und dem skip-Pfad bzw. .acquire() KEIN await liegt — keine andere
+    # Coroutine kann den Lock dazwischen umschalten.
     if lock.locked():
         result.skipped = True
         result.skip_reason = "already_running"
@@ -474,11 +523,8 @@ async def run_facilioo_mirror(
             "tickets_updated": 0,
             "tickets_archived": 0,
             "unmapped_objects": [],
-        }
-        etag_meta: dict[str, Any] = {
-            "etag_used": False,
-            "etag_unchanged": False,
-            "new_etag": None,
+            "property_fetch_failures": [],
+            "archive_skipped_empty_api": [],
         }
 
         # --- Fetch-Phase ---
@@ -486,7 +532,7 @@ async def run_facilioo_mirror(
         try:
             async with http_client_factory() as client:
                 bundles = await _fetch_all_ticket_bundles(
-                    client, db_factory, counters, etag_meta
+                    client, db_factory, counters
                 )
         except FaciliooError as exc:
             err_msg = strip_html_error(f"{type(exc).__name__}: {exc}")
@@ -499,7 +545,7 @@ async def run_facilioo_mirror(
                 db_factory=db_factory,
             )
             result.finished_at = datetime.now(tz=timezone.utc)
-            _write_finish_audit(result, run_id, counters, etag_meta, db_factory)
+            _write_finish_audit(result, run_id, counters, db_factory)
             return result
         except Exception as exc:
             err_msg = strip_html_error(f"{type(exc).__name__}: {exc}")
@@ -512,13 +558,7 @@ async def run_facilioo_mirror(
                 db_factory=db_factory,
             )
             result.finished_at = datetime.now(tz=timezone.utc)
-            _write_finish_audit(result, run_id, counters, etag_meta, db_factory)
-            return result
-
-        # ETag shortcircuit: nichts zu tun.
-        if etag_meta.get("etag_unchanged"):
-            result.finished_at = datetime.now(tz=timezone.utc)
-            _write_finish_audit(result, run_id, counters, etag_meta, db_factory)
+            _write_finish_audit(result, run_id, counters, db_factory)
             return result
 
         result.items_total = len(bundles)
@@ -556,11 +596,7 @@ async def run_facilioo_mirror(
             )
 
         result.finished_at = datetime.now(tz=timezone.utc)
-        _write_finish_audit(result, run_id, counters, etag_meta, db_factory)
-
-        # --- Error-Budget (nach Abschluss, Fehler werden nicht propagiert) ---
-        _check_error_budget(run_id, db_factory)
-
+        _write_finish_audit(result, run_id, counters, db_factory)
         return result
     finally:
         lock.release()
@@ -570,10 +606,11 @@ def _write_finish_audit(
     result: SyncRunResult,
     run_id: uuid.UUID,
     counters: dict[str, Any],
-    etag_meta: dict[str, Any],
     db_factory: Any,
 ) -> None:
     unmapped = counters.get("unmapped_objects", [])
+    fetch_failures = counters.get("property_fetch_failures", [])
+    archive_skipped = counters.get("archive_skipped_empty_api", [])
     _write_audit(
         action="sync_finished",
         run_id=run_id,
@@ -589,10 +626,17 @@ def _write_finish_audit(
             "tickets_inserted": counters.get("tickets_inserted", 0),
             "tickets_updated": counters.get("tickets_updated", 0),
             "tickets_archived": counters.get("tickets_archived", 0),
-            "tickets_unmapped": len(unmapped),
-            "unmapped_tickets": unmapped[:50],
-            "etag_used": etag_meta.get("etag_used", False),
-            "etag_unchanged": etag_meta.get("etag_unchanged", False),
+            # Counter misst Objects-ohne-Facilioo-Mapping (DB-Object hat
+            # impower_property_id, Facilioo hat keine matchende externalId).
+            "objects_unmapped": len(unmapped),
+            "unmapped_objects": unmapped[:50],
+            # Per-Property-Failures aus dem Fetch-Loop (Single-Property-Isolation).
+            "property_fetch_failures_count": len(fetch_failures),
+            "property_fetch_failures": fetch_failures[:50],
+            # Mass-Archive-Schutz: Bundles, deren Archive-Sweep wegen leerer
+            # API-Response uebersprungen wurde (Facilioo-Hick-Schutz).
+            "archive_skipped_empty_api_count": len(archive_skipped),
+            "archive_skipped_empty_api": archive_skipped[:50],
         },
         db_factory=db_factory,
     )
@@ -603,11 +647,17 @@ def _write_finish_audit(
 # ---------------------------------------------------------------------------
 
 async def _poll_loop() -> None:
-    """Dauerschleife: alle `facilioo_poll_interval_seconds` run_facilioo_mirror aufrufen."""
+    """Dauerschleife: alle `facilioo_poll_interval_seconds` run_facilioo_mirror aufrufen.
+
+    Nach jedem Lauf: Error-Budget-Check (separate Coroutine, Audit-Query-Failures
+    werden geschluckt). Manueller Trigger ueber /admin/sync-status/run laeuft
+    nicht durch _poll_loop und triggert keinen Budget-Check — gewollt, sonst
+    werden manuelle Tests den Budget-Counter aufblasen.
+    """
     while True:
         await asyncio.sleep(settings.facilioo_poll_interval_seconds)
         try:
-            await asyncio.wait_for(
+            run_result = await asyncio.wait_for(
                 run_facilioo_mirror(),
                 timeout=_POLL_RUN_TIMEOUT_SECONDS,
             )
@@ -616,10 +666,20 @@ async def _poll_loop() -> None:
                 "facilioo_mirror_poller: run exceeded %s s timeout",
                 _POLL_RUN_TIMEOUT_SECONDS,
             )
+            continue
         except asyncio.CancelledError:
             raise
         except Exception:
             _logger.exception("facilioo_mirror_poller: run failed")
+            continue
+
+        # Error-Budget-Check NACH wait_for (Spec Task 5.5). Failures werden
+        # in _check_error_budget selbst geschluckt → der Loop ueberlebt.
+        if run_result is not None and run_result.run_id is not None:
+            try:
+                await _check_error_budget(run_result.run_id, SessionLocal)
+            except Exception:
+                _logger.exception("facilioo_mirror_poller: budget check failed")
 
 
 async def start_poller() -> None:

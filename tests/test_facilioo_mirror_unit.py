@@ -1,10 +1,13 @@
 """Unit-Tests fuer app/services/facilioo_mirror.py — Story 4.3.
 
 Abdeckung:
-  AC2: Lock-Skip, Unmapped-Property-Tracking
-  AC3: ETag-Shortcircuit, ETag-Capture, ETag-disabled
-  AC4: Reconcile INSERT / UPDATE / ARCHIVE
-  AC5: Error-Budget-Alert, Idempotenz, Sample-Limit
+  AC1: Lifespan/Idempotenz (start_poller doppelt)
+  AC2: Lock-Skip, Unmapped-Object-Tracking, Cross-Object-Move
+  AC4: Reconcile INSERT / UPDATE (no-op bei Identitaet) / ARCHIVE
+       + Mass-Archive-Schutz, Per-Property-Failure-Isolation
+  AC5: Error-Budget-Alert, Idempotenz, Sample-Limit, Run-Counting
+
+Hinweis: ETag-Tests entfallen (Decision 1, 2026-04-30) — Code-Pfad raus.
 """
 from __future__ import annotations
 
@@ -25,7 +28,10 @@ from app.services.facilioo_mirror import (
     _check_error_budget,
     _reconcile_object_tickets,
     _reset_poller_lock_for_tests,
+    _reset_properties_cache_for_tests,
     run_facilioo_mirror,
+    start_poller,
+    stop_poller,
 )
 from tests.conftest import _TestSessionLocal
 
@@ -58,6 +64,8 @@ def _make_counters() -> dict:
         "tickets_updated": 0,
         "tickets_archived": 0,
         "unmapped_objects": [],
+        "property_fetch_failures": [],
+        "archive_skipped_empty_api": [],
     }
 
 
@@ -119,10 +127,9 @@ def _write_run(db, *, job: str, objects_failed: int = 0) -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_mirror_state(monkeypatch):
-    """Setzt Lock, ETag, Properties-Cache und Rate-Gate vor jedem Test zurueck."""
+    """Setzt Lock, Properties-Cache und Rate-Gate vor jedem Test zurueck."""
     _reset_poller_lock_for_tests()
-    monkeypatch.setattr(mirror, "_last_etag", None)
-    facilioo_svc._reset_properties_cache_for_tests()
+    _reset_properties_cache_for_tests()
     # Rate-Gate: kein Warten in Tests (vermeidet 1-s-Delays pro API-Call)
     monkeypatch.setattr(facilioo_svc, "_REQUEST_INTERVAL", 0.0)
     monkeypatch.setattr(facilioo_svc, "_last_request_time", 0.0)
@@ -161,7 +168,8 @@ def test_full_pull_inserts_new_ticket_with_object_match(db):
 
 
 def test_full_pull_updates_changed_status_no_op_on_identical(db):
-    """AC4: UPDATE bei neuerem lastModified; No-Op bei identischem Ticket."""
+    """AC4 / Test 8.8: UPDATE bei Diff; identische zweite Iteration darf KEINE
+    UPDATE-Statements absetzen (verifiziert via session.dirty)."""
     obj = _seed_object(db, short_code="UPD1", impower_property_id="22222")
     old_ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -192,23 +200,115 @@ def test_full_pull_updates_changed_status_no_op_on_identical(db):
     db.refresh(t2)
     assert t2.status == "open"  # unveraendert
 
+    # Zweite Iteration mit identischer Response → KEINE Updates.
+    # session.dirty muss leer sein nach dem Reconcile.
+    api_tickets_round2 = [
+        {"id": 200, "subject": "Neu", "isFinished": True, "deleted": None,
+         "lastModified": "2026-02-01T12:00:00Z"},
+        {"id": 201, "subject": "Gleich", "isFinished": False, "deleted": None,
+         "lastModified": "2026-01-01T00:00:00Z"},
+    ]
+    counters2 = _make_counters()
+    _reconcile_object_tickets(
+        {"object_id": obj.id, "impower_property_id": "22222", "tickets": api_tickets_round2},
+        db,
+        counters2,
+    )
+    assert counters2["tickets_updated"] == 0
+    assert counters2["tickets_inserted"] == 0
+    assert len(db.dirty) == 0
+
 
 def test_full_pull_archives_missing_ticket(db):
     """AC4: DB-Ticket, das nicht mehr in der API erscheint → is_archived=True."""
     obj = _seed_object(db, short_code="ARC1", impower_property_id="33333")
-    ticket = _seed_ticket(db, obj=obj, facilioo_id="300", status="open",
-                          title="Altes Ticket")
+    # Damit der Mass-Archive-Schutz nicht greift: zweites Ticket bleibt in der
+    # API-Response, sodass api_tickets nicht leer ist.
+    ticket_gone = _seed_ticket(db, obj=obj, facilioo_id="300", status="open",
+                               title="Verschwunden")
+    ticket_keep = _seed_ticket(db, obj=obj, facilioo_id="301", status="open",
+                               title="Bleibt")
 
-    # API liefert keine Tickets mehr fuer dieses Object
-    bundle = {"object_id": obj.id, "impower_property_id": "33333", "tickets": []}
+    api_tickets = [
+        {"id": 301, "subject": "Bleibt", "isFinished": False, "deleted": None,
+         "lastModified": None},
+    ]
+    bundle = {"object_id": obj.id, "impower_property_id": "33333", "tickets": api_tickets}
     counters = _make_counters()
 
     _reconcile_object_tickets(bundle, db, counters)
     db.commit()
-    db.refresh(ticket)
+    db.refresh(ticket_gone)
+    db.refresh(ticket_keep)
 
     assert counters["tickets_archived"] == 1
-    assert ticket.is_archived is True
+    assert ticket_gone.is_archived is True
+    assert ticket_keep.is_archived is False
+
+
+def test_mass_archive_skipped_when_api_returns_empty_with_active_db_tickets(db):
+    """Mass-Archive-Schutz: leere API-Response + aktive DB-Tickets → kein Archive,
+    statt dessen archive_skipped_empty_api-Eintrag im counters."""
+    obj = _seed_object(db, short_code="EMPTY1", impower_property_id="44444")
+    t = _seed_ticket(db, obj=obj, facilioo_id="400", status="open", title="Aktiv")
+
+    bundle = {"object_id": obj.id, "impower_property_id": "44444", "tickets": []}
+    counters = _make_counters()
+
+    _reconcile_object_tickets(bundle, db, counters)
+    db.commit()
+    db.refresh(t)
+
+    assert counters["tickets_archived"] == 0
+    assert t.is_archived is False
+    assert len(counters["archive_skipped_empty_api"]) == 1
+    assert counters["archive_skipped_empty_api"][0]["active_tickets_count"] == 1
+
+
+def test_cross_object_ticket_move_updates_object_id(db):
+    """Wenn ein Ticket von Object A zu Object B wandert, wird object_id
+    umgehaengt statt INSERT (der gegen UNIQUE(facilioo_id) liefe)."""
+    obj_a = _seed_object(db, short_code="MOV-A", impower_property_id="55555")
+    obj_b = _seed_object(db, short_code="MOV-B", impower_property_id="66666")
+    t = _seed_ticket(db, obj=obj_a, facilioo_id="500", status="open",
+                     title="Wandert", last_modified=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    # Object A bekommt KEINEN Ticket-Pull mehr; Object B bekommt das gleiche Ticket.
+    # Bei API-Empty fuer A waere normalerweise Mass-Archive-Schutz aktiv —
+    # hier: A liefert ein Dummy-Ticket damit Archive-Sweep nicht greift.
+    bundle_b = {
+        "object_id": obj_b.id,
+        "impower_property_id": "66666",
+        "tickets": [
+            {"id": 500, "subject": "Wandert", "isFinished": False, "deleted": None,
+             "lastModified": "2026-02-01T00:00:00Z"},
+        ],
+    }
+    counters = _make_counters()
+
+    _reconcile_object_tickets(bundle_b, db, counters)
+    db.commit()
+    db.refresh(t)
+
+    # Kein neuer Row, sondern object_id umgehaengt + UPDATE-Counter
+    assert counters["tickets_inserted"] == 0
+    assert counters["tickets_updated"] == 1
+    assert t.object_id == obj_b.id
+
+
+def test_invalid_ticket_id_skipped(db):
+    """Defensive: ticket id=None / leerer String → kein INSERT."""
+    obj = _seed_object(db, short_code="DEF1", impower_property_id="77777")
+    api_tickets = [
+        {"id": None, "subject": "kein id"},
+        {"id": "", "subject": "leer"},
+        {"id": 700, "subject": "ok", "isFinished": False, "deleted": None,
+         "lastModified": "2026-01-01T00:00:00Z"},
+    ]
+    bundle = {"object_id": obj.id, "impower_property_id": "77777", "tickets": api_tickets}
+    counters = _make_counters()
+    _reconcile_object_tickets(bundle, db, counters)
+    db.commit()
+    assert counters["tickets_inserted"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -238,86 +338,13 @@ async def test_lock_skip_when_already_running(db):
 
 
 # ---------------------------------------------------------------------------
-# AC3: ETag-Support
+# AC2 + AC4: Unmapped Object
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_etag_unchanged_short_circuits_reconcile(db, monkeypatch):
-    """AC3: ETag-304-Probe → kein Reconcile, sync_finished etag_unchanged=True."""
-    monkeypatch.setattr(mirror, "_last_etag", "stale-etag")
-    monkeypatch.setattr(facilioo_svc.settings, "facilioo_etag_enabled", True)
-
-    def handler(request):
-        if request.headers.get("if-none-match"):
-            return httpx.Response(304)
-        raise AssertionError(f"unerwarteter Aufruf ohne ETag-Header: {request.url}")
-
-    result = await run_facilioo_mirror(
-        db_factory=_TestSessionLocal,
-        http_client_factory=_make_mock_http_factory(handler),
-    )
-
-    assert result.skipped is False
-    assert result.fetch_failed is False
-    row = db.execute(
-        select(AuditLog).where(AuditLog.action == "sync_finished")
-    ).scalars().first()
-    assert row is not None
-    assert row.details_json.get("etag_unchanged") is True
-
-
-@pytest.mark.asyncio
-async def test_etag_extracted_and_persisted_across_runs(monkeypatch):
-    """AC3: ETag aus Response-Header → in _last_etag gespeichert fuer naechsten Lauf."""
-    monkeypatch.setattr(facilioo_svc.settings, "facilioo_etag_enabled", True)
-
-    def handler(request):
-        params = dict(request.url.params)
-        if params.get("pageSize") == "1":
-            # ETag-Capture-Aufruf nach Full-Pull
-            return _resp(200, json={"items": []}, headers={"ETag": "fresh-etag-abc"})
-        # Normaler paginierter Aufruf
-        return _resp(200, json={"items": [], "totalPages": 1})
-
-    await run_facilioo_mirror(
-        db_factory=_TestSessionLocal,
-        http_client_factory=_make_mock_http_factory(handler),
-    )
-
-    assert mirror._last_etag == "fresh-etag-abc"
-
-
-@pytest.mark.asyncio
-async def test_etag_disabled_via_settings_skips_header(monkeypatch):
-    """ETag-Probe und ETag-Capture werden uebersprungen wenn facilioo_etag_enabled=False."""
-    monkeypatch.setattr(mirror, "_last_etag", "existing-etag")
-    monkeypatch.setattr(facilioo_svc.settings, "facilioo_etag_enabled", False)
-
-    probe_calls: list[str] = []
-
-    def handler(request):
-        if request.headers.get("if-none-match"):
-            probe_calls.append(str(request.url))
-        return _resp(200, json={"items": [], "totalPages": 1})
-
-    await run_facilioo_mirror(
-        db_factory=_TestSessionLocal,
-        http_client_factory=_make_mock_http_factory(handler),
-    )
-
-    assert len(probe_calls) == 0
-
-
-# ---------------------------------------------------------------------------
-# AC2 + AC4: Unmapped Property
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_full_pull_unmapped_property_id_audited_not_inserted(db, monkeypatch):
-    """AC2+AC4: Object mit impower_property_id ohne Facilioo-Match → kein INSERT,
-    tickets_unmapped=1 in sync_finished."""
-    monkeypatch.setattr(facilioo_svc.settings, "facilioo_etag_enabled", False)
-
+async def test_full_pull_unmapped_object_audited_not_inserted(db, monkeypatch):
+    """AC2+AC4: Object mit impower_property_id ohne Facilioo-Match → kein
+    INSERT, objects_unmapped=1 in sync_finished.details_json."""
     # Facilioo kennt externalId="11111"; Object hat impower_property_id="99999" → kein Match
     _seed_object(db, short_code="NMAP1", impower_property_id="99999")
 
@@ -339,14 +366,19 @@ async def test_full_pull_unmapped_property_id_audited_not_inserted(db, monkeypat
         select(AuditLog).where(AuditLog.action == "sync_finished")
     ).scalars().first()
     assert audit_row is not None
-    assert audit_row.details_json.get("tickets_unmapped", 0) == 1
+    details = audit_row.details_json
+    assert details.get("objects_unmapped") == 1
+    unmapped = details.get("unmapped_objects") or []
+    assert len(unmapped) == 1
+    assert unmapped[0]["impower_property_id"] == "99999"
 
 
 # ---------------------------------------------------------------------------
 # AC5: Error-Budget
 # ---------------------------------------------------------------------------
 
-def test_error_budget_alert_fires_when_threshold_exceeded(db):
+@pytest.mark.asyncio
+async def test_error_budget_alert_fires_when_threshold_exceeded(db):
     """AC5: > 10 % Fehlerrate bei >= 10 Laeufen → sync_failed alert=error_budget_exceeded."""
     _JOB = "facilioo_ticket_mirror"
     # 10 OK-Laeufe + 2 Fehler-Laeufe → 16.7 % > 10 %
@@ -356,7 +388,7 @@ def test_error_budget_alert_fires_when_threshold_exceeded(db):
         _write_run(db, job=_JOB, objects_failed=1)
     db.commit()
 
-    result = _check_error_budget(uuid.uuid4(), _TestSessionLocal)
+    result = await _check_error_budget(uuid.uuid4(), _TestSessionLocal)
 
     assert result is not None
     assert result["alert"] == "error_budget_exceeded"
@@ -370,10 +402,10 @@ def test_error_budget_alert_fires_when_threshold_exceeded(db):
     assert alert_row.details_json.get("alert") == "error_budget_exceeded"
 
 
-def test_error_budget_alert_idempotent_within_24h_window(db):
-    """AC5: Zweiter Check innerhalb 24 h → kein doppelter Alert."""
+@pytest.mark.asyncio
+async def test_error_budget_alert_idempotent_within_24h_window(db):
+    """AC5: Zweiter Check innerhalb 24 h → kein doppelter Alert (Sub-Query Idempotenz)."""
     _JOB = "facilioo_ticket_mirror"
-    # Bereits vorhandener Alert
     audit(
         db, None, "sync_failed",
         entity_type="sync_run", entity_id=None,
@@ -385,27 +417,77 @@ def test_error_budget_alert_idempotent_within_24h_window(db):
         },
         user_email="system",
     )
-    # 12 Laeufe mit 2 Fehlern (ueber Threshold)
     for _ in range(10):
         _write_run(db, job=_JOB, objects_failed=0)
     for _ in range(2):
         _write_run(db, job=_JOB, objects_failed=1)
     db.commit()
 
-    result = _check_error_budget(uuid.uuid4(), _TestSessionLocal)
+    result = await _check_error_budget(uuid.uuid4(), _TestSessionLocal)
 
-    # Idempotenz: schon ein Alert → kein zweiter
     assert result is None
 
 
-def test_error_budget_skipped_when_sample_too_small(db):
-    """AC5: Weniger als 10 Laeufe → kein Alert (Min-Sample nicht erreicht)."""
+@pytest.mark.asyncio
+async def test_error_budget_skipped_when_sample_too_small(db):
+    """AC5: Weniger als min_sample completed Runs → kein Alert."""
     _JOB = "facilioo_ticket_mirror"
-    # Nur 5 Laeufe — alle fehlgeschlagen, aber unter Minimum
     for _ in range(5):
         _write_run(db, job=_JOB, objects_failed=1)
     db.commit()
 
-    result = _check_error_budget(uuid.uuid4(), _TestSessionLocal)
+    result = await _check_error_budget(uuid.uuid4(), _TestSessionLocal)
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_error_budget_only_completed_runs_count_in_total(db):
+    """Run-Counting: nur Runs mit sync_finished/sync_failed-Audit zaehlen.
+    Pure sync_started-Eintraege (mid-flight oder gecrashed) deflationieren
+    Failure-Rate sonst — Spec-Konformitaet vs. Code-Review-Fix."""
+    _JOB = "facilioo_ticket_mirror"
+    # 12 completed, alle gescheitert → 100 % Failure-Rate
+    for _ in range(12):
+        _write_run(db, job=_JOB, objects_failed=1)
+    # 50 mid-flight Runs (nur sync_started, NIE finished) → duerfen NICHT in
+    # total_runs einfliessen, sonst 12/(12+50)=19% < z. B. extreme Threshold.
+    for _ in range(50):
+        rid = str(uuid.uuid4())
+        audit(
+            db, None, "sync_started",
+            entity_type="sync_run", entity_id=uuid.UUID(rid),
+            details={"job": _JOB, "run_id": rid},
+            user_email="system",
+        )
+    db.commit()
+
+    result = await _check_error_budget(uuid.uuid4(), _TestSessionLocal)
+
+    assert result is not None
+    assert result["total_runs"] == 12  # nur die completed Runs
+    assert result["failed_runs"] == 12
+
+
+# ---------------------------------------------------------------------------
+# AC1: Lifespan-Idempotenz
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_start_poller_is_idempotent_against_double_call(monkeypatch):
+    """AC1: Zweiter start_poller-Aufruf darf den Task nicht duplizieren."""
+    # Lange poll_interval setzen, damit der Loop nicht durchspielt
+    monkeypatch.setattr(mirror.settings, "facilioo_poll_interval_seconds", 999.0)
+    try:
+        await start_poller()
+        first_task = mirror._poller_task
+        assert first_task is not None
+        assert not first_task.done()
+
+        # Zweiter Call: gibt Warning + return, aendert NICHT _poller_task
+        await start_poller()
+        second_task = mirror._poller_task
+        assert second_task is first_task
+    finally:
+        await stop_poller()
+        assert mirror._poller_task is None

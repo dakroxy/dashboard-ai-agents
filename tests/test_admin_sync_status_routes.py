@@ -289,7 +289,9 @@ def test_facilioo_alert_banner_renders_on_error_budget(sync_admin_client, db):
     resp = sync_admin_client.get("/admin/sync-status")
     assert resp.status_code == 200
     assert "Error-Budget" in resp.text
-    assert "bg-red-100" in resp.text
+    # Spezifischer Match (statt brittle bg-red-100): das Banner traegt ein
+    # data-Attribute mit dem Job-Namen, das nur am Alert-Banner erscheint.
+    assert 'data-error-budget-alert="facilioo_ticket_mirror"' in resp.text
 
 
 def test_manual_trigger_routes_to_facilioo_job_when_job_name_param_set(

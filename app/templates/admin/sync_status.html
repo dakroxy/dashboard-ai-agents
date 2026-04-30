@@ -19,7 +19,8 @@
     <p class="text-xs text-slate-500 mb-4">{{ job.description }}</p>
 
     {% if job.alert %}
-    <div class="rounded-md bg-red-100 border border-red-400 px-4 py-3 mb-4 text-sm text-red-900">
+    <div data-error-budget-alert="{{ job.job_name }}"
+         class="rounded-md bg-red-100 border border-red-400 px-4 py-3 mb-4 text-sm text-red-900">
         <strong>⚠ Error-Budget überschritten</strong> —
         {{ (job.alert.failure_rate * 100) | round(1) }} % Fehlerquote
         ({{ job.alert.failed_runs }} / {{ job.alert.total_runs }} Läufe in den letzten {{ job.alert.window_hours }} h).
@@ -63,8 +64,8 @@
                     <dd class="font-mono">{{ last_run.counters.get("tickets_updated", 0) }}</dd>
                     <dt class="text-slate-500">{{ job.counter_labels.tickets_archived }}</dt>
                     <dd class="font-mono">{{ last_run.counters.get("tickets_archived", 0) }}</dd>
-                    <dt class="text-slate-500">{{ job.counter_labels.tickets_unmapped }}</dt>
-                    <dd class="font-mono">{{ last_run.counters.get("tickets_unmapped", 0) }}</dd>
+                    <dt class="text-slate-500">{{ job.counter_labels.objects_unmapped }}</dt>
+                    <dd class="font-mono">{{ last_run.counters.get("objects_unmapped", 0) }}</dd>
                     {% else %}
                     <dt class="text-slate-500">OK</dt>
                     <dd class="font-mono">{{ last_run.counters.get("objects_ok", 0) }}</dd>

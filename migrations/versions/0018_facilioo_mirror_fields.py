@@ -38,8 +38,17 @@ def upgrade() -> None:
             nullable=True,
         ),
     )
+    # Index auf is_archived: Mirror filtert pro Tick `WHERE object_id = ? AND
+    # is_archived = false` und der Archive-Sweep macht `WHERE is_archived = false`.
+    # Composite-Index nach (object_id, is_archived) deckt beide Pfade.
+    op.create_index(
+        "ix_facilioo_tickets_object_id_is_archived",
+        "facilioo_tickets",
+        ["object_id", "is_archived"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ix_facilioo_tickets_object_id_is_archived", "facilioo_tickets")
     op.drop_column("facilioo_tickets", "facilioo_last_modified")
     op.drop_column("facilioo_tickets", "is_archived")

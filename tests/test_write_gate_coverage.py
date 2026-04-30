@@ -39,7 +39,10 @@ _CD1_CLASSES: frozenset[str] = frozenset(
         "Mieter",
         "Mietvertrag",
         "Zaehler",
-        "FaciliooTicket",
+        # FaciliooTicket NICHT auf der Liste: Read-only-Mirror-Entitaet ohne
+        # FieldProvenance (Spec: Story 4.3 Dev-Notes "Was wir NICHT machen").
+        # Mirror-Pfad schreibt direkt; es gibt keine User-Edits, gegen die das
+        # Write-Gate schuetzen muesste.
     }
 )
 
