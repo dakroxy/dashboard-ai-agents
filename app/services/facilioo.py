@@ -7,6 +7,9 @@ Pattern bewusst an `app/services/impower.py` angelehnt:
 - Rate-Gate (Default: 1 req/s) deaktivierbar per rate_gate=False.
   ETV-Pfad nutzt rate_gate=False (60+ parallele Calls), Mirror-Pfad (Story 4.3)
   laesst den Default aktiv.
+- ETag-Support: optionaler `etag`-Parameter + `return_response=True` fuer
+  den Mirror-Pfad. Facilioo unterstuetzt aktuell kein ETag/304, aber der
+  Code-Pfad ist vorbereitet (Spike 2026-04-30).
 - HTML-Error-Bodies werden via _sync_common.strip_html_error bereinigt.
 """
 from __future__ import annotations
@@ -14,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -104,18 +108,33 @@ async def _api_get(
     *,
     rate_gate: bool = True,
     _rate_attempt: int = 0,
+    etag: str | None = None,
+    return_response: bool = False,
 ) -> Any:
+    """GET gegen Facilioo-API mit Retry-Backoff und optionalem ETag-Support.
+
+    Mit `return_response=True` wird `(parsed_body, headers_dict, status_code)`
+    zurueckgegeben statt nur `parsed_body`. Noetig fuer den Mirror-Pfad (ETag-
+    Extraktion, 304-Detection). Default `False` bricht bestehende ETV-Caller nicht.
+
+    Mit `etag` wird `If-None-Match: <etag>` als Request-Header gesetzt.
+    Bei Status 304 und `return_response=True` liefert die Funktion
+    `(None, headers_dict, 304)` zurueck (kein raise — 304 ist Erfolg im Mirror).
+    """
     if rate_gate:
         await _rate_limit_gate()
 
+    request_headers = {"If-None-Match": etag} if etag is not None else {}
+
     try:
-        resp = await client.get(path, params=params)
+        resp = await client.get(path, params=params, headers=request_headers or None)
     except (httpx.TransportError, httpx.TimeoutException) as exc:
         if _attempt < _MAX_RETRIES_5XX:
             await asyncio.sleep(_RETRY_DELAYS_5XX[_attempt])
             return await _api_get(
                 client, path, params, _attempt + 1,
                 rate_gate=rate_gate, _rate_attempt=_rate_attempt,
+                etag=etag, return_response=return_response,
             )
         raise FaciliooError(
             f"Verbindungsfehler zu Facilioo: {type(exc).__name__}: {exc}",
@@ -130,13 +149,21 @@ async def _api_get(
         return await _api_get(
             client, path, params, _attempt,
             rate_gate=rate_gate, _rate_attempt=_rate_attempt + 1,
+            etag=etag, return_response=return_response,
         )
+
+    # 304 Not Modified — kein Fehler, Success-Pfad fuer den Mirror.
+    if resp.status_code == 304:
+        if return_response:
+            return (None, dict(resp.headers), 304)
+        return None
 
     if 500 <= resp.status_code < 600 and _attempt < _MAX_RETRIES_5XX:
         await asyncio.sleep(_RETRY_DELAYS_5XX[_attempt])
         return await _api_get(
             client, path, params, _attempt + 1,
             rate_gate=rate_gate, _rate_attempt=_rate_attempt,
+            etag=etag, return_response=return_response,
         )
 
     if resp.status_code >= 400:
@@ -149,15 +176,20 @@ async def _api_get(
     # 204 No Content oder leerer 2xx-Body — Caller bekommt None statt
     # ungewrappter JSONDecodeError. Analog impower.py:521-523.
     if resp.status_code == 204 or not resp.content:
+        if return_response:
+            return (None, dict(resp.headers), resp.status_code)
         return None
     try:
-        return resp.json()
+        body = resp.json()
     except ValueError as exc:
         # ValueError ist Superklasse von json.JSONDecodeError.
         raise FaciliooError(
             f"Non-JSON-Body von Facilioo (Status {resp.status_code})",
             resp.status_code,
         ) from exc
+    if return_response:
+        return (body, dict(resp.headers), resp.status_code)
+    return body
 
 
 async def _get_all_paged(
@@ -331,6 +363,82 @@ async def list_unit_attribute_values(unit_id: int | str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Aggregator fuer einen kompletten ETV-Unterschriftenlisten-Druck
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Mirror-Helpers (Story 4.3)
+# ---------------------------------------------------------------------------
+
+def derive_status(process: dict) -> str:
+    """Leitet den lokalen Status-String aus dem Facilioo-Prozess-DTO ab.
+
+    Regelreihenfolge (Spike 2026-04-30):
+      deleted != null  →  "deleted"   (gewinnt vor isFinished)
+      isFinished=true  →  "finished"
+      sonst            →  "open"
+    """
+    if process.get("deleted") is not None:
+        return "deleted"
+    if process.get("isFinished"):
+        return "finished"
+    return "open"
+
+
+def parse_facilioo_datetime(value: str | None) -> datetime | None:
+    """Parst einen Facilioo-ISO-8601-Zeitstempel als UTC-aware datetime.
+
+    Facilioo liefert Zeitstempel ggf. ohne Offset (naiv). Naiver Input
+    wird als UTC interpretiert. Bei Parse-Fehler: None.
+    """
+    if value is None:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+# Modul-level Properties-Cache (5-min TTL) fuer den Mirror-Pfad.
+# Reduziert API-Calls von ~1440/Tag auf ~288/Tag.
+_properties_cache: list[dict] | None = None
+_properties_cache_ts: float = 0.0
+_PROPERTIES_CACHE_TTL: float = 5 * 60.0
+
+
+async def _get_properties_cached(client: httpx.AsyncClient) -> list[dict]:
+    """Gibt gecachte Facilioo-Property-Liste zurueck (TTL 5 min)."""
+    global _properties_cache, _properties_cache_ts
+    now = time.monotonic()
+    if _properties_cache is not None and (now - _properties_cache_ts) < _PROPERTIES_CACHE_TTL:
+        return _properties_cache
+    props = await _get_all_paged(client, "/api/properties")
+    _properties_cache = props
+    _properties_cache_ts = time.monotonic()
+    return props
+
+
+def _reset_properties_cache_for_tests() -> None:
+    """Test-Hook: Properties-Cache leeren."""
+    global _properties_cache, _properties_cache_ts
+    _properties_cache = None
+    _properties_cache_ts = 0.0
+
+
+async def list_properties() -> list[dict]:
+    """Alle Facilioo-Properties (gecacht, Rate-Gate aktiv)."""
+    async with _make_client() as client:
+        return await _get_properties_cached(client)
+
+
+async def list_processes(facilioo_property_id: int | str) -> list[dict]:
+    """Alle Prozesse (= Tickets) einer Facilioo-Property (Rate-Gate aktiv)."""
+    async with _make_client() as client:
+        return await _get_all_paged(
+            client, f"/api/properties/{facilioo_property_id}/processes"
+        )
+
 
 async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
     """Lädt alles, was die ETV-Unterschriftenliste pro Conference braucht.

@@ -247,3 +247,82 @@ def test_admin_home_shows_sync_status_link_for_admin(sync_admin_client):
     assert resp.status_code == 200
     assert "/admin/sync-status" in resp.text
     assert "Sync-Status" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Story 4.3: Zwei-Job-Layout + Facilioo-Alert + Job-Name-Routing
+# ---------------------------------------------------------------------------
+
+def test_sync_status_shows_two_job_blocks(sync_admin_client):
+    """AC7: Seite rendert sowohl Impower- als auch Facilioo-Job-Block."""
+    resp = sync_admin_client.get("/admin/sync-status")
+    assert resp.status_code == 200
+    assert "Impower Nightly Mirror" in resp.text
+    assert "Facilioo Ticket Mirror" in resp.text
+    # Jeder Job hat seinen eigenen "Jetzt ausführen"-Button
+    assert resp.text.count("Jetzt ausführen") >= 2
+    # Hidden-Inputs fuer job_name
+    assert "steckbrief_impower_mirror" in resp.text
+    assert "facilioo_ticket_mirror" in resp.text
+
+
+def test_facilioo_alert_banner_renders_on_error_budget(sync_admin_client, db):
+    """AC5+AC7: Error-Budget-Alert fuer Facilioo → rotes Banner auf der Seite."""
+    _JOB = "facilioo_ticket_mirror"
+    audit(
+        db, None, "sync_failed",
+        entity_type="sync_run", entity_id=None,
+        details={
+            "job": _JOB,
+            "run_id": str(uuid.uuid4()),
+            "alert": "error_budget_exceeded",
+            "failure_rate": 0.20,
+            "total_runs": 15,
+            "failed_runs": 3,
+            "window_hours": 24,
+            "current_run_id": str(uuid.uuid4()),
+        },
+        user_email="system",
+    )
+    db.commit()
+
+    resp = sync_admin_client.get("/admin/sync-status")
+    assert resp.status_code == 200
+    assert "Error-Budget" in resp.text
+    assert "bg-red-100" in resp.text
+
+
+def test_manual_trigger_routes_to_facilioo_job_when_job_name_param_set(
+    sync_admin_client, monkeypatch
+):
+    """AC7: POST mit job_name=facilioo_ticket_mirror → Facilioo-Mirror wird gestartet."""
+    async def fake_facilioo(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr("app.routers.admin.run_facilioo_mirror", fake_facilioo)
+    resp = sync_admin_client.post(
+        "/admin/sync-status/run",
+        data={"job_name": "facilioo_ticket_mirror"},
+    )
+    assert resp.status_code == 303
+    assert "/admin/sync-status" in resp.headers["location"]
+
+
+def test_manual_trigger_unknown_job_name_returns_400(sync_admin_client):
+    """AC7: Unbekannter job_name → 400 Bad Request."""
+    resp = sync_admin_client.post(
+        "/admin/sync-status/run",
+        data={"job_name": "totally_unknown_job_xyz"},
+    )
+    assert resp.status_code == 400
+
+
+def test_manual_trigger_default_job_name_uses_impower(sync_admin_client, monkeypatch):
+    """AC7: POST ohne job_name → Default steckbrief_impower_mirror wird gestartet."""
+    async def fake_impower(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr("app.routers.admin.run_impower_mirror", fake_impower)
+    resp = sync_admin_client.post("/admin/sync-status/run")
+    assert resp.status_code == 303
+    assert "triggered=1" in resp.headers["location"]

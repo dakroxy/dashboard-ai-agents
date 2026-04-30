@@ -44,6 +44,7 @@ from app.services._sync_common import (
     next_daily_run_at,
 )
 from app.services.audit import KNOWN_AUDIT_ACTIONS, audit
+from app.services.facilioo_mirror import run_facilioo_mirror
 from app.services.steckbrief_impower_mirror import run_impower_mirror
 from app.services.steckbrief_write_gate import (
     WriteGateError,
@@ -54,6 +55,7 @@ from app.templating import templates
 
 _BERLIN_TZ = ZoneInfo("Europe/Berlin")
 _MIRROR_JOB_NAME = "steckbrief_impower_mirror"
+_FACILIOO_JOB_NAME = "facilioo_ticket_mirror"
 # Runs die seit mehr als dieser Zeit im Status "started" haengen, ohne
 # `sync_finished`, werden als "crashed" markiert — typischerweise Container-
 # Restart oder OOM-Kill mitten im Lauf.
@@ -728,7 +730,8 @@ async def delete_log(
 # ---------------------------------------------------------------------------
 
 def _load_recent_mirror_runs(
-    db: Session, *, job_name: str, limit: int = 10
+    db: Session, *, job_name: str, limit: int = 10,
+    stale_after_seconds: int = _MIRROR_STALE_RUNNING_AFTER_SECONDS,
 ) -> list[dict]:
     """Rekonstruiert die letzten `limit` Laeufe aus audit_log.
 
@@ -818,7 +821,7 @@ def _load_recent_mirror_runs(
             if (
                 started_at_local is not None
                 and (now - started_at_local).total_seconds()
-                > _MIRROR_STALE_RUNNING_AFTER_SECONDS
+                > stale_after_seconds
             ):
                 status_ = "crashed"
             else:
@@ -905,6 +908,31 @@ def _localize_run(run: dict) -> dict:
     return run
 
 
+def _load_error_budget_alert(db: Session, *, job_name: str) -> dict | None:
+    """Liest den juengsten error_budget_exceeded-Alert fuer einen Job (letzte 24 h).
+
+    Gibt das details_json-Dict zurueck wenn vorhanden, sonst None.
+    """
+    window_start = datetime.now(tz=timezone.utc) - timedelta(hours=24)
+    rows = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.action == "sync_failed",
+            AuditLog.created_at >= window_start,
+        )
+        .order_by(AuditLog.created_at.desc())
+        .all()
+    )
+    for row in rows:
+        details = row.details_json or {}
+        if (
+            details.get("job") == job_name
+            and details.get("alert") == "error_budget_exceeded"
+        ):
+            return details
+    return None
+
+
 @router.get("/sync-status", response_class=HTMLResponse)
 async def sync_status_home(
     request: Request,
@@ -912,24 +940,66 @@ async def sync_status_home(
     user: User = Depends(require_permission("sync:admin")),
     db: Session = Depends(get_db),
 ):
-    raw_runs = _load_recent_mirror_runs(db, job_name=_MIRROR_JOB_NAME)
-    runs = [_localize_run(r) for r in raw_runs]
-    last_run = runs[0] if runs else None
-    next_run = next_daily_run_at(
-        datetime.now(tz=timezone.utc),
-        hour=MIRROR_RUN_HOUR,
-        minute=MIRROR_RUN_MINUTE,
-        tz=_BERLIN_TZ,
+    from app.config import settings as _settings
+
+    now_utc = datetime.now(tz=timezone.utc)
+
+    # Impower Nightly Mirror
+    impower_raw = _load_recent_mirror_runs(db, job_name=_MIRROR_JOB_NAME)
+    impower_runs = [_localize_run(r) for r in impower_raw]
+    impower_next = next_daily_run_at(
+        now_utc, hour=MIRROR_RUN_HOUR, minute=MIRROR_RUN_MINUTE, tz=_BERLIN_TZ
     )
+
+    # Facilioo Ticket Mirror
+    facilioo_raw = _load_recent_mirror_runs(
+        db, job_name=_FACILIOO_JOB_NAME,
+        stale_after_seconds=10 * 60,  # 1-Min-Poller gilt schon nach 10 min als "crashed"
+    )
+    facilioo_runs = [_localize_run(r) for r in facilioo_raw]
+    facilioo_next = _to_berlin(
+        now_utc + timedelta(seconds=_settings.facilioo_poll_interval_seconds)
+    )
+    facilioo_alert = _load_error_budget_alert(db, job_name=_FACILIOO_JOB_NAME)
+
+    jobs = [
+        {
+            "name": "Impower Nightly Mirror",
+            "job_name": _MIRROR_JOB_NAME,
+            "description": "Cluster 1 + 6 täglich um 02:30 Uhr",
+            "last_run": impower_runs[0] if impower_runs else None,
+            "runs": impower_runs,
+            "next_run": impower_next,
+            "alert": None,
+            "counter_labels": {
+                "tickets_inserted": None, "tickets_updated": None,
+                "tickets_archived": None, "tickets_unmapped": None,
+            },
+        },
+        {
+            "name": "Facilioo Ticket Mirror",
+            "job_name": _FACILIOO_JOB_NAME,
+            "description": "Tickets minütlich per 1-Min-Poll gespiegelt",
+            "last_run": facilioo_runs[0] if facilioo_runs else None,
+            "runs": facilioo_runs,
+            "next_run": facilioo_next,
+            "alert": facilioo_alert,
+            "counter_labels": {
+                "tickets_inserted": "Neu",
+                "tickets_updated": "Aktualisiert",
+                "tickets_archived": "Archiviert",
+                "tickets_unmapped": "Ohne Mapping",
+            },
+        },
+    ]
+
     return templates.TemplateResponse(
         request,
         "admin/sync_status.html",
         {
             "title": "Sync-Status",
             "user": user,
-            "last_run": last_run,
-            "runs": runs,
-            "next_run": next_run,
+            "jobs": jobs,
             "triggered": bool(triggered),
         },
     )
@@ -939,14 +1009,25 @@ async def sync_status_home(
 async def trigger_mirror_run(
     request: Request,
     background_tasks: BackgroundTasks,
+    job_name: str = Form(_MIRROR_JOB_NAME),
     user: User = Depends(require_permission("sync:admin")),
 ):
-    # FastAPI BackgroundTasks fuehrt async-Callables auf dem Event-Loop aus —
-    # kein Sync-Shim noetig. Der Mirror-Lock verhindert Doppellaeufe.
-    background_tasks.add_task(run_impower_mirror)
+    """Manueller Trigger fuer einen Mirror-Lauf.
+
+    `job_name`-Form-Param entscheidet welcher Job gestartet wird.
+    Unbekannter Job-Name → 400. Default: steckbrief_impower_mirror
+    (Backwards-Compat zu Story 1.4, kein Breaking Change).
+    """
+    if job_name == _FACILIOO_JOB_NAME:
+        background_tasks.add_task(run_facilioo_mirror)
+    elif job_name == _MIRROR_JOB_NAME:
+        background_tasks.add_task(run_impower_mirror)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannter Job-Name: {job_name!r}",
+        )
     target = "/admin/sync-status?triggered=1"
-    # HTMX-idiomatisch: bei HX-Request via `HX-Redirect`-Header umleiten.
-    # Ohne HTMX (Form-Fallback) weiterhin 303.
     if request.headers.get("HX-Request") == "true":
         return Response(
             status_code=status.HTTP_200_OK,

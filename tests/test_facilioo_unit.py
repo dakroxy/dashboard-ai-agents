@@ -404,3 +404,54 @@ async def test_etv_paths_skip_rate_gate(monkeypatch):
 
     assert wall < 0.5
     assert isinstance(result, list)
+
+
+# ---------------------------------------------------------------------------
+# Task 3.5: ETag-Support (_api_get)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_api_get_etag_header_added():
+    """ETag-Parameter → If-None-Match-Header wird an den Server geschickt."""
+    captured: dict = {}
+
+    def handler(request):
+        captured["if-none-match"] = request.headers.get("if-none-match")
+        return _resp(200, json=[])
+
+    client = _mock_client(handler)
+    async with client:
+        await facilioo._api_get(client, "/api/test", etag="tag-abc", rate_gate=False)
+
+    assert captured.get("if-none-match") == "tag-abc"
+
+
+@pytest.mark.asyncio
+async def test_api_get_304_returns_none():
+    """Status 304 ohne return_response → None (kein raise)."""
+    def handler(request):
+        return httpx.Response(304)
+
+    client = _mock_client(handler)
+    async with client:
+        result = await facilioo._api_get(client, "/api/test", rate_gate=False)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_api_get_return_response_includes_headers():
+    """return_response=True → (body, headers_dict, status_code)-Tuple."""
+    def handler(request):
+        return _resp(200, json={"items": []}, headers={"ETag": "tag-xyz"})
+
+    client = _mock_client(handler)
+    async with client:
+        result = await facilioo._api_get(
+            client, "/api/test", return_response=True, rate_gate=False
+        )
+
+    body, hdrs, status = result
+    assert status == 200
+    assert body == {"items": []}
+    assert hdrs.get("etag") or hdrs.get("ETag")

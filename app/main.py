@@ -43,6 +43,10 @@ from app.services.claude import (
     DEFAULT_SYSTEM_PROMPT,
 )
 from app.services.photo_store import LocalPhotoStore, create_photo_store
+from app.services.facilioo_mirror import (
+    start_poller as start_facilioo_poller,
+    stop_poller as stop_facilioo_poller,
+)
 from app.services.steckbrief_impower_mirror import run_impower_mirror
 from app.templating import templates
 
@@ -289,6 +293,14 @@ async def lifespan(app: FastAPI):
             "mirror_scheduler: disabled via settings.impower_mirror_enabled"
         )
 
+    # --- Facilioo-Ticket-Mirror (Story 4.3) ---
+    if settings.facilioo_mirror_enabled:
+        await start_facilioo_poller()
+    else:
+        _logger.info(
+            "facilioo_mirror_poller: disabled via settings.facilioo_mirror_enabled"
+        )
+
     # --- PhotoStore-Init (ID1) ---
     _photo_store = await create_photo_store(settings)
     if isinstance(_photo_store, LocalPhotoStore) and settings.photo_backend == "sharepoint":
@@ -319,6 +331,7 @@ async def lifespan(app: FastAPI):
                 await scheduler_task
             except asyncio.CancelledError:
                 pass
+        await stop_facilioo_poller()
 
 
 app = FastAPI(title="Dashboard KI-Agenten", lifespan=lifespan)

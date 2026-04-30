@@ -26,6 +26,7 @@ os.environ.setdefault("IMPOWER_BEARER_TOKEN", "")
 # den Scheduler explizit verifizieren, setzen settings.impower_mirror_enabled
 # per monkeypatch auf True, bevor der Lifespan-Enter laeuft.
 os.environ.setdefault("IMPOWER_MIRROR_ENABLED", "false")
+os.environ.setdefault("FACILIOO_MIRROR_ENABLED", "false")
 
 import pytest
 import sqlalchemy as sa

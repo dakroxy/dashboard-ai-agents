@@ -45,6 +45,18 @@ class Settings(BaseSettings):
     # Scheduler keinen echten Impower-Call ausloest. Prod default True.
     impower_mirror_enabled: bool = True
 
+    # Facilioo-Ticket-Mirror (Story 4.3) — 1-Min-Poll-Job.
+    # In Tests auf False setzen, damit kein echtes Polling gestartet wird.
+    facilioo_mirror_enabled: bool = True
+    facilioo_poll_interval_seconds: float = 60.0
+    # ETag-Schalter: Facilioo unterstuetzt Stand 2026-04-30 kein ETag/304,
+    # aber der Code-Pfad ist vorhanden und per Flag deaktivierbar.
+    facilioo_etag_enabled: bool = True
+    # Error-Budget: > 10 % fehlgeschlagene Polls in 24 h → Alert-Audit.
+    facilioo_error_budget_threshold: float = 0.10
+    facilioo_error_budget_window_hours: int = 24
+    facilioo_error_budget_min_sample: int = 10
+
     # Optional: separater Encryption-Key fuer Steckbrief-Felder (entry_code_*).
     # Leer = Fallback auf secret_key. Prod: eigenen Zufallsschluessel setzen.
     steckbrief_field_key: str = ""
