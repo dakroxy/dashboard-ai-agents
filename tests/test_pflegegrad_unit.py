@@ -9,6 +9,7 @@ import pytest
 from app.models import Eigentuemer, FieldProvenance, InsurancePolicy, Wartungspflicht
 from app.services.pflegegrad import (
     CACHE_TTL,
+    WEAKEST_FIELD_LABELS,
     PflegegradResult,
     get_or_update_pflegegrad_cache,
     pflegegrad_score,
@@ -216,3 +217,52 @@ def test_get_or_update_cache_no_write_when_fresh(db, test_object):
     if stored is not None and stored.tzinfo is None:
         stored = stored.replace(tzinfo=_dt.timezone.utc)
     assert stored == initial_ts
+
+
+# ---------------------------------------------------------------------------
+# AC5c — Cache-Recompute wenn TTL abgelaufen (Boundary > 5 Minuten)
+# ---------------------------------------------------------------------------
+
+def test_get_or_update_cache_recomputes_when_stale(db, test_object):
+    """Cache-Eintrag aelter als CACHE_TTL muss neu berechnet werden;
+    `updated=True` und neuer Timestamp > Initial-TS."""
+    now = _dt.datetime.now(_dt.timezone.utc)
+    stale_ts = now - (CACHE_TTL + _dt.timedelta(seconds=1))
+
+    test_object.pflegegrad_score_cached = 42
+    test_object.pflegegrad_score_updated_at = stale_ts
+    db.commit()
+    db.refresh(test_object)
+
+    result, updated = get_or_update_pflegegrad_cache(test_object, db)
+
+    assert updated is True
+    assert isinstance(result, PflegegradResult)
+    new_ts = test_object.pflegegrad_score_updated_at
+    if new_ts is not None and new_ts.tzinfo is None:
+        new_ts = new_ts.replace(tzinfo=_dt.timezone.utc)
+    assert new_ts > stale_ts
+
+
+# ---------------------------------------------------------------------------
+# Q1(g) — WEAKEST_FIELD_LABELS deckt alle Score-Emissionen
+#
+# Edge-Case-Hunter (Story 3.4): unknown weakest_field-Keys werden im Template
+# still verschluckt (`{% if label_anchor %}` ohne else). Dieser Test zwingt
+# Vollstaendigkeit: jeder Key, den pflegegrad_score in weakest_fields
+# emittieren kann, MUSS im WEAKEST_FIELD_LABELS-Mapping stehen.
+# ---------------------------------------------------------------------------
+
+def test_weakest_field_labels_cover_all_score_emissions(db, test_object):
+    # Komplett leeres Objekt: keine Provenance, keine relationalen Eintraege
+    # → Score 0, alle Pflichtfelder in weakest_fields.
+    result = pflegegrad_score(test_object, db)
+
+    assert result.score == 0
+    assert result.weakest_fields, "Erwartet: leeres Objekt liefert >=1 weakest_field"
+
+    missing = [key for key in result.weakest_fields if key not in WEAKEST_FIELD_LABELS]
+    assert not missing, (
+        f"WEAKEST_FIELD_LABELS deckt nicht alle Score-Emissionen ab. "
+        f"Fehlende Keys: {missing}. Template wuerde diese still verschlucken."
+    )

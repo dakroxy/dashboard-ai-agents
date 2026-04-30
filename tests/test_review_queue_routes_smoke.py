@@ -168,3 +168,60 @@ def test_review_queue_filter_invalid_uuid_no_422(steckbrief_admin_client, db):
     )
     assert resp.status_code == 200
     assert "heating_type" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Q1(g) — JSONB-Shape-Defense fuer proposed_value
+#
+# Konvention: write_field_ai_proposal wraps stets als {"value": ...}.
+# Der Listen-View defendiert in _prepare_entries (admin.py:998-1001) trotzdem
+# gegen abweichende Shapes. Bisher kein Test — Edge-Case-Hunter Klasse aus
+# Epic-3-Retro E4 (Trust-Internal-Data-Shape).
+# ---------------------------------------------------------------------------
+
+def _make_entry_with_value(db, *, agent_ref: str, proposed_value):
+    """Wie _make_entry, aber mit frei waehlbarer proposed_value-Shape."""
+    entry = ReviewQueueEntry(
+        target_entity_type="object",
+        target_entity_id=uuid.uuid4(),
+        field_name="heating_type",
+        proposed_value=proposed_value,
+        agent_ref=agent_ref,
+        confidence=0.5,
+        status="pending",
+        agent_context={},
+        created_at=datetime(2025, 1, 15, tzinfo=timezone.utc),
+    )
+    db.add(entry)
+    db.commit()
+    return entry
+
+
+def test_review_queue_list_renders_dict_without_value_key(steckbrief_admin_client, db):
+    """Dict ohne 'value'-Key: get('value', '') liefert leeren String → kein 500."""
+    _make_entry_with_value(db, agent_ref="agent-no-value-key", proposed_value={"foo": "bar"})
+    resp = steckbrief_admin_client.get("/admin/review-queue/rows")
+    assert resp.status_code == 200
+    assert "agent-no-value-key" in resp.text
+
+
+def test_review_queue_list_renders_list_proposed_value(steckbrief_admin_client, db):
+    """Listen-Shape (nicht dict): isinstance-Check faengt es ab → str(list) gerendert."""
+    _make_entry_with_value(
+        db, agent_ref="agent-list-shape", proposed_value=["a", "b"]
+    )
+    resp = steckbrief_admin_client.get("/admin/review-queue/rows")
+    assert resp.status_code == 200
+    assert "agent-list-shape" in resp.text
+
+
+def test_review_queue_list_renders_scalar_proposed_value(steckbrief_admin_client, db):
+    """JSONB-Skalar (Convention-Verletzung) darf Liste nicht crashen."""
+    _make_entry_with_value(
+        db, agent_ref="agent-scalar-shape", proposed_value="bare-string"
+    )
+    resp = steckbrief_admin_client.get("/admin/review-queue/rows")
+    assert resp.status_code == 200
+    assert "agent-scalar-shape" in resp.text
+    # value_str sollte den Skalar selbst enthalten (else-Branch in _prepare_entries)
+    assert "bare-string" in resp.text
