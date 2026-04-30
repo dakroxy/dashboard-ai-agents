@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-30 (Story 3.5 done — Code-Review-Patches angewendet, 806 Tests grün)
+# last_updated: 2026-04-30 (Story 3.6 done — 12 Code-Review-Patches angewendet, 851 Tests grün)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-30 (Story 3.5 done — Code-Review-Patches angewendet, 806 Tests grün)
+last_updated: 2026-04-30 (Story 3.6 done — 12 Code-Review-Patches angewendet, 851 Tests grün)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -74,7 +74,7 @@ development_status:
   3-3-pflegegrad-score-service: done
   3-4-pflegegrad-badge-komposition-popover: done
   3-5-review-queue-admin-ui-mit-filtern: done
-  3-6-review-queue-approve-reject: ready-for-dev
+  3-6-review-queue-approve-reject: done
   epic-3-retrospective: optional
 
   # Epic 4: Facilioo-Ticket-Integration (Launch-Optional)

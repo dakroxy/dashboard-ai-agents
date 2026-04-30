@@ -1,6 +1,6 @@
 # Story 3.6: Review-Queue Approve/Reject
 
-Status: ready-for-dev
+Status: done
 
 ## Abhängigkeiten
 
@@ -85,52 +85,52 @@ Risiken:
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1**: Route `POST /admin/review-queue/{entry_id}/approve` in `app/routers/admin.py` (AC1, AC2, AC5, AC6)
-  - [ ] 1.1: Imports ergänzen: `from sqlalchemy import update` (falls noch nicht vorhanden) + `from app.services.steckbrief_write_gate import approve_review_entry, reject_review_entry, WriteGateError`
-  - [ ] 1.2: `ReviewQueueEntry` in `admin.py` bereits importiert (aus Story 3.5 Task 6.1) — Existenz prüfen, falls nicht: `from app.models.governance import ReviewQueueEntry` ergänzen
-  - [ ] 1.3: Handler-Signatur: `async def approve_entry(entry_id: uuid.UUID, request: Request, user: User = Depends(require_permission("objects:approve_ki")), db: Session = Depends(get_db))`
-  - [ ] 1.4: Entry vorab laden: `entry = db.get(ReviewQueueEntry, entry_id)` — `None`-Guard: falls nicht gefunden → 404
-  - [ ] 1.5: `try: approve_review_entry(db, entry_id=entry_id, user=user, request=request)` — `except (WriteGateError, ValueError) as e: raise HTTPException(400, detail=str(e))`
-  - [ ] 1.6: Superseding-Update nach erfolgreichem Gate-Call (vor Commit): `db.execute(update(ReviewQueueEntry).where(ReviewQueueEntry.status == "pending", ReviewQueueEntry.target_entity_type == entry.target_entity_type, ReviewQueueEntry.target_entity_id == entry.target_entity_id, ReviewQueueEntry.field_name == entry.field_name, ReviewQueueEntry.id != entry_id).values(status="superseded", decided_at=datetime.now(timezone.utc), decided_by_user_id=user.id))`
-  - [ ] 1.7: `db.commit()`
-  - [ ] 1.8: HTMX-Response: `from fastapi.responses import HTMLResponse as _HTML; resp = Response(status_code=204); resp.headers["HX-Redirect"] = "/admin/review-queue"; return resp` — bei nicht-HTMX-Request als Fallback `RedirectResponse("/admin/review-queue", status_code=303)`
+- [x] **Task 1**: Route `POST /admin/review-queue/{entry_id}/approve` in `app/routers/admin.py` (AC1, AC2, AC5, AC6)
+  - [x] 1.1: Imports ergänzen: `from sqlalchemy import update` (falls noch nicht vorhanden) + `from app.services.steckbrief_write_gate import approve_review_entry, reject_review_entry, WriteGateError`
+  - [x] 1.2: `ReviewQueueEntry` in `admin.py` bereits importiert (aus Story 3.5 Task 6.1) — Existenz prüfen, falls nicht: `from app.models.governance import ReviewQueueEntry` ergänzen
+  - [x] 1.3: Handler-Signatur: `async def approve_entry(entry_id: uuid.UUID, request: Request, user: User = Depends(require_permission("objects:approve_ki")), db: Session = Depends(get_db))`
+  - [x] 1.4: Entry vorab laden: `entry = db.get(ReviewQueueEntry, entry_id)` — `None`-Guard: falls nicht gefunden → 404
+  - [x] 1.5: `try: approve_review_entry(db, entry_id=entry_id, user=user, request=request)` — `except (WriteGateError, ValueError) as e: raise HTTPException(400, detail=str(e))`
+  - [x] 1.6: Superseding-Update nach erfolgreichem Gate-Call (vor Commit): `db.execute(update(ReviewQueueEntry).where(...)`.values(status="superseded", ...)`
+  - [x] 1.7: `db.commit()`
+  - [x] 1.8: HTMX-Response via `_htmx_redirect()`: 204+HX-Redirect bei HTMX-Request, 303 als Fallback
 
-- [ ] **Task 2**: Route `POST /admin/review-queue/{entry_id}/reject` in `app/routers/admin.py` (AC3, AC4, AC5, AC6)
-  - [ ] 2.1: Handler-Signatur: `async def reject_entry(entry_id: uuid.UUID, request: Request, reason: str = Form(""), user: User = Depends(require_permission("objects:approve_ki")), db: Session = Depends(get_db))`
-  - [ ] 2.2: Reason-Guard: `if not reason.strip(): raise HTTPException(400, detail="Begründung ist erforderlich")`
-  - [ ] 2.3: `try: reject_review_entry(db, entry_id=entry_id, user=user, reason=reason.strip(), request=request)` — `except (WriteGateError, ValueError) as e: raise HTTPException(400, detail=str(e))`
-  - [ ] 2.4: `db.commit()`
-  - [ ] 2.5: Gleiche HTMX-Response wie Task 1.8
+- [x] **Task 2**: Route `POST /admin/review-queue/{entry_id}/reject` in `app/routers/admin.py` (AC3, AC4, AC5, AC6)
+  - [x] 2.1: Handler-Signatur: `async def reject_entry(entry_id: uuid.UUID, request: Request, reason: str = Form(""), ...)`
+  - [x] 2.2: Reason-Guard: `if not reason.strip(): raise HTTPException(400, detail="Begründung ist erforderlich")`
+  - [x] 2.3: `try: reject_review_entry(...)` — `except (WriteGateError, ValueError) as e: raise HTTPException(400, detail=str(e))`
+  - [x] 2.4: `db.commit()`
+  - [x] 2.5: Gleiche HTMX-Response wie Task 1.8
 
-- [ ] **Task 3**: Fragment-Template `app/templates/admin/_reject_form.html` erstellen (AC7)
-  - [ ] 3.1: Kein `{% extends %}` — reines Fragment
-  - [ ] 3.2: Ein `<form>` mit `hx-post="/admin/review-queue/{{ entry_id }}/reject"` + `hx-include="[name]"` + `hx-push-url="false"`
-  - [ ] 3.3: `<textarea name="reason" rows="2" placeholder="Begründung..." required class="w-full rounded border border-slate-300 px-2 py-1 text-sm"></textarea>`
-  - [ ] 3.4: Submit-Button "Reject bestätigen" + Cancel-Link
+- [x] **Task 3**: Fragment-Template `app/templates/admin/_reject_form.html` erstellen (AC7)
+  - [x] 3.1: Kein `{% extends %}` — reines Fragment
+  - [x] 3.2: Ein `<form>` mit `hx-post="/admin/review-queue/{{ entry_id }}/reject"` + `hx-push-url="false"`
+  - [x] 3.3: `<textarea name="reason" rows="2" placeholder="Begründung..." required ...></textarea>`
+  - [x] 3.4: Submit-Button "Reject bestätigen" + Abbrechen-Button (inline-JS)
 
-- [ ] **Task 4**: Route `GET /admin/review-queue/{entry_id}/reject-form` in `app/routers/admin.py` (AC7)
-  - [ ] 4.1: Liefert Fragment `admin/_reject_form.html` mit `{"entry_id": entry_id}` — kein DB-Call nötig, nur Template-Render
-  - [ ] 4.2: `require_permission("objects:approve_ki")` als Dependency
+- [x] **Task 4**: Route `GET /admin/review-queue/{entry_id}/reject-form` in `app/routers/admin.py` (AC7)
+  - [x] 4.1: Liefert Fragment `admin/_reject_form.html` mit `{"entry_id": entry_id}` — kein DB-Call nötig
+  - [x] 4.2: `require_permission("objects:approve_ki")` als Dependency
 
-- [ ] **Task 5**: Template `app/templates/admin/_review_queue_rows.html` anpassen (AC7)
-  - [ ] 5.1: Datei aus Story 3.5 lesen bevor editieren
-  - [ ] 5.2: Pro `<tr>` in der Zeile eine Aktionszelle `<td>` hinzufügen (letzte Spalte "Aktion")
-  - [ ] 5.3: Approve-Button: `<button hx-post="/admin/review-queue/{{ item.entry.id }}/approve" hx-confirm="Vorschlag für Feld '{{ item.entry.field_name }}' freigeben?" hx-push-url="false" class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm">Approve</button>`
-  - [ ] 5.4: Reject-Button (öffnet Inline-Form via HTMX-GET): `<button hx-get="/admin/review-queue/{{ item.entry.id }}/reject-form" hx-target="#reject-area-{{ item.entry.id | string | replace('-', '') }}" hx-swap="innerHTML" class="ml-2 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm">Reject</button>`
-  - [ ] 5.5: Inline-Expand-Area pro Zeile: `<div id="reject-area-{{ item.entry.id | string | replace('-', '') }}" class="mt-1"></div>`
-  - [ ] 5.6: Tabellenkopf in `review_queue.html` um Spalte "Aktion" erweitern (aus Story 3.5 Datei lesen + editieren)
+- [x] **Task 5**: Template `app/templates/admin/_review_queue_rows.html` anpassen (AC7)
+  - [x] 5.1: Datei aus Story 3.5 gelesen vor dem Editieren
+  - [x] 5.2: Pro `<tr>` eine Aktionszelle `<td>` hinzugefügt (letzte Spalte "Aktion")
+  - [x] 5.3: Approve-Button mit `hx-post` + `hx-confirm`
+  - [x] 5.4: Reject-Button mit `hx-get` → Inline-Fragment-Load
+  - [x] 5.5: Inline-Expand-Area `<div id="reject-area-...">` pro Zeile; Empty-State colspan auf 7 korrigiert
+  - [x] 5.6: Tabellenkopf in `review_queue.html` um `<th>Aktion</th>` erweitert
 
-- [ ] **Task 6**: Tests `tests/test_review_queue_approve_reject.py` (AC1–AC7)
-  - [ ] 6.1: `_make_pending_entry(db, field_name, target_entity_type, target_entity_id)` — Hilfsfunktion analog zu `_make_entry` aus Story 3.5, erzeugt `pending` Entry + `Object` als Ziel-Entity
-  - [ ] 6.2: `test_approve_sets_status(steckbrief_admin_client, db)` — Approve → Entry `status="approved"`, `decided_by_user_id` gesetzt
-  - [ ] 6.3: `test_approve_writes_field(steckbrief_admin_client, db)` — Approve → Ziel-Object-Feld hat den neuen Wert aus `proposed_value["value"]`
-  - [ ] 6.4: `test_approve_creates_audit_log(steckbrief_admin_client, db)` — `AuditLog` mit `action="review_queue_approved"` vorhanden
-  - [ ] 6.5: `test_approve_supersedes_other_pending(steckbrief_admin_client, db)` — 2 Entries gleiche Entity+Feld → approve 1 → 2. Entry auf `superseded`
-  - [ ] 6.6: `test_reject_sets_status(steckbrief_admin_client, db)` — Reject → `status="rejected"`, `decision_reason` gesetzt
-  - [ ] 6.7: `test_reject_no_field_write(steckbrief_admin_client, db)` — Reject → Ziel-Object-Feld unverändert
-  - [ ] 6.8: `test_reject_missing_reason_returns_400(steckbrief_admin_client, db)` — leerer reason → 400
-  - [ ] 6.9: `test_approve_already_approved_returns_400(steckbrief_admin_client, db)` — doppelter Approve → 400
-  - [ ] 6.10: `test_approve_no_permission_returns_403(auth_client, db)` — ohne `objects:approve_ki` → 403
+- [x] **Task 6**: Tests `tests/test_review_queue_approve_reject.py` (AC1–AC7)
+  - [x] 6.1: `_make_object` + `_make_pending_entry` Hilfsfunktionen
+  - [x] 6.2: `test_approve_sets_status` — Entry `status="approved"`, `decided_by_user_id` gesetzt
+  - [x] 6.3: `test_approve_writes_field` — Ziel-Object-Feld hat neuen Wert
+  - [x] 6.4: `test_approve_creates_audit_log` — `AuditLog` mit `action="review_queue_approved"`
+  - [x] 6.5: `test_approve_supersedes_other_pending` — 2 Entries gleiche Entity+Feld → approve 1 → 2. auf `superseded`
+  - [x] 6.6: `test_reject_sets_status` — `status="rejected"`, `decision_reason` gesetzt
+  - [x] 6.7: `test_reject_no_field_write` — Zielfeld unverändert
+  - [x] 6.8: `test_reject_missing_reason_returns_400` — leerer reason → 400
+  - [x] 6.9: `test_approve_already_approved_returns_400` — doppelter Approve → 400
+  - [x] 6.10: `test_approve_no_permission_returns_403` — ohne `objects:approve_ki` → 403
 
 ## Dev Notes
 
@@ -486,4 +486,50 @@ claude-sonnet-4-6 (1M context)
 
 ### Completion Notes List
 
+- Alle 6 Tasks + 10 Subtests implementiert und grün (9/9 neue Tests, 797 insgesamt ohne pre-existierenden ETV-Test).
+- `_htmx_redirect()` als neue Hilfsfunktion in `admin.py` — gibt bei HTMX-Request 204+HX-Redirect zurück, sonst 303.
+- `update` zu sqlalchemy-Imports ergänzt; `approve_review_entry`, `reject_review_entry`, `WriteGateError` aus `steckbrief_write_gate` importiert.
+- Empty-State `colspan` in `_review_queue_rows.html` von 6 auf 7 angepasst (neue Aktion-Spalte).
+- Pre-existierender Fehler `test_etv_signature_list.py::test_build_rows_marks_mandate_when_owner_id_matches` ist auf uncommittete ETV-PDF-Story-Änderungen zurückzuführen, nicht auf diese Story.
+
 ### File List
+
+- `app/routers/admin.py` — `approve_entry()`, `reject_entry()`, `reject_form_fragment()`, `_htmx_redirect()` hinzugefügt; `update`-Import + `steckbrief_write_gate`-Imports ergänzt
+- `app/templates/admin/_reject_form.html` — neu erstellt (Reject-Inline-Formular-Fragment)
+- `app/templates/admin/_review_queue_rows.html` — Aktionsspalte mit Approve/Reject-Buttons + Inline-Reject-Area; Empty-State colspan 6→7
+- `app/templates/admin/review_queue.html` — `<th>Aktion</th>` ergänzt
+- `tests/test_review_queue_approve_reject.py` — neu erstellt (9 Tests für AC1–AC6)
+
+### Review Findings
+
+Code-Review 2026-04-30 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Acceptance Auditor bestätigt: alle AC1–AC7 erfüllt; nur 2 Minor-Deviationen (siehe Decision + Patches).
+
+#### Decision Needed (resolved)
+
+- [x] [Review][Decision] **Superseded entries: `decided_at` setzen, `decided_by_user_id` null lassen** [`app/routers/admin.py:1083-1097`] — Entscheidung 2026-04-30 (Option 3 / Mittelweg): `decided_by_user_id` ist semantisch "diese Person hat entschieden"; bei auto-superseded Entries entscheidet niemand explizit. `decided_at` bleibt als "verließ Pending-State" für Time-Series-Queries gesetzt. Wird als Patch P12 unten umgesetzt.
+
+#### Patches (alle angewendet 2026-04-30)
+
+- [x] [Review][Patch] **Supersede-Update: `decided_by_user_id` nicht mehr setzen** [`app/routers/admin.py:1098-1115`] — Folgt aus Decision oben. `.values(status="superseded", decided_at=datetime.now(timezone.utc))` — `decided_by_user_id` bleibt null. Test `test_approve_supersedes_other_pending` ergänzt: `assert superseded.decided_by_user_id is None` + `assert superseded.decided_at is not None`.
+- [x] [Review][Patch] **Reason-Längen-Limit (max. 2000 Zeichen)** [`app/routers/admin.py:1119-1133`] — Konstante `_MAX_REJECT_REASON_LEN = 2000` + Length-Guard vor dem Strip-Check; HTML `maxlength="2000"` im Template als UX-Vorwarnung. Test: `test_reject_too_long_reason_returns_400`.
+- [x] [Review][Patch] **Reason-Strip mit NFKC + Cf-Filter** [`app/routers/admin.py:1054-1064`] — Helper `_normalize_reject_reason()`: NFKC-Normalize + Format-Zeichen-Filter (Cf-Kategorie: U+200B, U+FEFF, …) + edge-trim. NBSP wird via NFKC zu Space, ZWSP/BOM via Cf-Filter entfernt. Test: `test_reject_unicode_whitespace_only_returns_400` mit U+200B/U+FEFF/NBSP-Mix.
+- [x] [Review][Patch] **`hx-target="closest tr" hx-swap="outerHTML"` auf Approve + Reject-Form** [`_review_queue_rows.html:24-39`, `_reject_form.html:2-7`] — auf 4xx-Response landet Error-HTML in der Zeile (sichtbar) statt im Body. Auf Erfolg liefert `_htmx_redirect()` 204+`HX-Redirect` und der Swap wird übersteuert.
+- [x] [Review][Patch] **Cancel-Button-Selector spezifischer** [`_reject_form.html:21`] — `closest('div[id^="reject-area-"]')` statt `closest('[id]')`. HTML-Entity-escaped Quotes wegen `onclick`-Attribut.
+- [x] [Review][Patch] **Reject-Form-Fragment prüft Entry-Status** [`app/routers/admin.py:1166-1188`] — `db: Session = Depends(get_db)` ergänzt; `entry is None → 404`, `entry.status != "pending" → 410 Gone`. Test: `test_reject_form_fragment_returns_410_for_decided_entry` + `test_reject_form_fragment_returns_404_for_unknown_entry`.
+- [x] [Review][Patch] **`SELECT FOR UPDATE` auf Approve + Reject** [`app/routers/admin.py:1086-1090, 1138-1142`] — `db.execute(select(ReviewQueueEntry).where(...).with_for_update()).scalar_one_or_none()`. Unter Postgres serialisiert das parallele Decisions; unter SQLite (Tests) No-Op.
+- [x] [Review][Patch] **HX-Redirect bewahrt Filter-State** [`app/routers/admin.py:1047-1051`] — Helper `_review_queue_redirect_target()` zieht `HX-Current-URL` und fällt zurück auf `/admin/review-queue`. Beide Routes nutzen ihn. Test: `test_redirect_preserves_filter_via_hx_current_url`.
+- [x] [Review][Patch] **Doppelklick-Schutz** [`_review_queue_rows.html`, `_reject_form.html`] — `hx-disabled-elt="this"` auf Approve + Reject-Button + Reject-Submit (`hx-disabled-elt="find button[type='submit']"`). `disabled:opacity-50` für visuelles Feedback.
+- [x] [Review][Patch] **Test: Reject ohne Permission** — `test_reject_no_permission_returns_403`.
+- [x] [Review][Patch] **Test: 404 bei unbekannter entry_id** — `test_approve_unknown_entry_returns_404` + `test_reject_unknown_entry_returns_404`.
+- [x] [Review][Patch] **Test: Reject-Audit-Log** — `test_reject_creates_audit_log`.
+
+#### Deferred (cross-cutting)
+
+- [x] [Review][Defer] **CSRF-Token projektweit fehlt** — deferred, pre-existing. SessionMiddleware hat `same_site="lax"` als Baseline; expliziter Token-Schutz nicht story-spezifisch. Cross-cutting Hardening-Task für eine Sicherheits-Story.
+- [x] [Review][Defer] **`objects:approve_ki` ist portfolio-weit (kein Objekt-Scope)** — deferred, pre-existing. Spec acknowledged dies explizit als v1-Designentscheidung (Boundary-Klassifikation Risiko 7). v2-Item.
+- [x] [Review][Defer] **`Cache-Control: no-store` auf Admin-Fragment-Routes** — deferred, pre-existing. Generisches Hardening, projektweit relevant für alle Admin-Templates.
+- [x] [Review][Defer] **Single-Permission-Tier (kein view-only)** — deferred, pre-existing. Spec-Boundary-Klassifikation v1-Design.
+
+#### Dismissed (16, ohne Eintrag)
+
+CSRF-Posture verifiziert (SameSite=Lax vorhanden); Status-Spalte ist `String` (kein Enum-Cast-Risk); `target_entity_type`/`field_name` sind `nullable=False`, code-kontrolliert; Audit-Actions registriert; Gate committet nicht intern (Atomicity ✓); Gate raised `ValueError` bei `skipped` Write; `decision_reason` wird heute nirgendwo gerendert (kein XSS-Sink); `Form("")`-Default ist projektweite Konvention; `field_name` in `hx-confirm` ist code-kontrolliert (kein Injection); Auditor-Findings zu AC1/AC5/AC7 sind Bestätigungen, keine Issues.

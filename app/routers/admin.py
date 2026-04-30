@@ -7,6 +7,7 @@ hart geprueft.
 from __future__ import annotations
 
 import re
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -23,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -44,6 +45,11 @@ from app.services._sync_common import (
 )
 from app.services.audit import KNOWN_AUDIT_ACTIONS, audit
 from app.services.steckbrief_impower_mirror import run_impower_mirror
+from app.services.steckbrief_write_gate import (
+    WriteGateError,
+    approve_review_entry,
+    reject_review_entry,
+)
 from app.templating import templates
 
 _BERLIN_TZ = ZoneInfo("Europe/Berlin")
@@ -1030,6 +1036,36 @@ async def list_review_queue(
     )
 
 
+def _htmx_redirect(request: Request, url: str) -> Response:
+    """HTMX-kompatible Weiterleitung: HX-Redirect-Header (204) oder 303."""
+    if request.headers.get("HX-Request"):
+        resp = Response(status_code=204)
+        resp.headers["HX-Redirect"] = url
+        return resp
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _review_queue_redirect_target(request: Request) -> str:
+    """Zurueck auf die aufrufende Queue-Seite (HX-Current-URL bewahrt
+    Filter-/Pagination-Query). Fallback: nackte Liste."""
+    return request.headers.get("HX-Current-URL") or "/admin/review-queue"
+
+
+_MAX_REJECT_REASON_LEN = 2000
+
+
+def _normalize_reject_reason(raw: str) -> str:
+    """NFKC-Normalize + Format-Zeichen (Cf: Zero-Width-Space, BOM, …) entfernen
+    + edge-trim. NFKC alleine schluckt NBSP, aber NICHT U+200B/U+FEFF —
+    daher der zusaetzliche Cf-Filter (analog zum IBAN-Guard-Pattern in
+    `services/impower.py`)."""
+    normalized = unicodedata.normalize("NFKC", raw)
+    without_format = "".join(
+        c for c in normalized if unicodedata.category(c) != "Cf"
+    )
+    return without_format.strip()
+
+
 @router.get("/review-queue/rows", response_class=HTMLResponse)
 async def list_review_queue_rows(
     request: Request,
@@ -1048,6 +1084,109 @@ async def list_review_queue_rows(
             "entries": entries,
             "user": user,
         },
+    )
+
+
+@router.post("/review-queue/{entry_id}/approve")
+async def approve_entry(
+    entry_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:approve_ki")),
+    db: Session = Depends(get_db),
+):
+    # Row-Lock gegen Race-Approves konkurrierender Tabs/Admins. Unter Postgres
+    # serialisiert das parallele Approves auf denselben Entry; unter SQLite
+    # (Tests) ist `with_for_update()` ein No-Op.
+    entry = db.execute(
+        select(ReviewQueueEntry)
+        .where(ReviewQueueEntry.id == entry_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+    try:
+        approve_review_entry(db, entry_id=entry_id, user=user, request=request)
+    except (WriteGateError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Auto-Supersede: andere pending Entries auf dasselbe Feld werden mit dem
+    # Approve-Commit verdraengt. `decided_by_user_id` bleibt bewusst null —
+    # niemand hat den Entry explizit entschieden, er wurde durch eine
+    # konkurrierende Decision verdraengt. `decided_at` markiert den Zeitpunkt
+    # des Supersedes (Time-Series).
+    db.execute(
+        update(ReviewQueueEntry)
+        .where(
+            ReviewQueueEntry.status == "pending",
+            ReviewQueueEntry.target_entity_type == entry.target_entity_type,
+            ReviewQueueEntry.target_entity_id == entry.target_entity_id,
+            ReviewQueueEntry.field_name == entry.field_name,
+            ReviewQueueEntry.id != entry_id,
+        )
+        .values(
+            status="superseded",
+            decided_at=datetime.now(timezone.utc),
+        )
+    )
+    db.commit()
+    return _htmx_redirect(request, _review_queue_redirect_target(request))
+
+
+@router.post("/review-queue/{entry_id}/reject")
+async def reject_entry(
+    entry_id: uuid.UUID,
+    request: Request,
+    reason: str = Form(""),
+    user: User = Depends(require_permission("objects:approve_ki")),
+    db: Session = Depends(get_db),
+):
+    # Laengen-Guard vor dem Strip — verhindert Audit-/DB-Bloat durch
+    # mehrere MB grosse Reason-Payloads.
+    if len(reason) > _MAX_REJECT_REASON_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Begründung zu lang (max. {_MAX_REJECT_REASON_LEN} Zeichen)",
+        )
+    clean_reason = _normalize_reject_reason(reason)
+    if not clean_reason:
+        raise HTTPException(status_code=400, detail="Begründung ist erforderlich")
+    entry = db.execute(
+        select(ReviewQueueEntry)
+        .where(ReviewQueueEntry.id == entry_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+    try:
+        reject_review_entry(
+            db, entry_id=entry_id, user=user, reason=clean_reason, request=request
+        )
+    except (WriteGateError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    return _htmx_redirect(request, _review_queue_redirect_target(request))
+
+
+@router.get("/review-queue/{entry_id}/reject-form", response_class=HTMLResponse)
+async def reject_form_fragment(
+    entry_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("objects:approve_ki")),
+    db: Session = Depends(get_db),
+):
+    # Stale-Form-Schutz: Wenn der Entry zwischen Liste-Render und Reject-Click
+    # bereits durch einen anderen Admin entschieden wurde, soll der User keine
+    # Begruendung mehr eintippen muessen, sondern direkt 410 Gone bekommen.
+    entry = db.get(ReviewQueueEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
+    if entry.status != "pending":
+        raise HTTPException(
+            status_code=410,
+            detail=f"Eintrag bereits entschieden (status={entry.status})",
+        )
+    return templates.TemplateResponse(
+        request, "admin/_reject_form.html", {"entry_id": entry_id}
     )
 
 

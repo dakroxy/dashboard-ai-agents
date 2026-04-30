@@ -21,9 +21,28 @@
         </span>
     </td>
     <td class="px-4 py-3 text-sm text-slate-500 tabular-nums">{{ item.age_days }} Tage</td>
+    <td class="px-3 py-2 whitespace-nowrap">
+      <button hx-post="/admin/review-queue/{{ item.entry.id }}/approve"
+              hx-confirm="Vorschlag für '{{ item.entry.field_name }}' freigeben?"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              hx-push-url="false"
+              hx-disabled-elt="this"
+              class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium disabled:opacity-50">
+        Approve
+      </button>
+      <button hx-get="/admin/review-queue/{{ item.entry.id }}/reject-form"
+              hx-target="#reject-area-{{ item.entry.id | string | replace('-', '') }}"
+              hx-swap="innerHTML"
+              hx-disabled-elt="this"
+              class="ml-2 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium disabled:opacity-50">
+        Reject
+      </button>
+      <div id="reject-area-{{ item.entry.id | string | replace('-', '') }}" class="mt-1"></div>
+    </td>
 </tr>
 {% else %}
 <tr>
-    <td colspan="6" class="text-center text-slate-400 italic py-8">Keine Vorschläge offen</td>
+    <td colspan="7" class="text-center text-slate-400 italic py-8">Keine Vorschläge offen</td>
 </tr>
 {% endfor %}

@@ -2,6 +2,13 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of 3-6-review-queue-approve-reject (2026-04-30)
+
+- **CSRF-Token projektweit fehlt** [Admin-POSTs] — SessionMiddleware nutzt `same_site="lax"` (Baseline-Schutz gegen klassische CSRF), aber kein expliziter Token-Mechanismus. Story-3.6-Routes sind nicht schlechter geschuetzt als der Rest des Admin-Bereichs. Cross-cutting Hardening fuer eine eigene Sicherheits-Story.
+- **`objects:approve_ki` ist portfolio-weit, kein objektscope-IDOR** [`app/permissions.py:55`, `app/routers/admin.py:approve_entry/reject_entry`] — Spec-Boundary-Klassifikation Risiko 7 acknowledged dies explizit als v1-Design. v2-Item: pro-Objekt-Permission via `_load_accessible_object`-Pattern.
+- **`Cache-Control: no-store` auf Admin-Fragment-Routes** [`app/routers/admin.py:reject_form_fragment` u. a.] — Browser koennen Admin-Fragments cachen; nach Decision durch anderen Admin POSTet das gecachte Form gegen einen entschiedenen Entry. Generisches Hardening fuer alle Admin-Templates, projektweit relevant.
+- **Single-Permission-Tier (kein view-only Reviewer)** [`app/routers/admin.py:approve_entry/reject_entry/reject_form_fragment/list_review_queue`] — `objects:approve_ki` gated lesend + entscheidend gleichzeitig. Spec-Boundary v1-Design. v2-Item: separates `objects:view_review_queue` einfuehren.
+
 ## Deferred from: code review of etv-signature-list-pdf-anpassungen (2026-04-30)
 
 - **Phase-3 Aggregator ohne `return_exceptions=True`** [`app/services/facilioo_client.py:331`] — `asyncio.gather(*attr_tasks)` fuer N Unit-`attribute-values`-Calls. Eine einzelne transiente Failure (nach 3 Retries) reisst die ganze PDF-Generierung in den Banner-Pfad. Bei 50+ Units pro WEG addiert sich das Risiko spuerbar. Konsistent mit der bereits-deferred Phase-1-Aggregation (siehe Eintrag unten); zusammen mit dieser angehen wenn Live-Feedback es zeigt.
