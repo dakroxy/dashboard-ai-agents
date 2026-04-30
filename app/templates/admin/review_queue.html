@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Review Queue{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-semibold">Review Queue</h1>
+        <p class="text-sm text-slate-500 mt-1">KI-Vorschläge, die manuelle Freigabe benötigen.</p>
+    </div>
+    <a href="/admin" class="text-sm text-slate-500 hover:text-slate-900">&larr; Admin</a>
+</div>
+
+<form id="filter-form"
+      hx-get="/admin/review-queue/rows"
+      hx-trigger="change, submit"
+      hx-target="#queue-tbody"
+      hx-include="[name]"
+      class="rounded-lg bg-white border border-slate-200 p-4 mb-5">
+    <div class="flex gap-4 flex-wrap items-end">
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Alter &gt; (Tage)</label>
+            <input type="number" name="min_age_days" min="0" placeholder="—"
+                   value="{{ filter_min_age_days }}"
+                   class="w-24 rounded-md border border-slate-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400">
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Feld</label>
+            <input type="text" name="field_name" placeholder="z.B. heating_type"
+                   value="{{ filter_field_name }}"
+                   class="rounded-md border border-slate-200 px-2 py-1 text-sm w-44 focus:outline-none focus:ring-1 focus:ring-slate-400">
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide mb-1">Zugewiesen an</label>
+            <select name="assigned_to_user_id"
+                    class="rounded-md border border-slate-200 px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-slate-400">
+                <option value="">— alle —</option>
+                {% for u in users_for_filter %}
+                <option value="{{ u.id }}" {% if filter_assigned_to_user_id == u.id | string %}selected{% endif %}>
+                    {{ u.email }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button type="submit"
+                    class="px-3 py-1 bg-slate-800 text-white rounded-md text-sm hover:bg-slate-700">
+                Filtern
+            </button>
+        </div>
+    </div>
+</form>
+
+<div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-semibold">Ziel-Entität</th>
+                <th class="text-left px-4 py-3 font-semibold">Feld</th>
+                <th class="text-left px-4 py-3 font-semibold">Vorgeschlagener Wert</th>
+                <th class="text-left px-4 py-3 font-semibold">Agent</th>
+                <th class="text-left px-4 py-3 font-semibold">Confidence</th>
+                <th class="text-left px-4 py-3 font-semibold">Alter</th>
+            </tr>
+        </thead>
+        <tbody id="queue-tbody">
+            {% include "admin/_review_queue_rows.html" %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

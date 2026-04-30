@@ -239,9 +239,10 @@ def test_detail_renders_stammdaten_and_eigentuemer(
     assert "Bernd Muster" in body
     assert "50" in body and "25" in body
 
-    # Keine der noch nicht gebauten Sektionen (Finanzen ist seit Story 1.5,
-    # Technik seit Story 1.6 da).
-    assert "Review" not in body
+    # Keine unerwarteten Review-Sektionen im Haupt-Content (Nav-Sidebar hat
+    # jetzt "Review Queue" — nur Main-Content pruefen).
+    main_content = body.split("<main")[1].split("</main>")[0] if "<main" in body else body
+    assert "Review" not in main_content
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Story 3.5: Review-Queue-Admin-UI mit Filtern
 
-Status: ready-for-dev
+Status: review
 
 ## Abhängigkeiten
 
@@ -77,56 +77,56 @@ Risiken:
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1**: Route `GET /admin/review-queue` in `app/routers/admin.py` (AC1, AC2, AC5)
-  - [ ] 1.1: Funktion `list_review_queue(request, min_age_days, field_name, assigned_to_user_id, user, db)` nach dem letzten bestehenden Route-Handler anhängen
-  - [ ] 1.2: `require_permission("objects:approve_ki")` als Dependency
-  - [ ] 1.3: Query: `select(ReviewQueueEntry).where(ReviewQueueEntry.status == "pending").order_by(ReviewQueueEntry.created_at.asc())`
-  - [ ] 1.4: Filter `min_age_days`: `.where(ReviewQueueEntry.created_at < datetime.now(timezone.utc) - timedelta(days=min_age_days))` (nur wenn `min_age_days` gesetzt; **timezone-aware** — siehe Risk #1)
-  - [ ] 1.5: Filter `field_name`: `.where(ReviewQueueEntry.field_name == field_name)` (exact match, nur wenn gesetzt)
-  - [ ] 1.6: Filter `assigned_to_user_id`: `.where(ReviewQueueEntry.assigned_to_user_id == uuid.UUID(assigned_to_user_id))` (nur wenn gesetzt, in try/except für invalid UUID — gilt fuer **beide** Routen, Vollseite + Fragment, jeweils 200 + Filter ignoriert, kein 422)
-  - [ ] 1.7: `users_for_filter` laden: `db.execute(select(User).order_by(User.email)).scalars().all()` — für Assigned-to-Dropdown
-  - [ ] 1.8: `entries` + altersberechneten Kontext aufbereiten (Alter in Tagen als List[dict])
-  - [ ] 1.9: `TemplateResponse(request, "admin/review_queue.html", {...})` — alle Filter-Werte als `filter_*` zurückgeben
+- [x] **Task 1**: Route `GET /admin/review-queue` in `app/routers/admin.py` (AC1, AC2, AC5)
+  - [x] 1.1: Funktion `list_review_queue(request, min_age_days, field_name, assigned_to_user_id, user, db)` nach dem letzten bestehenden Route-Handler anhängen
+  - [x] 1.2: `require_permission("objects:approve_ki")` als Dependency
+  - [x] 1.3: Query: `select(ReviewQueueEntry).where(ReviewQueueEntry.status == "pending").order_by(ReviewQueueEntry.created_at.asc())`
+  - [x] 1.4: Filter `min_age_days`: `.where(ReviewQueueEntry.created_at < datetime.now(timezone.utc) - timedelta(days=min_age_days))` (nur wenn `min_age_days` gesetzt; **timezone-aware** — siehe Risk #1)
+  - [x] 1.5: Filter `field_name`: `.where(ReviewQueueEntry.field_name == field_name)` (exact match, nur wenn gesetzt)
+  - [x] 1.6: Filter `assigned_to_user_id`: `.where(ReviewQueueEntry.assigned_to_user_id == uuid.UUID(assigned_to_user_id))` (nur wenn gesetzt, in try/except für invalid UUID — gilt fuer **beide** Routen, Vollseite + Fragment, jeweils 200 + Filter ignoriert, kein 422)
+  - [x] 1.7: `users_for_filter` laden: `db.execute(select(User).order_by(User.email)).scalars().all()` — für Assigned-to-Dropdown
+  - [x] 1.8: `entries` + altersberechneten Kontext aufbereiten (Alter in Tagen als List[dict])
+  - [x] 1.9: `TemplateResponse(request, "admin/review_queue.html", {...})` — alle Filter-Werte als `filter_*` zurückgeben
 
-- [ ] **Task 2**: HTMX-Fragment-Route `GET /admin/review-queue/rows` in `app/routers/admin.py` (AC3, AC4)
-  - [ ] 2.1: Gleiche Query-Parameter und Logik wie Task 1 (Hilfsfunktion `_build_queue_query(db, min_age_days, field_name, assigned_to_user_id)` extrahieren, von beiden Routen aufrufen)
-  - [ ] 2.2: `TemplateResponse(request, "admin/_review_queue_rows.html", {"entries": entries})` zurückgeben
-  - [ ] 2.3: Im Fehlerfall (z.B. ungültige UUID): leere Liste zurückgeben (kein 422)
+- [x] **Task 2**: HTMX-Fragment-Route `GET /admin/review-queue/rows` in `app/routers/admin.py` (AC3, AC4)
+  - [x] 2.1: Gleiche Query-Parameter und Logik wie Task 1 (Hilfsfunktion `_build_queue_query(db, min_age_days, field_name, assigned_to_user_id)` extrahieren, von beiden Routen aufrufen)
+  - [x] 2.2: `TemplateResponse(request, "admin/_review_queue_rows.html", {"entries": entries})` zurückgeben
+  - [x] 2.3: Im Fehlerfall (z.B. ungültige UUID): leere Liste zurückgeben (kein 422)
 
-- [ ] **Task 3**: Template `app/templates/admin/review_queue.html` erstellen (AC1, AC2, AC3, AC4, AC6)
-  - [ ] 3.1: `{% extends "base.html" %}`, `{% block title %}Review Queue{% endblock %}`
-  - [ ] 3.2: Filter-Formular mit `id="filter-form"`, `hx-get="/admin/review-queue/rows"`, `hx-trigger="change"`, `hx-target="#queue-tbody"`, `hx-include="[name]"`
-  - [ ] 3.3: Filter-Inputs: `name="min_age_days"` (number, min=0), `name="field_name"` (text), `name="assigned_to_user_id"` (`<select>` mit `<option value="">— alle —</option>` + Loop über `users_for_filter`)
-  - [ ] 3.4: Tabellen-Kopf: Spalten "Ziel-Entität", "Feld", "Vorgeschlagener Wert", "Agent", "Confidence", "Alter"
-  - [ ] 3.5: `<tbody id="queue-tbody">{% include "admin/_review_queue_rows.html" %}</tbody>`
-  - [ ] 3.6: Auf dem `<form>`-Element `hx-trigger="change, submit"` setzen, damit ein einfacher `<button type="submit">Filtern</button>` ohne eigene `hx-*`-Attribute den Filter-Swap ausloest (vermeidet doppelte HTMX-Requests bei Klick auf den Button)
+- [x] **Task 3**: Template `app/templates/admin/review_queue.html` erstellen (AC1, AC2, AC3, AC4, AC6)
+  - [x] 3.1: `{% extends "base.html" %}`, `{% block title %}Review Queue{% endblock %}`
+  - [x] 3.2: Filter-Formular mit `id="filter-form"`, `hx-get="/admin/review-queue/rows"`, `hx-trigger="change"`, `hx-target="#queue-tbody"`, `hx-include="[name]"`
+  - [x] 3.3: Filter-Inputs: `name="min_age_days"` (number, min=0), `name="field_name"` (text), `name="assigned_to_user_id"` (`<select>` mit `<option value="">— alle —</option>` + Loop über `users_for_filter`)
+  - [x] 3.4: Tabellen-Kopf: Spalten "Ziel-Entität", "Feld", "Vorgeschlagener Wert", "Agent", "Confidence", "Alter"
+  - [x] 3.5: `<tbody id="queue-tbody">{% include "admin/_review_queue_rows.html" %}</tbody>`
+  - [x] 3.6: Auf dem `<form>`-Element `hx-trigger="change, submit"` setzen, damit ein einfacher `<button type="submit">Filtern</button>` ohne eigene `hx-*`-Attribute den Filter-Swap ausloest (vermeidet doppelte HTMX-Requests bei Klick auf den Button)
 
-- [ ] **Task 4**: Fragment-Template `app/templates/admin/_review_queue_rows.html` erstellen (AC1, AC2)
-  - [ ] 4.1: `{% for item in entries %}` Loop mit je einer `<tr>`
-  - [ ] 4.2: Ziel-Entität-Zelle: `{% if item.entry.target_entity_type == "object" %}<a href="/objects/{{ item.entry.target_entity_id }}" class="text-sky-600 hover:underline">object/{{ item.entry.target_entity_id | string | truncate(8, True, '') }}</a>{% else %}{{ item.entry.target_entity_type }}/{{ item.entry.target_entity_id }}{% endif %}`
-  - [ ] 4.3: Vorgeschlagener-Wert-Zelle: `{{ item.value_str }}` (aufbereitet im Router — max 100 Zeichen + "…" falls abgeschnitten)
-  - [ ] 4.4: Confidence-Zelle: `{{ (item.entry.confidence * 100) | round | int }} %`
-  - [ ] 4.5: Alter-Zelle: `{{ item.age_days }} Tage`
-  - [ ] 4.6: Empty-State: `{% else %}<tr><td colspan="6" class="text-center text-slate-400 italic py-8">Keine Vorschläge offen</td></tr>{% endfor %}`
+- [x] **Task 4**: Fragment-Template `app/templates/admin/_review_queue_rows.html` erstellen (AC1, AC2)
+  - [x] 4.1: `{% for item in entries %}` Loop mit je einer `<tr>`
+  - [x] 4.2: Ziel-Entität-Zelle: `{% if item.entry.target_entity_type == "object" %}<a href="/objects/{{ item.entry.target_entity_id }}" class="text-sky-600 hover:underline">object/{{ item.entry.target_entity_id | string | truncate(8, True, '') }}</a>{% else %}{{ item.entry.target_entity_type }}/{{ item.entry.target_entity_id }}{% endif %}`
+  - [x] 4.3: Vorgeschlagener-Wert-Zelle: `{{ item.value_str }}` (aufbereitet im Router — max 100 Zeichen + "…" falls abgeschnitten)
+  - [x] 4.4: Confidence-Zelle: `{{ (item.entry.confidence * 100) | round | int }} %`
+  - [x] 4.5: Alter-Zelle: `{{ item.age_days }} Tage`
+  - [x] 4.6: Empty-State: `{% else %}<tr><td colspan="6" class="text-center text-slate-400 italic py-8">Keine Vorschläge offen</td></tr>{% endfor %}`
 
-- [ ] **Task 5**: Admin-Navigation-Link hinzufügen (AC6)
-  - [ ] 5.1: Datei `app/templates/base.html` lesen — Stelle finden, wo Admin-Nav-Links stehen (z.B. Sidebar-Block mit `/admin/logs`, `/admin/sync-status`)
-  - [ ] 5.2: Link `<a href="/admin/review-queue">Review Queue</a>` mit Permission-Guard `{% if has_permission(user, "objects:approve_ki") %}` an geeigneter Stelle einfügen (nach "Audit-Log" oder in eigenem "KI-Governance"-Abschnitt)
+- [x] **Task 5**: Admin-Navigation-Link hinzufügen (AC6)
+  - [x] 5.1: Datei `app/templates/base.html` lesen — Stelle finden, wo Admin-Nav-Links stehen (z.B. Sidebar-Block mit `/admin/logs`, `/admin/sync-status`)
+  - [x] 5.2: Link `<a href="/admin/review-queue">Review Queue</a>` mit Permission-Guard `{% if has_permission(user, "objects:approve_ki") %}` an geeigneter Stelle einfügen (nach "Audit-Log" oder in eigenem "KI-Governance"-Abschnitt)
 
-- [ ] **Task 6**: Imports + Hilfsfunktion in `admin.py` sicherstellen (AC1–AC4)
-  - [ ] 6.1: `from app.models.governance import ReviewQueueEntry` importieren (in `admin.py` aktuell noch nicht vorhanden — ergaenzen)
-  - [ ] 6.2: `datetime`, `timezone`, `timedelta` sind in `admin.py` Z. 11 bereits importiert (`from datetime import datetime, timedelta, timezone`) — keine Aenderung noetig
-  - [ ] 6.3: `User` ist bereits via `from app.models import ..., User, ...` importiert
+- [x] **Task 6**: Imports + Hilfsfunktion in `admin.py` sicherstellen (AC1–AC4)
+  - [x] 6.1: `from app.models.governance import ReviewQueueEntry` importieren (in `admin.py` aktuell noch nicht vorhanden — ergaenzen)
+  - [x] 6.2: `datetime`, `timezone`, `timedelta` sind in `admin.py` Z. 11 bereits importiert (`from datetime import datetime, timedelta, timezone`) — keine Aenderung noetig
+  - [x] 6.3: `User` ist bereits via `from app.models import ..., User, ...` importiert
 
-- [ ] **Task 7**: Tests `tests/test_review_queue_routes_smoke.py` (AC1–AC6 + Risk #4)
-  - [ ] 7.1: `test_review_queue_unauthenticated(anon_client)` — 302
-  - [ ] 7.2: `test_review_queue_no_permission(auth_client)` — `test_user` ohne `objects:approve_ki` → 403
-  - [ ] 7.3: `test_review_queue_empty_state(steckbrief_admin_client)` — keine Entries → 200, "Keine Vorschläge offen" im Text
-  - [ ] 7.4: `test_review_queue_entry_visible(steckbrief_admin_client, db)` — 1 Entry → 200, `field_name` im Text
-  - [ ] 7.5: `test_review_queue_rows_fragment_200(steckbrief_admin_client)` — GET `/admin/review-queue/rows` → 200
-  - [ ] 7.6: `test_review_queue_filter_field_name(steckbrief_admin_client, db)` — 2 Entries (1 passend) → nur passender Entry im Text
-  - [ ] 7.7: `test_review_queue_filter_min_age_excludes_fresh(steckbrief_admin_client, db)` — min_age_days=1, frischer Entry → Empty-State
-  - [ ] 7.8: `test_review_queue_filter_invalid_uuid_no_422(steckbrief_admin_client, db)` — `assigned_to_user_id=not-a-uuid` → 200, Filter ignoriert (Risk #4)
+- [x] **Task 7**: Tests `tests/test_review_queue_routes_smoke.py` (AC1–AC6 + Risk #4)
+  - [x] 7.1: `test_review_queue_unauthenticated(anon_client)` — 302
+  - [x] 7.2: `test_review_queue_no_permission(auth_client)` — `test_user` ohne `objects:approve_ki` → 403
+  - [x] 7.3: `test_review_queue_empty_state(steckbrief_admin_client)` — keine Entries → 200, "Keine Vorschläge offen" im Text
+  - [x] 7.4: `test_review_queue_entry_visible(steckbrief_admin_client, db)` — 1 Entry → 200, `field_name` im Text
+  - [x] 7.5: `test_review_queue_rows_fragment_200(steckbrief_admin_client)` — GET `/admin/review-queue/rows` → 200
+  - [x] 7.6: `test_review_queue_filter_field_name(steckbrief_admin_client, db)` — 2 Entries (1 passend) → nur passender Entry im Text
+  - [x] 7.7: `test_review_queue_filter_min_age_excludes_fresh(steckbrief_admin_client, db)` — min_age_days=1, frischer Entry → Empty-State
+  - [x] 7.8: `test_review_queue_filter_invalid_uuid_no_422(steckbrief_admin_client, db)` — `assigned_to_user_id=not-a-uuid` → 200, Filter ignoriert (Risk #4)
 
 ## Dev Notes
 
@@ -492,6 +492,23 @@ claude-sonnet-4-6 (1M context)
 
 ### Debug Log References
 
+Kein Debug-Log nötig. Implementation lief ohne Probleme durch.
+
 ### Completion Notes List
 
+- Alle 7 Tasks implementiert, 8/8 neue Tests grün, 804 Gesamt-Tests grün (kein Regression).
+- `select` musste zu sqlalchemy-Import ergänzt werden (war noch nicht in admin.py).
+- `_aware()` + `_build_queue_query()` + `_prepare_entries()` als Hilfsfunktionen vor den neuen Routes platziert.
+- Filter-Formular mit `hx-trigger="change, submit"` — Live-Update bei Eingabe + expliziter Filtern-Button ohne doppelte HTMX-Requests.
+- Nav-Link unter eigenem "KI-Governance"-Block mit `objects:approve_ki`-Guard, aktive-Klasse für `/admin/review-queue`-Pfade.
+- Bestehender Test `test_detail_renders_stammdaten_and_eigentuemer` prüfte `"Review" not in body` — angepasst auf Main-Content-Scope, da Nav jetzt "Review Queue" enthält.
+- Confidence-Farbkodierung (grün ≥0.8 / gelb ≥0.5 / rot <0.5) als UX-Verbesserung eingebaut.
+
 ### File List
+
+- `app/routers/admin.py` — `select`-Import, `ReviewQueueEntry`-Import, `_aware()`, `_build_queue_query()`, `_prepare_entries()`, `list_review_queue()`, `list_review_queue_rows()` hinzugefügt
+- `app/templates/admin/review_queue.html` — neu erstellt
+- `app/templates/admin/_review_queue_rows.html` — neu erstellt
+- `app/templates/base.html` — KI-Governance-Nav-Block mit Review-Queue-Link
+- `tests/test_review_queue_routes_smoke.py` — neu erstellt (8 Tests)
+- `tests/test_steckbrief_routes_smoke.py` — Assertion auf Main-Content-Scope eingeschränkt

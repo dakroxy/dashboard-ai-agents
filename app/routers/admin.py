@@ -23,11 +23,12 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import AuditLog, ResourceAccess, Role, User, Workflow
+from app.models.governance import ReviewQueueEntry
 from app.permissions import (
     PERMISSIONS_BY_GROUP,
     PERMISSION_KEYS,
@@ -948,6 +949,102 @@ async def trigger_mirror_run(
     return RedirectResponse(
         url=target,
         status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Review Queue
+# ---------------------------------------------------------------------------
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """SQLite strippt tzinfo beim Roundtrip. Coercen auf UTC damit Subtraktion
+    mit tz-aware `now` keinen TypeError wirft."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _build_queue_query(
+    db: Session,
+    min_age_days: int | None,
+    field_name: str | None,
+    assigned_to_user_id: str | None,
+):
+    q = select(ReviewQueueEntry).where(ReviewQueueEntry.status == "pending")
+    if min_age_days is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=min_age_days)
+        q = q.where(ReviewQueueEntry.created_at <= cutoff)
+    if field_name:
+        q = q.where(ReviewQueueEntry.field_name == field_name)
+    if assigned_to_user_id:
+        try:
+            uid = uuid.UUID(assigned_to_user_id)
+            q = q.where(ReviewQueueEntry.assigned_to_user_id == uid)
+        except ValueError:
+            pass
+    return q.order_by(ReviewQueueEntry.created_at.asc())
+
+
+def _prepare_entries(entries):
+    now = datetime.now(timezone.utc)
+    result = []
+    for e in entries:
+        raw_value = e.proposed_value.get("value", "") if e.proposed_value else ""
+        value_str = str(raw_value)
+        if len(value_str) > 100:
+            value_str = value_str[:100] + "…"
+        result.append({
+            "entry": e,
+            "value_str": value_str,
+            "age_days": (now - _aware(e.created_at)).days,
+        })
+    return result
+
+
+@router.get("/review-queue", response_class=HTMLResponse)
+async def list_review_queue(
+    request: Request,
+    min_age_days: int | None = Query(None, ge=0),
+    field_name: str | None = Query(None),
+    assigned_to_user_id: str | None = Query(None),
+    user: User = Depends(require_permission("objects:approve_ki")),
+    db: Session = Depends(get_db),
+):
+    q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
+    entries = _prepare_entries(db.execute(q).scalars().all())
+    users_for_filter = db.execute(select(User).order_by(User.email)).scalars().all()
+    return templates.TemplateResponse(
+        request,
+        "admin/review_queue.html",
+        {
+            "entries": entries,
+            "users_for_filter": users_for_filter,
+            "filter_min_age_days": min_age_days if min_age_days is not None else "",
+            "filter_field_name": field_name or "",
+            "filter_assigned_to_user_id": assigned_to_user_id or "",
+            "user": user,
+        },
+    )
+
+
+@router.get("/review-queue/rows", response_class=HTMLResponse)
+async def list_review_queue_rows(
+    request: Request,
+    min_age_days: int | None = Query(None, ge=0),
+    field_name: str | None = Query(None),
+    assigned_to_user_id: str | None = Query(None),
+    user: User = Depends(require_permission("objects:approve_ki")),
+    db: Session = Depends(get_db),
+):
+    q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
+    entries = _prepare_entries(db.execute(q).scalars().all())
+    return templates.TemplateResponse(
+        request,
+        "admin/_review_queue_rows.html",
+        {
+            "entries": entries,
+            "user": user,
+        },
     )
 
 
