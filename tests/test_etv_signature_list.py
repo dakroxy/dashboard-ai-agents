@@ -23,7 +23,7 @@ from app.main import app
 from app.models import ResourceAccess, User, Workflow
 from app.permissions import RESOURCE_TYPE_WORKFLOW
 from app.routers import etv_signature_list as etv_router
-from app.services import facilioo_client
+from app.services import facilioo
 from app.templating import templates as jinja_templates
 
 
@@ -208,7 +208,7 @@ def test_format_conference_label_includes_weg_number_when_present():
 # ---------------------------------------------------------------------------
 
 
-def _patched_facilioo_client(handler):
+def _patched_facilioo(handler):
     transport = httpx.MockTransport(handler)
 
     class _Patched(httpx.AsyncClient):
@@ -224,7 +224,7 @@ async def test_missing_token_raises_immediately_no_retry_wait(monkeypatch):
     """Ohne Token soll der Client SOFORT failen — sonst zieht der httpx-
     LocalProtocolError-Retry 22 s pro Aufruf (Bug, der in Prod gesehen wurde)."""
     import time
-    from app.services import facilioo_client as fc
+    from app.services import facilioo as fc
     monkeypatch.setattr(fc.settings, "facilioo_bearer_token", "")
     t0 = time.time()
     with pytest.raises(fc.FaciliooError) as exc_info:
@@ -260,11 +260,11 @@ async def test_list_conferences_starts_at_page_one(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
 
-    items = await facilioo_client.list_conferences()
+    items = await facilioo.list_conferences()
     assert seen_pages == ["1"], f"Erwartet pageNumber=1, gesehen: {seen_pages}"
     assert len(items) == 2
 
@@ -294,11 +294,11 @@ async def test_list_conferences_with_properties_enriches_each_conference(monkeyp
         return httpx.Response(404, text="unexpected")
 
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
 
-    items = await facilioo_client.list_conferences_with_properties()
+    items = await facilioo.list_conferences_with_properties()
     assert len(items) == 2
     assert items[0]["_property_number"] == "PLS22"
     assert items[0]["_property_name"] == "WEG PLS22"
@@ -323,11 +323,11 @@ async def test_list_conferences_with_properties_tolerates_property_failure(monke
         return httpx.Response(404)
 
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
 
-    items = await facilioo_client.list_conferences_with_properties()
+    items = await facilioo.list_conferences_with_properties()
     assert len(items) == 1
     assert items[0]["_property_number"] is None
 
@@ -359,11 +359,11 @@ async def test_list_conferences_walks_multiple_pages(monkeypatch):
         return httpx.Response(400, json={"err": "unexpected page"})
 
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
 
-    items = await facilioo_client.list_conferences()
+    items = await facilioo.list_conferences()
     assert len(items) == 102
     assert items[0]["id"] == 1 and items[-1]["id"] == 102
 
@@ -451,7 +451,7 @@ def _aggregator_handler_factory(
                 return httpx.Response(503, text="upstream down")
             value = mea_value_for_unit(uid)
             items = (
-                [{"attributeId": facilioo_client.MEA_ATTRIBUTE_ID, "value": value}]
+                [{"attributeId": facilioo.MEA_ATTRIBUTE_ID, "value": value}]
                 if value is not None
                 else []
             )
@@ -469,10 +469,10 @@ async def test_aggregator_paginates_voting_group_shares_beyond_page_one(monkeypa
     """Regression: fetch_conference_signature_payload muss alle 16 VGs liefern,
     nicht nur die ersten 10."""
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(_aggregator_handler_factory(total_vgs=16)),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(_aggregator_handler_factory(total_vgs=16)),
     )
-    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    payload = await facilioo.fetch_conference_signature_payload(123)
     assert len(payload["voting_groups"]) == 16
 
 
@@ -489,10 +489,10 @@ async def test_aggregator_pulls_mea_from_unit_attribute_values(monkeypatch):
         total_vgs=3, mea_value_for_unit=mea_for_unit
     )
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
-    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    payload = await facilioo.fetch_conference_signature_payload(123)
     decs = [vg["mea_decimal"] for vg in payload["voting_groups"]]
     assert decs == [Decimal("128"), Decimal("94"), Decimal("98.57")]
 
@@ -522,10 +522,10 @@ async def test_aggregator_sums_mea_when_voting_group_has_multiple_units(monkeypa
         return base_handler(request)
 
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
-    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    payload = await facilioo.fetch_conference_signature_payload(123)
     assert payload["voting_groups"][0]["mea_decimal"] == Decimal("100.50")
 
 
@@ -536,10 +536,10 @@ async def test_aggregator_marks_mea_none_when_no_attribute_present(monkeypatch):
         total_vgs=2, mea_value_for_unit=lambda uid: None
     )
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
-    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    payload = await facilioo.fetch_conference_signature_payload(123)
     assert all(vg["mea_decimal"] is None for vg in payload["voting_groups"])
 
 
@@ -551,11 +551,11 @@ async def test_aggregator_propagates_facilioo_error_on_attribute_5xx(monkeypatch
         total_vgs=1, attribute_5xx_for_unit_id=2_000_000
     )
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
-    with pytest.raises(facilioo_client.FaciliooError):
-        await facilioo_client.fetch_conference_signature_payload(123)
+    with pytest.raises(facilioo.FaciliooError):
+        await facilioo.fetch_conference_signature_payload(123)
 
 
 @pytest.mark.asyncio
@@ -568,10 +568,10 @@ async def test_aggregator_skips_nan_and_infinity_values(monkeypatch, poison_valu
         total_vgs=1, mea_value_for_unit=lambda uid: poison_value
     )
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
-    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    payload = await facilioo.fetch_conference_signature_payload(123)
     # Kein finiter Wert -> mea_decimal=None (rendert spaeter als "—").
     assert payload["voting_groups"][0]["mea_decimal"] is None
 
@@ -590,8 +590,8 @@ async def test_aggregator_uses_first_attribute_value_when_multiple_present(monke
                 200,
                 json={
                     "items": [
-                        {"attributeId": facilioo_client.MEA_ATTRIBUTE_ID, "value": "128"},
-                        {"attributeId": facilioo_client.MEA_ATTRIBUTE_ID, "value": "999"},
+                        {"attributeId": facilioo.MEA_ATTRIBUTE_ID, "value": "128"},
+                        {"attributeId": facilioo.MEA_ATTRIBUTE_ID, "value": "999"},
                         {"attributeId": 9999, "value": "ignore"},
                     ],
                     "totalPages": 1,
@@ -600,10 +600,10 @@ async def test_aggregator_uses_first_attribute_value_when_multiple_present(monke
         return base_handler(request)
 
     monkeypatch.setattr(
-        "app.services.facilioo_client.httpx.AsyncClient",
-        _patched_facilioo_client(handler),
+        "app.services.facilioo.httpx.AsyncClient",
+        _patched_facilioo(handler),
     )
-    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    payload = await facilioo.fetch_conference_signature_payload(123)
     # Erste valide Row (128), nicht 128+999=1127.
     assert payload["voting_groups"][0]["mea_decimal"] == Decimal("128")
 

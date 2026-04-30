@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-30 (Story 4.1 Code-Review abgeschlossen — 11 Patches + 12 Decisions ins Spike-Doku integriert)
+# last_updated: 2026-04-30 (Story 4.2 implementiert → review)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-30 (Story 4.1 Code-Review abgeschlossen — 11 Patches + 12 Decisions ins Spike-Doku integriert)
+last_updated: 2026-04-30 (Story 4.2 implementiert → review)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -81,7 +81,7 @@ development_status:
   epic-4: in-progress
   4-0-code-hygiene-helpers-und-triage: done
   4-1-facilioo-api-spike: done
-  4-2-facilioo-client-mit-retry-rate-gate: ready-for-dev
+  4-2-facilioo-client-mit-retry-rate-gate: review
   4-3-1-min-poll-job-mit-delta-support: ready-for-dev
   4-4-facilioo-tickets-am-objekt-detail: ready-for-dev
   epic-4-retrospective: optional

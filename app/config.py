@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # Token ist ein langlebiges JWT ("platform api_token", manuell rotieren).
     facilioo_base_url: str = "https://api.facilioo.de"
     facilioo_bearer_token: str = ""
+    facilioo_rate_interval_seconds: float = 1.0
+    """Mindest-Abstand zwischen Facilioo-Requests (Sekunden), gilt im
+    Mirror-Pfad (Story 4.3). ETV-Pfad ueberspringt den Gate via
+    rate_gate=False, weil Aggregator 60+ parallele Calls benoetigt."""
 
     uploads_dir: str = "uploads"
     max_upload_mb: int = 20

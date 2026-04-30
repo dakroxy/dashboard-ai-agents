@@ -1,36 +1,39 @@
-"""Facilioo Read-Client (Workflow: ETV-Unterschriftenliste).
-
-Schmaler Wrapper um die Facilioo-Public-API (Bearer-JWT). Anders als der
-Impower-Client (rate-limited, write-fähig) ist dieser Client read-only und
-nicht rate-limited — pro PDF-Druck laden wir 6 Endpunkte; das passt locker
-unter jedes vernünftige Limit.
+"""Facilioo Read-Client — einzige Boundary fuer alle Facilioo-API-Calls.
 
 Pattern bewusst an `app/services/impower.py` angelehnt:
-- httpx.AsyncClient mit Bearer-Header.
-- 5xx + Transport-Errors retried mit Exponential-Backoff.
-- 4xx wirft :class:`FaciliooError`.
-- Errors werden über ``_sanitize_error`` kompakt gemacht (kein HTML-Dump).
+- httpx.AsyncClient (Factory _make_client, kein globales Singleton).
+- 5xx + Transport-Errors retried mit Exponential-Backoff (2/5/15/30/60 s).
+- 429 mit Retry-After-Parsing (Cap 120 s, Floor 1 s, Fallback 30 s).
+- Rate-Gate (Default: 1 req/s) deaktivierbar per rate_gate=False.
+  ETV-Pfad nutzt rate_gate=False (60+ parallele Calls), Mirror-Pfad (Story 4.3)
+  laesst den Default aktiv.
+- HTML-Error-Bodies werden via _sync_common.strip_html_error bereinigt.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
 
 from app.config import settings
+from app.services._sync_common import strip_html_error
 
 
 _TIMEOUT = 30.0
-_MAX_RETRIES_5XX = 3
-_RETRY_DELAYS_5XX: tuple[int, ...] = (2, 5, 15)
+_MAX_RETRIES_5XX = 5
+_RETRY_DELAYS_5XX: tuple[int, ...] = (2, 5, 15, 30, 60)
 _PAGE_SIZE = 100
 # Safety-Cap fuer paginierte Endpunkte: bei Schema-Drift (kein totalPages,
 # kein last-Flag, content immer voll) waere die Schleife sonst unbegrenzt.
 # 500 Seiten * 100 Items = 50k Conferences — well above any realistic Pool.
 _MAX_PAGES = 500
+
+# Wird beim ersten Import aus settings gelesen (Prod-Override via Env).
+_REQUEST_INTERVAL: float = settings.facilioo_rate_interval_seconds
 
 # Facilioo-Tenant DBS, GET /api/attributes resolved name="Miteigentumsanteile".
 # Werte liegen pro Unit unter /api/units/{uid}/attribute-values als
@@ -38,8 +41,11 @@ _MAX_PAGES = 500
 # das in Facilioo nicht durchgaengig gepflegt wird (Wert "0").
 MEA_ATTRIBUTE_ID = 1438
 
-
 _logger = logging.getLogger(__name__)
+
+# Modul-weiter Rate-Gate-State (analog impower.py:43-44).
+_rate_lock = asyncio.Lock()
+_last_request_time: float = 0.0
 
 
 class FaciliooError(Exception):
@@ -48,14 +54,14 @@ class FaciliooError(Exception):
         self.status_code = status_code
 
 
-def _sanitize_error(resp: httpx.Response) -> str:
-    text = resp.text.strip()
-    if text.startswith("<"):
-        return (
-            f"HTTP {resp.status_code} — Facilioo-Gateway hat HTML statt JSON "
-            f"geliefert (meist Upstream-Stoerung)."
-        )
-    return text[:300]
+def _parse_retry_after(value: str | None) -> int:
+    """Parst Retry-After-Header (nur Integer-Sekunden). Floor 1, Cap 120, Fallback 30."""
+    if value is None:
+        return 30
+    try:
+        return max(1, min(120, int(value)))
+    except (ValueError, TypeError):
+        return 30
 
 
 def _make_client() -> httpx.AsyncClient:
@@ -63,8 +69,8 @@ def _make_client() -> httpx.AsyncClient:
     if not token:
         # Frueh raus mit klarer Meldung — sonst wuerde httpx den Header
         # `"Bearer "` als LocalProtocolError ablehnen, der Retry-Pfad zieht
-        # 22 s (2+5+15 s Backoff) Wartezeit pro Aufruf. Passiert in der Praxis,
-        # wenn das Prod-.env die Variable nicht gesetzt hat.
+        # lange Backoff-Wartezeiten. Passiert in der Praxis, wenn das
+        # Prod-.env die Variable nicht gesetzt hat.
         raise FaciliooError(
             "FACILIOO_BEARER_TOKEN ist nicht gesetzt. "
             "Bitte im Elestio-UI / .env nachtragen.",
@@ -80,35 +86,75 @@ def _make_client() -> httpx.AsyncClient:
     )
 
 
+async def _rate_limit_gate() -> None:
+    global _last_request_time
+    async with _rate_lock:
+        now = time.monotonic()
+        wait = _REQUEST_INTERVAL - (now - _last_request_time)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _last_request_time = time.monotonic()
+
+
 async def _api_get(
     client: httpx.AsyncClient,
     path: str,
     params: dict | None = None,
     _attempt: int = 0,
+    *,
+    rate_gate: bool = True,
+    _rate_attempt: int = 0,
 ) -> Any:
+    if rate_gate:
+        await _rate_limit_gate()
+
     try:
         resp = await client.get(path, params=params)
     except (httpx.TransportError, httpx.TimeoutException) as exc:
         if _attempt < _MAX_RETRIES_5XX:
             await asyncio.sleep(_RETRY_DELAYS_5XX[_attempt])
-            return await _api_get(client, path, params, _attempt + 1)
+            return await _api_get(
+                client, path, params, _attempt + 1,
+                rate_gate=rate_gate, _rate_attempt=_rate_attempt,
+            )
         raise FaciliooError(
             f"Verbindungsfehler zu Facilioo: {type(exc).__name__}: {exc}",
             -1,
         ) from exc
 
+    if resp.status_code == 429:
+        if _rate_attempt >= 3:
+            raise FaciliooError("Rate-Limit nach 3 Retries weiterhin aktiv", 429)
+        wait = _parse_retry_after(resp.headers.get("Retry-After"))
+        await asyncio.sleep(wait)
+        return await _api_get(
+            client, path, params, _attempt,
+            rate_gate=rate_gate, _rate_attempt=_rate_attempt + 1,
+        )
+
     if 500 <= resp.status_code < 600 and _attempt < _MAX_RETRIES_5XX:
         await asyncio.sleep(_RETRY_DELAYS_5XX[_attempt])
-        return await _api_get(client, path, params, _attempt + 1)
+        return await _api_get(
+            client, path, params, _attempt + 1,
+            rate_gate=rate_gate, _rate_attempt=_rate_attempt,
+        )
 
     if resp.status_code >= 400:
-        raise FaciliooError(_sanitize_error(resp), resp.status_code)
+        if resp.text.strip().startswith("<"):
+            msg = strip_html_error(resp.text, limit=300) or f"HTTP {resp.status_code} (HTML-Body)"
+        else:
+            msg = resp.text.strip()[:300]
+        raise FaciliooError(msg, resp.status_code)
 
     return resp.json()
 
 
 async def _get_all_paged(
-    client: httpx.AsyncClient, path: str, params: dict | None = None
+    client: httpx.AsyncClient,
+    path: str,
+    params: dict | None = None,
+    *,
+    rate_gate: bool = True,
 ) -> list[Any]:
     """Lädt alle Seiten eines paginierten Facilioo-Endpunkts.
 
@@ -122,7 +168,9 @@ async def _get_all_paged(
     page = 1
 
     while True:
-        data = await _api_get(client, path, {**params, "pageNumber": page})
+        data = await _api_get(
+            client, path, {**params, "pageNumber": page}, rate_gate=rate_gate
+        )
 
         if isinstance(data, list):
             all_items.extend(data)
@@ -157,13 +205,15 @@ async def _get_all_paged(
 
 # ---------------------------------------------------------------------------
 # Public Read-Methoden — alle GETs auf api.facilioo.de
+# ETV-Pfad: rate_gate=False (60+ parallele Calls, Performance-kritisch).
+# Mirror-Pfad (Story 4.3): rate_gate=True (Default).
 # ---------------------------------------------------------------------------
 
 async def list_conferences() -> list[dict]:
     """Alle Conferences (paginated). Felder u. a. id, title, date, state,
     propertyId."""
     async with _make_client() as client:
-        return await _get_all_paged(client, "/api/conferences")
+        return await _get_all_paged(client, "/api/conferences", rate_gate=False)
 
 
 async def list_conferences_with_properties() -> list[dict]:
@@ -177,9 +227,9 @@ async def list_conferences_with_properties() -> list[dict]:
     an. Bei ~30 Conferences kostet das eine Welle parallel: ~1 s.
     """
     async with _make_client() as client:
-        conferences = await _get_all_paged(client, "/api/conferences")
+        conferences = await _get_all_paged(client, "/api/conferences", rate_gate=False)
         prop_tasks = [
-            _api_get(client, f"/api/conferences/{c['id']}/property")
+            _api_get(client, f"/api/conferences/{c['id']}/property", rate_gate=False)
             for c in conferences
             if c.get("id") is not None
         ]
@@ -213,12 +263,14 @@ async def list_conferences_with_properties() -> list[dict]:
 
 async def get_conference(conf_id: int | str) -> dict:
     async with _make_client() as client:
-        return await _api_get(client, f"/api/conferences/{conf_id}")
+        return await _api_get(client, f"/api/conferences/{conf_id}", rate_gate=False)
 
 
 async def get_conference_property(conf_id: int | str) -> dict:
     async with _make_client() as client:
-        return await _api_get(client, f"/api/conferences/{conf_id}/property")
+        return await _api_get(
+            client, f"/api/conferences/{conf_id}/property", rate_gate=False
+        )
 
 
 async def list_voting_group_shares(conf_id: int | str) -> list[dict]:
@@ -229,21 +281,25 @@ async def list_voting_group_shares(conf_id: int | str) -> list[dict]:
     """
     async with _make_client() as client:
         return await _get_all_paged(
-            client, f"/api/conferences/{conf_id}/voting-groups/shares"
+            client,
+            f"/api/conferences/{conf_id}/voting-groups/shares",
+            rate_gate=False,
         )
 
 
 async def get_voting_group(vg_id: int | str) -> dict:
     """Einzel-Voting-Group mit ``units[]`` und ``parties[]``."""
     async with _make_client() as client:
-        return await _api_get(client, f"/api/voting-groups/{vg_id}")
+        return await _api_get(client, f"/api/voting-groups/{vg_id}", rate_gate=False)
 
 
 async def list_mandates(conf_id: int | str) -> list[dict]:
     """Vollmacht-Liste: ``{propertyOwnerId, representativeId}`` (paginated)."""
     async with _make_client() as client:
         return await _get_all_paged(
-            client, f"/api/conferences/{conf_id}/mandates"
+            client,
+            f"/api/conferences/{conf_id}/mandates",
+            rate_gate=False,
         )
 
 
@@ -255,7 +311,9 @@ async def list_unit_attribute_values(unit_id: int | str) -> list[dict]:
     """
     async with _make_client() as client:
         return await _get_all_paged(
-            client, f"/api/units/{unit_id}/attribute-values"
+            client,
+            f"/api/units/{unit_id}/attribute-values",
+            rate_gate=False,
         )
 
 
@@ -288,13 +346,19 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
         }
     """
     async with _make_client() as client:
-        conf_task = _api_get(client, f"/api/conferences/{conf_id}")
-        prop_task = _api_get(client, f"/api/conferences/{conf_id}/property")
+        conf_task = _api_get(client, f"/api/conferences/{conf_id}", rate_gate=False)
+        prop_task = _api_get(
+            client, f"/api/conferences/{conf_id}/property", rate_gate=False
+        )
         shares_task = _get_all_paged(
-            client, f"/api/conferences/{conf_id}/voting-groups/shares"
+            client,
+            f"/api/conferences/{conf_id}/voting-groups/shares",
+            rate_gate=False,
         )
         mandates_task = _get_all_paged(
-            client, f"/api/conferences/{conf_id}/mandates"
+            client,
+            f"/api/conferences/{conf_id}/mandates",
+            rate_gate=False,
         )
 
         conference, property_, shares, mandates = await asyncio.gather(
@@ -303,7 +367,7 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
 
         # Phase 2: alle Voting-Groups parallel
         vg_tasks = [
-            _api_get(client, f"/api/voting-groups/{s['votingGroupId']}")
+            _api_get(client, f"/api/voting-groups/{s['votingGroupId']}", rate_gate=False)
             for s in shares
             if s.get("votingGroupId") is not None
         ]
@@ -329,7 +393,11 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
         })
         if unit_ids:
             attr_tasks = [
-                _get_all_paged(client, f"/api/units/{uid}/attribute-values")
+                _get_all_paged(
+                    client,
+                    f"/api/units/{uid}/attribute-values",
+                    rate_gate=False,
+                )
                 for uid in unit_ids
             ]
             attr_lists = await asyncio.gather(*attr_tasks)

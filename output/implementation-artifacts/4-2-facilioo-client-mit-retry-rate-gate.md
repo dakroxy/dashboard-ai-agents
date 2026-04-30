@@ -1,6 +1,6 @@
 # Story 4.2: Facilioo-Client mit Retry & Rate-Gate
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -59,32 +59,32 @@ Keine DB-Migration, keine neuen Permissions, keine neuen Audit-Actions. Output i
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Rename `facilioo_client.py` → `facilioo.py`** (AC1)
-  - [ ] 1.1: `git mv app/services/facilioo_client.py app/services/facilioo.py` (Git-History bleibt erhalten)
-  - [ ] 1.2: `app/routers/etv_signature_list.py` — Multi-Line-Import in Zeilen 29–34 auf `from app.services.facilioo import (...)` umstellen (Modul-Pfad in Zeile 29 ändern, die 4 Symbole `FaciliooError, fetch_conference_signature_payload, list_conferences, list_conferences_with_properties` bleiben unverändert)
-  - [ ] 1.3: `tests/test_etv_signature_list.py` — globaler Sed-Replace `facilioo_client` → `facilioo` (`sed -i '' 's/facilioo_client/facilioo/g' tests/test_etv_signature_list.py`). Trifft 11 Monkey-Patch-Strings (`app.services.facilioo_client.httpx.AsyncClient`), 2 Import-Zeilen (26 + 227), ~15 direkte Modul-Verwendungen (`facilioo_client.list_conferences()`, `facilioo_client.MEA_ATTRIBUTE_ID`, `facilioo_client.FaciliooError`, `facilioo_client.fetch_conference_signature_payload`, …) UND den lokalen Helper `def _patched_facilioo_client(handler):` (Zeile 211 + alle Aufrufer) → wird zu `_patched_facilioo`. Helper-Rename ist datei-lokal und harmlos, aber bewusst flag — danach manuell sichten
-  - [ ] 1.4: Smoke: `pytest tests/test_etv_signature_list.py -x` muss grün bleiben (Pre-Hardening, nur Rename)
+- [x] **Task 1: Rename `facilioo_client.py` → `facilioo.py`** (AC1)
+  - [x] 1.1: `git mv app/services/facilioo_client.py app/services/facilioo.py` (Git-History bleibt erhalten)
+  - [x] 1.2: `app/routers/etv_signature_list.py` — Multi-Line-Import in Zeilen 29–34 auf `from app.services.facilioo import (...)` umstellen (Modul-Pfad in Zeile 29 ändern, die 4 Symbole `FaciliooError, fetch_conference_signature_payload, list_conferences, list_conferences_with_properties` bleiben unverändert)
+  - [x] 1.3: `tests/test_etv_signature_list.py` — globaler Sed-Replace `facilioo_client` → `facilioo` (`sed -i '' 's/facilioo_client/facilioo/g' tests/test_etv_signature_list.py`). Trifft 11 Monkey-Patch-Strings (`app.services.facilioo_client.httpx.AsyncClient`), 2 Import-Zeilen (26 + 227), ~15 direkte Modul-Verwendungen (`facilioo_client.list_conferences()`, `facilioo_client.MEA_ATTRIBUTE_ID`, `facilioo_client.FaciliooError`, `facilioo_client.fetch_conference_signature_payload`, …) UND den lokalen Helper `def _patched_facilioo_client(handler):` (Zeile 211 + alle Aufrufer) → wird zu `_patched_facilioo`. Helper-Rename ist datei-lokal und harmlos, aber bewusst flag — danach manuell sichten
+  - [x] 1.4: Smoke: `pytest tests/test_etv_signature_list.py -x` muss grün bleiben (Pre-Hardening, nur Rename)
 
-- [ ] **Task 2: Settings + Konstanten erweitern** (AC1, AC2)
-  - [ ] 2.1: `app/config.py` — Feld `facilioo_rate_interval_seconds: float = 1.0` hinzufügen, Doc-Kommentar verweist auf den Gate
-  - [ ] 2.2: In `app/services/facilioo.py` Konstanten anpassen: `_MAX_RETRIES_5XX = 5`, `_RETRY_DELAYS_5XX: tuple[int, ...] = (2, 5, 15, 30, 60)`, `_TIMEOUT = 30.0` (bleibt), `_REQUEST_INTERVAL = settings.facilioo_rate_interval_seconds`
-  - [ ] 2.3: Modul-State: `_rate_lock = asyncio.Lock()` + `_last_request_time: float = 0.0` (analog `app/services/impower.py:43–44`)
+- [x] **Task 2: Settings + Konstanten erweitern** (AC1, AC2)
+  - [x] 2.1: `app/config.py` — Feld `facilioo_rate_interval_seconds: float = 1.0` hinzufügen, Doc-Kommentar verweist auf den Gate
+  - [x] 2.2: In `app/services/facilioo.py` Konstanten anpassen: `_MAX_RETRIES_5XX = 5`, `_RETRY_DELAYS_5XX: tuple[int, ...] = (2, 5, 15, 30, 60)`, `_TIMEOUT = 30.0` (bleibt), `_REQUEST_INTERVAL = settings.facilioo_rate_interval_seconds`
+  - [x] 2.3: Modul-State: `_rate_lock = asyncio.Lock()` + `_last_request_time: float = 0.0` (analog `app/services/impower.py:43–44`)
 
-- [ ] **Task 3: Rate-Gate implementieren** (AC1)
-  - [ ] 3.1: `async def _rate_limit_gate() -> None` 1:1 nach `app/services/impower.py:59–66` portieren, aber `_REQUEST_INTERVAL` statt `_REQUEST_DELAY` benutzen
-  - [ ] 3.2: `_api_get(...)`-Signatur erweitern um `*, rate_gate: bool = True`; bei `rate_gate=True` zuerst `await _rate_limit_gate()`
-  - [ ] 3.3: `_get_all_paged(...)`-Signatur ebenfalls um `*, rate_gate: bool = True` erweitern, an `_api_get` durchreichen
-  - [ ] 3.4: Alle ETV-Public-Funktionen (`list_conferences`, `list_conferences_with_properties`, `get_conference`, `get_conference_property`, `list_voting_group_shares`, `get_voting_group`, `list_mandates`, `list_unit_attribute_values`, `fetch_conference_signature_payload`) rufen die internen Helpers mit `rate_gate=False` auf — ETV-Performance bleibt unverändert (60+ parallele Calls erlaubt)
+- [x] **Task 3: Rate-Gate implementieren** (AC1)
+  - [x] 3.1: `async def _rate_limit_gate() -> None` 1:1 nach `app/services/impower.py:59–66` portieren, aber `_REQUEST_INTERVAL` statt `_REQUEST_DELAY` benutzen
+  - [x] 3.2: `_api_get(...)`-Signatur erweitern um `*, rate_gate: bool = True`; bei `rate_gate=True` zuerst `await _rate_limit_gate()`
+  - [x] 3.3: `_get_all_paged(...)`-Signatur ebenfalls um `*, rate_gate: bool = True` erweitern, an `_api_get` durchreichen
+  - [x] 3.4: Alle ETV-Public-Funktionen (`list_conferences`, `list_conferences_with_properties`, `get_conference`, `get_conference_property`, `list_voting_group_shares`, `get_voting_group`, `list_mandates`, `list_unit_attribute_values`, `fetch_conference_signature_payload`) rufen die internen Helpers mit `rate_gate=False` auf — ETV-Performance bleibt unverändert (60+ parallele Calls erlaubt)
 
-- [ ] **Task 4: 429-Handling mit `Retry-After`** (AC2)
-  - [ ] 4.1: Im `_api_get(...)`-Body NACH dem Response-Get + VOR dem 5xx-Block: `if resp.status_code == 429:` → Header `Retry-After` parsen
-  - [ ] 4.2: Parsing-Hilfsfunktion `_parse_retry_after(value: str | None) -> int` — akzeptiert nur Integer-Sekunden (kein HTTP-Date-Parsing — Facilioo dokumentiert das nicht); Floor 1, Cap 120, Fallback 30 bei `None`/Parse-Error
-  - [ ] 4.3: 429-Pfad ruft `await asyncio.sleep(wait)` und retried mit unverändertem `_attempt`-Counter (verbraucht keinen 5xx-Slot); separater Counter `_rate_attempt: int = 0` mit Cap 3, sonst Endlos-Retry-Risiko
-  - [ ] 4.4: Wenn `_rate_attempt > 3`: `raise FaciliooError("Rate-Limit nach 3 Retries weiterhin aktiv", 429)`
+- [x] **Task 4: 429-Handling mit `Retry-After`** (AC2)
+  - [x] 4.1: Im `_api_get(...)`-Body NACH dem Response-Get + VOR dem 5xx-Block: `if resp.status_code == 429:` → Header `Retry-After` parsen
+  - [x] 4.2: Parsing-Hilfsfunktion `_parse_retry_after(value: str | None) -> int` — akzeptiert nur Integer-Sekunden (kein HTTP-Date-Parsing — Facilioo dokumentiert das nicht); Floor 1, Cap 120, Fallback 30 bei `None`/Parse-Error
+  - [x] 4.3: 429-Pfad ruft `await asyncio.sleep(wait)` und retried mit unverändertem `_attempt`-Counter (verbraucht keinen 5xx-Slot); separater Counter `_rate_attempt: int = 0` mit Cap 3, sonst Endlos-Retry-Risiko
+  - [x] 4.4: Wenn `_rate_attempt >= 3`: `raise FaciliooError("Rate-Limit nach 3 Retries weiterhin aktiv", 429)` (implementiert als `>= 3` statt `> 3` — 3 Retries laufen, beim 4. Aufruf wird sofort geworfen; semantisch identisch mit der Spec-Formulierung)
 
-- [ ] **Task 5: HTML-Error-Sanitizer auf `_sync_common.strip_html_error` migrieren** (AC3)
-  - [ ] 5.1: `from app.services._sync_common import strip_html_error` ergänzen
-  - [ ] 5.2: Inline-`_sanitize_error(resp)` ersetzen durch:
+- [x] **Task 5: HTML-Error-Sanitizer auf `_sync_common.strip_html_error` migrieren** (AC3)
+  - [x] 5.1: `from app.services._sync_common import strip_html_error` ergänzen
+  - [x] 5.2: Inline-`_sanitize_error(resp)` ersetzen durch:
     ```python
     if resp.text.strip().startswith("<"):
         msg = strip_html_error(resp.text, limit=300) or f"HTTP {resp.status_code} (HTML-Body)"
@@ -92,32 +92,32 @@ Keine DB-Migration, keine neuen Permissions, keine neuen Audit-Actions. Output i
         msg = resp.text.strip()[:300]
     raise FaciliooError(msg, resp.status_code)
     ```
-  - [ ] 5.3: Funktion `_sanitize_error` komplett entfernen (kein Soft-Delete, kein Re-Export)
+  - [x] 5.3: Funktion `_sanitize_error` komplett entfernt
 
-- [ ] **Task 6: Unit-Tests `test_facilioo_unit.py`** (AC1, AC2, AC3)
-  - [ ] 6.1: Neue Datei `tests/test_facilioo_unit.py` anlegen, Pattern analog `tests/test_etv_signature_list.py:_patched_facilioo_client` (httpx.MockTransport)
-  - [ ] 6.2: Test `test_5xx_retry_consumes_full_backoff_sequence` — Handler liefert 5x 503, 1x 200 → `asyncio.sleep`-Mock zählt Aufrufe → erwartet exakt `[2, 5, 15, 30, 60]`
-  - [ ] 6.3: Test `test_5xx_max_retries_then_raises` — Handler liefert 6x 503 → erwartet `FaciliooError(status_code >= 500)` nach 5. Retry
-  - [ ] 6.4: Test `test_429_respects_retry_after_header` — Handler liefert 1x 429 mit `Retry-After: 7`, dann 200 → `asyncio.sleep`-Mock zeigt 1x `sleep(7)`
-  - [ ] 6.5: Test `test_429_caps_retry_after_at_120` — Handler liefert `Retry-After: 600` → tatsächlicher Sleep ist 120
-  - [ ] 6.6: Test `test_429_fallback_30s_without_header` — Handler liefert 429 ohne Retry-After → Sleep 30
-  - [ ] 6.7: Test `test_429_caps_retries_at_3` — Handler liefert dauerhaft 429 mit `Retry-After: 1` → erwartet `FaciliooError(status_code=429)` mit Message-Substring "Rate-Limit nach 3 Retries". Verifiziert die `_rate_attempt > 3`-Grenze aus Task 4.4 (Endlos-Retry-Schutz)
-  - [ ] 6.8: Test `test_html_error_uses_strip_html_error` — Handler liefert 502 mit Body `<html>...nginx fehler...</html>` → `FaciliooError.args[0]` enthält `nginx fehler` ohne `<html>`/`<body>`
-  - [ ] 6.9: Test `test_rate_gate_spaces_calls` — 3 sequenzielle `_api_get(rate_gate=True)`-Aufrufe → `time.monotonic`-Differenzen >= `_REQUEST_INTERVAL` (Mock-bar via `monkeypatch` auf `time.monotonic`/`asyncio.sleep`)
-  - [ ] 6.10: Test `test_rate_gate_skip_does_not_serialize` — 5 parallele `_api_get(rate_gate=False)`-Aufrufe → komplette Wall-Time < 0.1 s (kein Gate)
-  - [ ] 6.11: Test `test_etv_paths_skip_rate_gate` — Smoke: `await list_conferences()` mit Mock-Handler, der 3 schnelle 200er liefert; Wall-Time < 0.5 s (Regression-Schutz: ETV bleibt parallel)
+- [x] **Task 6: Unit-Tests `test_facilioo_unit.py`** (AC1, AC2, AC3)
+  - [x] 6.1: Neue Datei `tests/test_facilioo_unit.py` angelegt, Pattern analog `tests/test_etv_signature_list.py:_patched_facilioo` (httpx.MockTransport)
+  - [x] 6.2: Test `test_5xx_retry_consumes_full_backoff_sequence` — 5x 503, 1x 200 → sleeps == [2, 5, 15, 30, 60] ✓
+  - [x] 6.3: Test `test_5xx_max_retries_then_raises` — 6x 503 → FaciliooError(status_code=503) ✓
+  - [x] 6.4: Test `test_429_respects_retry_after_header` — 429 Retry-After: 7, dann 200 → sleep(7) ✓
+  - [x] 6.5: Test `test_429_caps_retry_after_at_120` — Retry-After: 600 → sleep(120) ✓
+  - [x] 6.6: Test `test_429_fallback_30s_without_header` — 429 ohne Header → sleep(30) ✓
+  - [x] 6.7: Test `test_429_caps_retries_at_3` — dauerhaft 429 → FaciliooError("Rate-Limit nach 3 Retries", 429) ✓
+  - [x] 6.8: Test `test_html_error_uses_strip_html_error` — 502 HTML-Body → FaciliooError ohne HTML-Tags ✓
+  - [x] 6.9: Test `test_rate_gate_spaces_calls` — 3 sequenzielle Calls mit rate_gate=True → 2x sleep(1.0) ✓
+  - [x] 6.10: Test `test_rate_gate_skip_does_not_serialize` — 5 parallele rate_gate=False → Wall-Time < 0.1 s ✓
+  - [x] 6.11: Test `test_etv_paths_skip_rate_gate` — list_conferences() mit Mock → Wall-Time < 0.5 s ✓
 
-- [ ] **Task 7: Boundary-Test `test_facilioo_client_boundary.py`** (AC4)
-  - [ ] 7.1: Neue Datei `tests/test_facilioo_client_boundary.py`, Pattern analog `tests/test_write_gate_coverage.py`
-  - [ ] 7.2: Allow-List: `{app/config.py, app/services/facilioo.py, app/services/facilioo_mirror.py}` (letzteres entsteht in Story 4.3 — bereits jetzt erlauben, damit der Test stabil bleibt)
-  - [ ] 7.3: Heuristik: Walk `app/**/*.py`, suche literale Strings `facilioo_bearer_token` oder `facilioo_base_url` außerhalb der Allow-List → fail
-  - [ ] 7.4: Test `test_no_facilioo_calls_outside_gate` — soll auf aktueller Code-Basis grün laufen
-  - [ ] 7.5: Test `test_boundary_scan_finds_seeded_violation(tmp_path, monkeypatch)` — Self-Check (analog `test_write_gate_coverage:test_coverage_scan_finds_seeded_violation`): synthetisches File `fake.py` mit `httpx.AsyncClient(... settings.facilioo_bearer_token ...)` → `pytest.raises(AssertionError)`
+- [x] **Task 7: Boundary-Test `test_facilioo_client_boundary.py`** (AC4)
+  - [x] 7.1: Neue Datei `tests/test_facilioo_client_boundary.py`, Pattern analog `tests/test_write_gate_coverage.py`
+  - [x] 7.2: Allow-List: `{app/config.py, app/services/facilioo.py, app/services/facilioo_mirror.py}` (letzteres entsteht in Story 4.3 — bereits jetzt erlaubt)
+  - [x] 7.3: Heuristik: Walk `app/**/*.py`, suche literale Strings `facilioo_bearer_token` oder `facilioo_base_url` außerhalb der Allow-List → fail
+  - [x] 7.4: Test `test_no_facilioo_calls_outside_gate` — grün auf aktueller Code-Basis ✓
+  - [x] 7.5: Test `test_boundary_scan_finds_seeded_violation` — Self-Check mit synthetischem File → AssertionError wie erwartet ✓
 
-- [ ] **Task 8: Smoke-Run + Sprint-Status** (AC1–AC4)
-  - [ ] 8.1: `pytest tests/test_facilioo_unit.py tests/test_facilioo_client_boundary.py tests/test_etv_signature_list.py -v` — alle grün
-  - [ ] 8.2: `pytest` (Full-Suite) — keine neuen Failures (Soll: 851+ → 851+ + neue)
-  - [ ] 8.3: Sprint-Status: Story 4.2 → `review` (Hand-Off an Code-Review)
+- [x] **Task 8: Smoke-Run + Sprint-Status** (AC1–AC4)
+  - [x] 8.1: `pytest tests/test_facilioo_unit.py tests/test_facilioo_client_boundary.py tests/test_etv_signature_list.py -v` — 57/57 grün ✓
+  - [x] 8.2: `pytest` (Full-Suite) — 887 passed, 5 xfailed, keine Regressions ✓
+  - [x] 8.3: Sprint-Status: Story 4.2 → `review`
 
 ## Dev Notes
 
@@ -298,4 +298,19 @@ claude-sonnet-4-6 (1M context)
 
 ### Completion Notes List
 
+- **Task 1**: `git mv` hat Git-History erhalten. Sed-Replace in test_etv_signature_list.py hat alle 11 Monkey-Patch-Strings, 2 Import-Zeilen, ~15 direkte Verwendungen und den `_patched_facilioo`-Helper korrekt umbenannt. Alle 45 ETV-Tests weiterhin grün.
+- **Task 2-5**: Hardening in einem Schritt implementiert. `import time` ergänzt für Rate-Gate (wie impower.py). `_parse_retry_after` als separate Hilfsfunktion. `_sanitize_error` komplett entfernt; `strip_html_error` direkt aus `_sync_common` importiert. Wichtige Abweichung: `_rate_attempt >= 3` statt `> 3` — nach 3 Retries (Attempts 0, 1, 2) wirft der 4. Aufruf sofort, was der Spec-Formulierung "nach 3 Retries" semantisch entspricht.
+- **Task 6**: 10 Unit-Tests mit httpx.MockTransport + `monkeypatch` auf `asyncio.sleep` / `time.monotonic`. Rate-Gate-Tests nutzen `types.SimpleNamespace(monotonic=lambda: 1000.0)` um deterministisches Timing zu erzwingen.
+- **Task 7**: Boundary-Test nach identischem Pattern wie `test_write_gate_coverage.py`. `facilioo_mirror.py` bereits in Allow-List, damit der Test bei Story 4.3 stabil bleibt.
+- **Full-Suite**: 887 passed, 5 xfailed — 12 neue Tests, keine Regressions.
+
 ### File List
+
+- `app/services/facilioo.py` (umbenannt von `app/services/facilioo_client.py` via `git mv` + Hardening-Patch)
+- `app/routers/etv_signature_list.py` (Import-Pfad geändert)
+- `app/config.py` (neues Feld `facilioo_rate_interval_seconds`)
+- `tests/test_etv_signature_list.py` (globaler `facilioo_client` → `facilioo` Sed-Replace)
+- `tests/test_facilioo_unit.py` (neu — 10 Unit-Tests, Tasks 6.2–6.11)
+- `tests/test_facilioo_client_boundary.py` (neu — 2 Boundary-Tests, Tasks 7.4–7.5)
+- `output/implementation-artifacts/sprint-status.yaml` (Story 4.2 → `review`)
+- `output/implementation-artifacts/4-2-facilioo-client-mit-retry-rate-gate.md` (Story-File mit Checkmarks + Status)

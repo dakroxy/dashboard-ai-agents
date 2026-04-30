@@ -26,7 +26,7 @@ from app.permissions import (
     can_access_resource,
 )
 from app.services.audit import audit
-from app.services.facilioo_client import (
+from app.services.facilioo import (
     FaciliooError,
     fetch_conference_signature_payload,
     list_conferences,
