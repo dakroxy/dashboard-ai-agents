@@ -974,8 +974,8 @@ def _build_queue_query(
     if min_age_days is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=min_age_days)
         q = q.where(ReviewQueueEntry.created_at <= cutoff)
-    if field_name:
-        q = q.where(ReviewQueueEntry.field_name == field_name)
+    if field_name and field_name.strip():
+        q = q.where(ReviewQueueEntry.field_name == field_name.strip())
     if assigned_to_user_id:
         try:
             uid = uuid.UUID(assigned_to_user_id)
@@ -989,7 +989,10 @@ def _prepare_entries(entries):
     now = datetime.now(timezone.utc)
     result = []
     for e in entries:
-        raw_value = e.proposed_value.get("value", "") if e.proposed_value else ""
+        if isinstance(e.proposed_value, dict):
+            raw_value = e.proposed_value.get("value", "")
+        else:
+            raw_value = e.proposed_value if e.proposed_value is not None else ""
         value_str = str(raw_value)
         if len(value_str) > 100:
             value_str = value_str[:100] + "…"
@@ -1004,7 +1007,7 @@ def _prepare_entries(entries):
 @router.get("/review-queue", response_class=HTMLResponse)
 async def list_review_queue(
     request: Request,
-    min_age_days: int | None = Query(None, ge=0),
+    min_age_days: int | None = Query(None, ge=0, le=36500),
     field_name: str | None = Query(None),
     assigned_to_user_id: str | None = Query(None),
     user: User = Depends(require_permission("objects:approve_ki")),
@@ -1030,7 +1033,7 @@ async def list_review_queue(
 @router.get("/review-queue/rows", response_class=HTMLResponse)
 async def list_review_queue_rows(
     request: Request,
-    min_age_days: int | None = Query(None, ge=0),
+    min_age_days: int | None = Query(None, ge=0, le=36500),
     field_name: str | None = Query(None),
     assigned_to_user_id: str | None = Query(None),
     user: User = Depends(require_permission("objects:approve_ki")),

@@ -1,6 +1,6 @@
 # Story 3.5: Review-Queue-Admin-UI mit Filtern
 
-Status: review
+Status: done
 
 ## Abhängigkeiten
 
@@ -449,15 +449,15 @@ Die Review-Queue-Query hat nichts mit Objekt-Abfragen zu tun. Den `_build_queue_
 
 ## Test-Checkliste (Epic-2-Retro P1)
 
-- [ ] **Permission-Matrix**: Unauthenticated → 302, kein `approve_ki` → 403, `approve_ki` → 200 (Tests 7.1, 7.2, 7.3)
-- [ ] **IDOR**: nicht anwendbar — keine FK aus Form-Body (Story 3.5 ist read-only)
-- [ ] **Numerische Boundaries**: `min_age_days=0` → zeigt alle Entries (Grenzwert 0 inklusive)
-- [ ] **NULLs**: `assigned_to_user_id IS NULL` bei unzugewiesenen Entries kein Crash
-- [ ] **Tel-Link**: nicht anwendbar
-- [ ] **Date-Bounds**: Fixdatum `date(2025, 1, 15)` in `_make_entry` (mid-month)
-- [ ] **HTMX-422-Render**: `/rows`-Endpunkt gibt bei ungültiger UUID für `assigned_to_user_id` 200 + Filter ignoriert zurück (kein 422) — abgedeckt durch Test 7.8
-- [ ] **Timezone-Roundtrip**: alle Tests inserten `created_at` tz-aware (`datetime(..., tzinfo=timezone.utc)`); `_aware()`-Helper im Router fängt SQLite-tzinfo-Stripping ab
-- [ ] **Empty-State**: "Keine Vorschläge offen" (Test 7.3, 7.7)
+- [x] **Permission-Matrix**: Unauthenticated → 302, kein `approve_ki` → 403, `approve_ki` → 200 (Tests 7.1, 7.2, 7.3)
+- [x] **IDOR**: nicht anwendbar — keine FK aus Form-Body (Story 3.5 ist read-only)
+- [x] **Numerische Boundaries**: `min_age_days=0` → zeigt alle Entries (Grenzwert 0 inklusive) — Test `test_review_queue_filter_min_age_zero_includes_all` (Code-Review-Patch)
+- [x] **NULLs**: `assigned_to_user_id IS NULL` bei unzugewiesenen Entries kein Crash + bei gesetztem Filter ausgeblendet — Test `test_review_queue_filter_assigned_excludes_null` (Code-Review-Patch)
+- [x] **Tel-Link**: nicht anwendbar
+- [x] **Date-Bounds**: Fixdatum `date(2025, 1, 15)` in `_make_entry` (mid-month)
+- [x] **HTMX-422-Render**: `/rows`-Endpunkt gibt bei ungültiger UUID für `assigned_to_user_id` 200 + Filter ignoriert zurück (kein 422) — abgedeckt durch Test 7.8
+- [x] **Timezone-Roundtrip**: alle Tests inserten `created_at` tz-aware (`datetime(..., tzinfo=timezone.utc)`); `_aware()`-Helper im Router fängt SQLite-tzinfo-Stripping ab
+- [x] **Empty-State**: "Keine Vorschläge offen" (Test 7.3, 7.7)
 
 ## Neue Dateien
 
@@ -512,3 +512,35 @@ Kein Debug-Log nötig. Implementation lief ohne Probleme durch.
 - `app/templates/base.html` — KI-Governance-Nav-Block mit Review-Queue-Link
 - `tests/test_review_queue_routes_smoke.py` — neu erstellt (8 Tests)
 - `tests/test_steckbrief_routes_smoke.py` — Assertion auf Main-Content-Scope eingeschränkt
+
+### Review Findings
+
+Code-Review 2026-04-30 (3 parallele Reviewer: Blind Hunter, Edge Case Hunter, Acceptance Auditor). Triage: 7 Patches, 11 Defers, 19 Dismissed.
+
+**Patches (Must-Fix / Should-Fix):**
+
+- [x] [Review][Patch] **Test 7.4 false-positive durch Filter-Placeholder** [`tests/test_review_queue_routes_smoke.py:40-44`] — `test_review_queue_entry_visible` asserted `"heating_type" in resp.text` gegen Vollseite, aber `review_queue.html:24` hat `placeholder="z.B. heating_type"`. Test passt immer, auch bei leerer DB / 500 / falschem Template. Fix: gegen aussagekräftigen String asserten (`agent_ref="test-agent-v1"`, `Fernwärme`, oder UUID-Truncate). Quelle: Auditor.
+- [x] [Review][Patch] **Boundary-Test `min_age_days=0` fehlt** [`tests/test_review_queue_routes_smoke.py`] — Test-Checkliste verlangt explizit "Grenzwert 0 inklusive". Code: `created_at <= now - 0d` ⇒ alle Entries; ohne Test nicht verifiziert. Quelle: Auditor.
+- [x] [Review][Patch] **AC4-NULL-Exclusion nicht getestet** [`tests/test_review_queue_routes_smoke.py`] — AC4 zweite Klausel: "Einträge ohne Zuweisung (`assigned_to_user_id IS NULL`) sind dann ausgeblendet". Code stützt sich auf SQL-3VL (`NULL == uid` → false), aber kein Test mit zwei Entries (eine NULL, eine zugewiesen) + User-Filter. Quelle: Auditor.
+- [x] [Review][Patch] **`field_name` whitespace-only fasst leere Filter als gesetzt auf** [`app/routers/admin.py:_build_queue_query`] — `if field_name:` ist truthy für `" "`, danach `==` matcht null Rows. User glaubt nichts gefiltert zu haben, sieht aber Empty-State. Fix: `if field_name and field_name.strip():` + Wert getrimmt einsetzen. Quelle: Edge Case Hunter.
+- [x] [Review][Patch] **`min_age_days` ohne Obergrenze ⇒ OverflowError** [`app/routers/admin.py:list_review_queue`] — `Query(None, ge=0)` akzeptiert auch `1e15`; `timedelta(days=...)` overflowt bei > 999_999_999. 500. Fix: `Query(None, ge=0, le=36500)` (100 Jahre als Sanity-Cap). Quelle: Edge Case Hunter.
+- [x] [Review][Patch] **`proposed_value`-Shape-Defense fehlt** [`app/routers/admin.py:_prepare_entries`] — Konvention ist `{"value": ...}`, JSONB nullable=False. Wenn Agent versehentlich Liste/Skalar einliefert, crasht `e.proposed_value.get(...)` mit `AttributeError` ⇒ 500 für die ganze Queue. Fix: `raw_value = e.proposed_value.get("value", "") if isinstance(e.proposed_value, dict) else str(e.proposed_value or "")`. Quelle: Blind+Edge.
+- [x] [Review][Patch] **Test-Checkliste-Boxen abhaken nach Patches** [`output/implementation-artifacts/3-5-...md:452-460`] — Boxen "Numerische Boundaries", "NULLs" sind ungekreuzt; nach Patch 2+3 gibt es Test-Evidence. Quelle: Auditor.
+
+**Defers (real, aber nicht jetzt):**
+
+- [x] [Review][Defer] **Pagination / Unbounded Result Set** [`app/routers/admin.py:_build_queue_query`] — deferred, v1 hat Queue mit 0 Entries (keine aktiven KI-Agenten). Bei wachsender Queue (>200 Entries) auf `LIMIT/OFFSET` umstellen. Quelle: Blind+Edge.
+- [x] [Review][Defer] **HTMX `hx-include="[name]"` zu greedy** [`app/templates/admin/review_queue.html:11`] — deferred, aktuell keine anderen `[name]`-Inputs auf der Page (Sidebar hat keine Inputs). Bei Erweiterung der Page (z.B. Suchleiste, CSRF-Token) auf `hx-include="closest form"` umstellen. Quelle: Blind.
+- [x] [Review][Defer] **HTMX double-fire on Enter** [`app/templates/admin/review_queue.html:14`] — deferred, `change, submit` kann bei Tab+Enter zwei Requests feuern; mit `delay:100ms` zu härten. Niedriges Risiko. Quelle: Edge.
+- [x] [Review][Defer] **`agent_ref` ohne Truncation/`max-w`** [`app/templates/admin/_review_queue_rows.html:18`] — deferred, lange Agent-IDs sprengen Layout. UX-Fit-and-Finish. Quelle: Blind.
+- [x] [Review][Defer] **`age_days` Negativ-Werte bei Clock-Skew** [`app/routers/admin.py:_prepare_entries`] — deferred, `(now - created_at).days` kann -1 werden bei Server-Clock-Drift / future-dated test data. Defensiv: `max(0, days)`. Niedriges Risiko in Prod (NTP). Quelle: Blind+Edge.
+- [x] [Review][Defer] **Confidence ausserhalb [0,1]** [`app/templates/admin/_review_queue_rows.html:18-21`] — deferred, falsch kalibrierte Agents könnten "150%" oder "-30%" rendern. Defensive Clamp: `(min(1, max(0, conf)) * 100)`. Quelle: Edge.
+- [x] [Review][Defer] **Anchor-Text ohne `object/`-Prefix** [`app/templates/admin/_review_queue_rows.html:7`] — deferred, Spec ist intern inkonsistent (Task 4.2 inkl. Prefix, Dev Notes ohne); Dev folgte Dev Notes. Cosmetic. Quelle: Auditor.
+- [x] [Review][Defer] **Doppel-Highlight: Review Queue + Admin auf `/admin/review-queue`** [`app/templates/base.html:124+138`] — deferred, pre-existing Pattern (alle `/admin/*`-Subpages haben den Effekt). Globaler Sidebar-Refactor wäre eigene Story. Quelle: Auditor.
+- [x] [Review][Defer] **`test_steckbrief_routes_smoke.py:241-243` `<main>`-Split fragil** [`tests/test_steckbrief_routes_smoke.py:241-243`] — deferred, `body.split("<main")[1].split("</main>")[0]` fällt bei Layout-Refactor stillschweigend auf Full-Body zurück (else-Branch maskiert Regression). Pragmatisch akzeptabel; bei Layout-Änderung neu prüfen. Quelle: Blind.
+- [x] [Review][Defer] **Permission-Magic-String dupliziert (Template + Router)** [`app/templates/base.html:124`, `app/routers/admin.py:1003+1031`] — deferred, projektweites Pattern. Konstanten-Refactor wäre eigene Story. Quelle: Blind.
+- [x] [Review][Defer] **`test_review_queue_unauthenticated` asserted Redirect-Status, nicht Target** [`tests/test_review_queue_routes_smoke.py:24-26`] — deferred, pre-existing Test-Pattern; offen-Redirect via `next=`-Param wäre eigene Story. Quelle: Blind.
+
+**Dismissed (handled / by design / impossible):**
+
+IDOR/Portfolio-wide-Visibility (Spec-Design "portfolio-weite Queue"), Silent-UUID-Ignore (Risk #4 Contract + Test 7.8), `<=` vs `<` (matched Dev Notes + AC3-Wording), `created_at`/`confidence`-NULL-Crash (`nullable=False`), Confidence-NaN (Postgres rejects NaN), Object-Link-404 bei gelöschtem Objekt (by Design — Admin sieht die Lücke), Non-Object-Drill-down (Risk #3 explizit), Routes-Drift (`_build_queue_query` ist shared), Uppercase-UUID-Select-Preselection (Postgres outputs lowercase), `field_name` case-sensitive (Konvention), Users-Email-Liste Info-Leak (Admin sieht Emails ohnehin), Read-Audit-Log (Projekt-Pattern: nur Writes), Confidence-Color-Coding "Scope-Creep" (steht in Dev Notes), `filter_min_age_days`-Falsy-Fix (positive Abweichung), Tests-fixtures-decken-tz-Roundtrip-nicht (Test 7.7 mit `now` deckt es ab), `test_review_queue_filter_field_name`-Substring (Fragment hat keinen Placeholder), `change`-pro-Keystroke (Browser feuert `change` erst on Blur), XSS-via-Unicode-Truncation (Jinja-Autoescape + Codepoint-Slicing).
