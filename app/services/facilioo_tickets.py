@@ -18,12 +18,14 @@ from app.models.facilioo import FaciliooTicket
 
 _logger = logging.getLogger(__name__)
 
-# Status-Werte, die als "abgeschlossen" gelten. Enthaelt sowohl die echten
-# Facilioo-Werte aus dem Spike-Doc (Story 4.1 — derive_status() liefert
-# "open"/"finished"/"deleted") als auch die AC1-Defaults ("closed"/"resolved"/
-# "done"), damit der Filter auch nach kuenftigen Facilioo-Schema-Aenderungen
-# greift.
-_OPEN_STATUS_FILTER = ("finished", "deleted", "closed", "resolved", "done")
+# Status-Werte, die als "abgeschlossen" gelten und damit aus der Vorgaenge-
+# Liste herausgefiltert werden. Enthaelt sowohl die echten Facilioo-Werte aus
+# dem Spike-Doc (Story 4.1 — derive_status() liefert "open"/"finished"/
+# "deleted") als auch die AC1-Defaults ("closed"/"resolved"/"done"), damit der
+# Filter auch nach kuenftigen Facilioo-Schema-Aenderungen greift.
+# Hinweis: Tickets MIT diesen Status werden via `notin_(...)` ausgefiltert —
+# der Filter listet absichtlich die *abgeschlossenen*, nicht die offenen Werte.
+_CLOSED_STATUS_VALUES = ("finished", "deleted", "closed", "resolved", "done")
 
 
 def get_open_tickets_for_object(
@@ -43,7 +45,7 @@ def get_open_tickets_for_object(
             .where(
                 FaciliooTicket.object_id == object_id,
                 FaciliooTicket.is_archived.is_(False),
-                FaciliooTicket.status.notin_(_OPEN_STATUS_FILTER),
+                FaciliooTicket.status.notin_(_CLOSED_STATUS_VALUES),
             )
             .order_by(FaciliooTicket.created_at.desc())
             .limit(cap + 1)
@@ -111,7 +113,9 @@ def format_stale_hint(
     if ref.tzinfo is None:
         ref = ref.replace(tzinfo=timezone.utc)
     delta = ref - last_sync
-    minutes = int(delta.total_seconds() / 60)
+    # Clock-Skew-Schutz: last_sync in der Zukunft → 0 statt negative Minuten,
+    # sonst springt der Banner unter den Threshold und verschwindet still.
+    minutes = max(0, int(delta.total_seconds() / 60))
     if minutes < threshold_minutes:
         return None
     if minutes < 60:
@@ -132,7 +136,8 @@ def facilioo_ticket_url(facilioo_id: str | None) -> str:
     """
     if not facilioo_id:
         return "#"
-    return f"{settings.facilioo_ui_base_url}/tickets/{facilioo_id}"
+    base = settings.facilioo_ui_base_url.rstrip("/")
+    return f"{base}/tickets/{facilioo_id}"
 
 
 def _any_facilioo_tickets_exist(db: Session) -> bool:

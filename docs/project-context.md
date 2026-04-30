@@ -252,7 +252,7 @@ _Kritische Regeln und Muster, die AI-Agenten beim Implementieren in diesem Proje
 - Tickets werden aus der lokalen `facilioo_tickets`-Tabelle gelesen (kein Live-Call im Render-Handler; CD3 Read/Write-Trennung, FR30).
 - Anzeige am Objekt-Detail in `_obj_vorgaenge.html` (eigene Sektion, `data-section="vorgaenge"`); Stale-Banner > 10 Min via `format_stale_hint()` in `app/services/facilioo_tickets.py`.
 - Permission: `objects:view` reicht — Tickets sind operativ, nicht confidential. `_obj_menschen.html` ist weiterhin `objects:view_confidential` gated.
-- `_OPEN_STATUS_FILTER = ("finished", "deleted", "closed", "resolved", "done")` — filtert abgeschlossene Tickets; echte Facilioo-Werte (Spike 4.1) sind `"open"/"finished"/"deleted"`.
+- `_CLOSED_STATUS_VALUES = ("finished", "deleted", "closed", "resolved", "done")` — `notin_(...)` filtert Tickets mit diesen Werten aus; echte Facilioo-Werte (Spike 4.1) sind `"open"/"finished"/"deleted"`.
 - `get_last_facilioo_sync` nutzt `cast(JSONB, String).like(...)` fuer portablen JSONB-Zugriff auf SQLite (Tests) und PostgreSQL (Prod).
 
 **Template-Response-Signatur**

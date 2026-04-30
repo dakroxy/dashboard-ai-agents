@@ -1,6 +1,6 @@
 # Story 4.4: Facilioo-Tickets am Objekt-Detail
 
-Status: review
+Status: done
 
 ## Story
 
@@ -151,6 +151,27 @@ damit ich bei Anruf oder Anfrage weiss, welche Themen schon im System laufen —
   - [x] 8.1: `docs/project-context.md` — Facilioo-Mirror-Block mit Verweis auf `_obj_vorgaenge.html` + Stale-Banner ergaenzt
   - [x] 8.2: `output/planning-artifacts/architecture.md:798` — korrigiert auf `_obj_vorgaenge.html`
   - [x] 8.3: Dokumentiert in Completion Notes
+
+### Review Findings
+
+**Code-Review 2026-04-30** — Layer: Blind Hunter + Edge Case Hunter + Acceptance Auditor. Triage: 5 Patches, 6 Defers, ~25 Dismiss. Alle Patches angewendet, Tests gruen (927 passed, 5 xfailed).
+
+#### Patches (angewendet)
+
+- [x] [Review][Patch] Stale-Threshold-Setting wird ignoriert — `format_stale_hint(facilioo_last_sync)` reicht `settings.facilioo_stale_threshold_minutes` nicht durch; Default 10 immer aktiv [app/routers/objects.py:411 + app/services/facilioo_tickets.py:88]
+- [x] [Review][Patch] Negative Minuten bei `last_sync` aus der Zukunft (Clock-Skew) ⇒ `minutes < threshold_minutes` greift, Banner verschwindet still — `minutes = max(0, ...)` clampen [app/services/facilioo_tickets.py:114]
+- [x] [Review][Patch] Cap-Test ist mit `body.count("Ticket ") >= 10` zu schwach — Cap-Bruch (12 statt 10) wuerde nicht erkannt; auf `== 10` schaerfen + `Ticket 10`/`Ticket 11` explizit ausschliessen [tests/test_object_facilioo_section.py:178]
+- [x] [Review][Patch] `_OPEN_STATUS_FILTER` ist invertiert benannt — enthaelt *abgeschlossene* Status-Werte (`finished/deleted/closed/resolved/done`); umbenannt in `_CLOSED_STATUS_VALUES` zur Lese-Klarheit [app/services/facilioo_tickets.py:26]
+- [x] [Review][Patch] `facilioo_ticket_url` baut bei `facilioo_ui_base_url` mit Trailing-Slash doppelten Slash — `rstrip("/")` einsetzen [app/services/facilioo_tickets.py:135]
+
+#### Deferred (low risk / Spec-Drift)
+
+- [x] [Review][Defer] JSONB-cast+LIKE matcht ohne Key-Anchor (`'%"facilioo_ticket_mirror"%'`) — theoretisch False-Positives bei anderen `sync_finished`-Jobs, Risiko praktisch eng wegen Action-Filter [app/services/facilioo_tickets.py:73]
+- [x] [Review][Defer] `facilioo_id` ohne `urllib.parse.quote()` im Deeplink — Mirror schreibt UUID-Strings, Risiko theoretisch [app/services/facilioo_tickets.py:135]
+- [x] [Review][Defer] NULL-Status-Tickets werden durch `notin_(...)` ausgefiltert (SQL-NULL-Logik) — defensiv waere `or_(status.is_(None), status.notin_(...))`; Mirror schreibt aktuell immer einen Status [app/services/facilioo_tickets.py:46]
+- [x] [Review][Defer] Sortier-Tiebreaker fehlt — `order_by(created_at.desc())` ohne `id.desc()`, instabile Reihenfolge bei gleichen Timestamps an Cap-Grenze [app/services/facilioo_tickets.py:48]
+- [x] [Review][Defer] AC1-Wortlaut „und mind. {{ extra_count }} weiteres in Facilioo" stimmt nicht mit Implementation (Footer ohne Zahl, Task 3.8-konform); Spec-Wortlaut nachziehen [output/implementation-artifacts/4-4-facilioo-tickets-am-objekt-detail.md:47]
+- [x] [Review][Defer] `facilioo_ui_base_url` ohne Schema-Validator — Fehlkonfiguration `""`/ohne `http(s)://` moeglich [app/config.py:59]
 
 ## Dev Notes
 

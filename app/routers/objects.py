@@ -32,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_db
 from app.models import Eigentuemer, InsurancePolicy, Object, Schadensfall, Unit, User, Wartungspflicht
 from app.models.object import SteckbriefPhoto
@@ -408,7 +409,10 @@ async def object_detail(
     except Exception:
         _logger.exception("facilioo_last_sync im Route-Handler fehlgeschlagen")
         facilioo_last_sync = None
-    facilioo_stale_hint = format_stale_hint(facilioo_last_sync)
+    facilioo_stale_hint = format_stale_hint(
+        facilioo_last_sync,
+        threshold_minutes=settings.facilioo_stale_threshold_minutes,
+    )
     facilioo_placeholder = compute_placeholder_mode(
         db,
         last_sync=facilioo_last_sync,

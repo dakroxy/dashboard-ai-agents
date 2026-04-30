@@ -185,6 +185,15 @@ Save, Orphan-Datei nach Commit-Fail). Beide Cluster zusammen sind Kandidaten
 fuer einen separaten Hardening-Sprint vor Pre-Prod (analog M3-Pre-Prod-Story
 fuer den IBAN-Wechsel-Fall).
 
+## Deferred from: code review of 4-4-facilioo-tickets-am-objekt-detail (2026-04-30)
+
+- **JSONB-cast+LIKE matcht ohne Key-Anchor** [`app/services/facilioo_tickets.py:73`] — `cast(AuditLog.details_json, String).like('%"facilioo_ticket_mirror"%')` greift theoretisch bei jedem `sync_finished`-Audit, dessen JSON die Substring `facilioo_ticket_mirror` irgendwo enthaelt. Praktisch eng, weil nur der Mirror diese Substring schreibt. Sauberer Ansatz: separate `job`-Spalte am AuditLog oder Postgres-`details_json["job"].astext == ...` mit SQLite-Fallback.
+- **`facilioo_id` ohne `urllib.parse.quote()` im Deeplink** [`app/services/facilioo_tickets.py:135`] — Mirror schreibt UUID-Strings, deshalb low-risk. Defensive-Hardening fuer den Fall, dass Facilioo eigene Sonderzeichen-IDs einfuehrt.
+- **NULL-Status-Tickets fallen aus dem Filter** [`app/services/facilioo_tickets.py:46`] — `status.notin_(...)` filtert per SQL-NULL-Logik auch NULL-Status-Eintraege aus. Mirror schreibt aktuell immer einen Status (`open`/`finished`/`deleted`), aber defensiv waere `or_(status.is_(None), status.notin_(...))`.
+- **Sortier-Tiebreaker fehlt** [`app/services/facilioo_tickets.py:48`] — `order_by(created_at.desc())` ohne `id.desc()` als zweites Sort-Kriterium kann bei gleichen Timestamps an der Cap-Grenze (10/11) zwischen Renderings flackern. Mirror schreibt mit Mikrosekunden-Aufloesung, daher in der Praxis selten.
+- **AC1-Spec-Wortlaut driftet von Implementation** [`output/implementation-artifacts/4-4-facilioo-tickets-am-objekt-detail.md:47`] — AC1-Story-Zeile sagt „und mind. {{ extra_count }} weiteres in Facilioo" mit Zahl, Implementation rendert „Weitere offene Vorgaenge in Facilioo." ohne Zahl (Task 3.8-konform, weil `LIMIT cap+1` die echte Anzahl nicht kennt). Spec-Wortlaut nachziehen.
+- **`facilioo_ui_base_url` ohne Schema-Validator** [`app/config.py:59`] — Default `"https://app.facilioo.de"` ist sauber, aber bei Fehlkonfiguration `""` oder ohne `http(s)://` baut der Helper kaputte Links. Hardening: Pydantic-Validator mit `assert v.startswith("http")`.
+
 ## Deferred from: code review of umlaut-sweep-ausserhalb-etv (2026-04-30)
 
 - **`onsubmit="return confirm('…{{ name }}…')"` JS-Escape-Pattern** [`app/templates/case_detail.html:139,553` u. a.] — Pre-existing-Pattern: Wenn `name`/`filename` ein Apostroph enthaelt, brechen die Confirm-Dialoge weil Jinja-Autoescape `'` zu `&#39;` macht und das im HTML-Attribut zu `'` zurueckdekodiert wird → unterminierter JS-String. Nicht durch den Sweep eingefuehrt, aber durch den Sweep beruehrt. Empfehlung: `| tojson` fuer die Argumente oder `data-confirm` + JS-Listener.

@@ -174,8 +174,15 @@ def test_section_caps_at_10_with_extra_hint(db, view_only_client, monkeypatch):
     assert resp.status_code == 200
     body = resp.text
     assert "Weitere offene" in body
-    # Genau 10 Titelzeilen: Ticket 0..9 (soriert nach created_at DESC, neueste zuerst)
-    assert body.count("Ticket ") >= 10
+    # Genau 10 Titelzeilen: Ticket 0..9 (sortiert nach created_at DESC, neueste zuerst).
+    # Cap-Bruch (12 statt 10) wuerde durch `>= 10` nicht erkannt — daher
+    # explizit pruefen: alle Titles 0..9 vorhanden, 10/11 fehlen.
+    for i in range(10):
+        assert f"Ticket {i}\n" in body or f"Ticket {i}<" in body, (
+            f"Ticket {i} fehlt im Body"
+        )
+    assert "Ticket 10" not in body
+    assert "Ticket 11" not in body
 
 
 def test_section_filters_archived_tickets(db, view_only_client, monkeypatch):
