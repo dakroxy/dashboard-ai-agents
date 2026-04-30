@@ -795,7 +795,7 @@ tests/
 7. **S7 — Versicherungen + Schadensfall.** `_obj_versicherungen.html`, CRUD fuer Police/Wartung/Schadensfall.
 8. **S8 — Due-Radar + Versicherer-Registry.** `due_radar.py`, `registries/versicherer`.
 9. **S9 — Pflegegrad-Score.** Formel-Service + Popover + Listen-Sort.
-10. **S10 — Facilioo-Mirror.** Nach Tag-3-Go — `facilioo.py`, `facilioo_mirror.py`, Tickets in `_obj_menschen.html`.
+10. **S10 — Facilioo-Mirror.** Nach Tag-3-Go — `facilioo.py`, `facilioo_mirror.py`, Tickets in `_obj_vorgaenge.html` (eigene Sektion, gated auf `objects:view` — NICHT in `_obj_menschen.html`, weil die Confidential-gated ist; Story 4.4).
 11. **S11 — Admin-Review-Queue-UI.** Queue leer in v1, UI vorhanden, Story-Loop fuer Approve/Reject.
 12. **S12 — Launch-Polishing.** Mobile-Check J2, Accessibility-Pass, E2E-Klickpfad aller 5 Journeys.
 

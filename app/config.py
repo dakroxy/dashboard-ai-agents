@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     facilioo_error_budget_window_hours: int = 24
     facilioo_error_budget_min_sample: int = 10
 
+    # Facilioo-UI-Deeplinks (Story 4.4) — ggf. abweichend von facilioo_base_url (API).
+    facilioo_ui_base_url: str = "https://app.facilioo.de"
+    # Schwellwert fuer Stale-Banner auf der Objekt-Detailseite (Minuten).
+    facilioo_stale_threshold_minutes: int = 10
+
     # Optional: separater Encryption-Key fuer Steckbrief-Felder (entry_code_*).
     # Leer = Fallback auf secret_key. Prod: eigenen Zufallsschluessel setzen.
     steckbrief_field_key: str = ""

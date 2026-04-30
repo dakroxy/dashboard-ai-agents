@@ -1,0 +1,53 @@
+{# Vorgaenge-Sektion (Story 4.4): Facilioo-Tickets pro Objekt.
+   Gate: objects:view reicht (kein Confidential-Check noetig — Tickets sind
+   operativ, nicht vertraulich). Permission-Pruefen liegt im Router.
+#}
+<section class="rounded-lg bg-white border border-slate-200 p-6 mb-6" data-section="vorgaenge">
+    <h2 class="text-lg font-semibold text-slate-900 mb-4">Vorgänge (Facilioo)</h2>
+
+    {% if facilioo_placeholder %}
+        <p class="text-sm text-slate-500 italic">Ticket-Integration in Vorbereitung.</p>
+    {% else %}
+        {% if facilioo_stale_hint %}
+        <div class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Letzte Aktualisierung: {{ facilioo_stale_hint }}
+        </div>
+        {% endif %}
+
+        {% if not facilioo_tickets %}
+            <p class="text-sm text-slate-500 italic">Keine offenen Vorgänge in Facilioo.</p>
+        {% else %}
+            <table class="w-full text-sm">
+                <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
+                    <tr>
+                        <th class="text-left px-3 py-2 font-semibold">Titel</th>
+                        <th class="text-left px-3 py-2 font-semibold">Status</th>
+                        <th class="text-left px-3 py-2 font-semibold">Eingang</th>
+                        <th class="text-left px-3 py-2 font-semibold">Bezug</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in facilioo_tickets %}
+                    <tr class="border-t border-slate-100">
+                        <td class="px-3 py-2">
+                            <a href="{{ facilioo_ticket_url(t.facilioo_id) }}"
+                               target="_blank" rel="noopener noreferrer"
+                               class="text-sky-700 hover:text-sky-900 hover:underline">
+                                {{ t.title or "(kein Titel)" }}
+                            </a>
+                        </td>
+                        <td class="px-3 py-2 text-slate-700">{{ t.status or "-" }}</td>
+                        <td class="px-3 py-2 text-slate-700">{{ t.created_at.strftime("%d.%m.%Y") }}</td>
+                        <td class="px-3 py-2 text-slate-500 text-xs">
+                            {{ (t.raw_payload or {}).get("contactName") or "-" }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if facilioo_truncated %}
+            <p class="mt-3 text-xs text-slate-500">Weitere offene Vorgänge in Facilioo.</p>
+            {% endif %}
+        {% endif %}
+    {% endif %}
+</section>

@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from app.db import SessionLocal
 from app.models import User, Workflow
 from app.permissions import accessible_workflow_ids, has_permission
+from app.services.facilioo_tickets import facilioo_ticket_url
 from app.services.mietverwaltung import field_source
 from app.services.steckbrief import ProvenanceWithUser
 
@@ -181,4 +182,5 @@ templates.env.globals["field_source"] = field_source
 templates.env.globals["provenance_pill"] = provenance_pill
 templates.env.globals["pflegegrad_color"] = pflegegrad_color
 templates.env.globals["sidebar_workflows"] = sidebar_workflows
+templates.env.globals["facilioo_ticket_url"] = facilioo_ticket_url
 templates.env.filters["iban_format"] = _format_iban

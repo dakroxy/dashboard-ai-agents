@@ -86,6 +86,12 @@ from app.services.steckbrief_wartungen import (
     get_due_severity,
     validate_wartung_dates,
 )
+from app.services.facilioo_tickets import (
+    compute_placeholder_mode,
+    format_stale_hint,
+    get_last_facilioo_sync,
+    get_open_tickets_for_object,
+)
 from app.services.pflegegrad import WEAKEST_FIELD_LABELS, get_or_update_pflegegrad_cache
 from app.services.steckbrief_write_gate import write_field_human
 from app.templating import templates
@@ -393,6 +399,21 @@ async def object_detail(
     for _p in photos_raw:
         photos_by_component[_p.component_ref or "sonstige"].append(_p)
 
+    # ---- Facilioo-Vorgaenge-Sektion (Story 4.4) ----
+    facilioo_tickets, facilioo_truncated = get_open_tickets_for_object(db, detail.obj.id)
+    # try/except: get_last_facilioo_sync hat intern try/except, aber monkeypatch in
+    # Tests (und unvorhergesehene Fehler) koennen trotzdem werfen (FR30 / AC2).
+    try:
+        facilioo_last_sync = get_last_facilioo_sync(db)
+    except Exception:
+        _logger.exception("facilioo_last_sync im Route-Handler fehlgeschlagen")
+        facilioo_last_sync = None
+    facilioo_stale_hint = format_stale_hint(facilioo_last_sync)
+    facilioo_placeholder = compute_placeholder_mode(
+        db,
+        last_sync=facilioo_last_sync,
+    )
+
     return templates.TemplateResponse(
         request,
         "object_detail.html",
@@ -424,6 +445,10 @@ async def object_detail(
             "notes_owners": notes_owners,
             "pflegegrad_result": pflegegrad_result,
             "weakest_field_labels": WEAKEST_FIELD_LABELS,
+            "facilioo_tickets": facilioo_tickets,
+            "facilioo_truncated": facilioo_truncated,
+            "facilioo_stale_hint": facilioo_stale_hint,
+            "facilioo_placeholder": facilioo_placeholder,
         },
     )
 

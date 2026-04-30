@@ -1,6 +1,6 @@
 # Story 4.4: Facilioo-Tickets am Objekt-Detail
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -111,122 +111,46 @@ damit ich bei Anruf oder Anfrage weiss, welche Themen schon im System laufen —
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Service-Layer `app/services/facilioo_tickets.py`** (AC1, AC2, AC3, AC5)
-  - [ ] 1.1: Neue Datei `app/services/facilioo_tickets.py` mit Modul-Docstring (deutsch oder englisch — konsistent zur Datei; Pattern aus `due_radar.py`)
-  - [ ] 1.2: Funktion `get_open_tickets_for_object(db: Session, object_id: uuid.UUID, *, cap: int = 10) -> tuple[list[FaciliooTicket], bool]` — gibt `(rows, is_truncated)` zurueck. Query: `select(FaciliooTicket).where(FaciliooTicket.object_id == object_id, FaciliooTicket.is_archived.is_(False), FaciliooTicket.status.notin_(_OPEN_STATUS_FILTER)).order_by(FaciliooTicket.created_at.desc()).limit(cap + 1)`. `is_truncated = len(rows) > cap; rows = rows[:cap]`.
-  - [ ] 1.3: Konstante `_OPEN_STATUS_FILTER = ("closed", "resolved", "done")` — **vor Implementation** `docs/integration/facilioo-spike.md` (Story 4.1) lesen und an die echten Status-Werte anpassen
-  - [ ] 1.4: Funktion `get_last_facilioo_sync(db: Session) -> datetime | None` — Query: `select(AuditLog.created_at).where(AuditLog.action == 'sync_finished', AuditLog.details_json['job'].astext == 'facilioo_ticket_mirror', AuditLog.created_at >= now() - interval '7 days').order_by(AuditLog.created_at.desc()).limit(1)`. Mit `try/except Exception: _logger.exception(...); return None` umschliessen (FR30, AC2 Schwein-Schutz). Pflicht: **`created_at >= NOW() - INTERVAL '7 days'`** als Pre-Filter — sonst eskaliert die Query bei langer Laufzeit (Memory aus 4.3-Story).
-  - [ ] 1.5: Funktion `format_stale_hint(last_sync: datetime | None, *, threshold_minutes: int = 10, now: datetime | None = None) -> str | None` — gibt deutsch formatierte Differenz zurueck oder `None` wenn unter Threshold/`last_sync is None`. `now`-Parameter fuer Tests (Default `datetime.now(timezone.utc)`). Format-Stufen:
-    - `< threshold_minutes` → `None`
-    - `10..59 Min` → `"Letzte Aktualisierung: vor X Minuten"` (X=int)
-    - `60..119 Min` → `"Letzte Aktualisierung: vor 1 Stunde"`
-    - `120..1439 Min (= < 24 h)` → `"Letzte Aktualisierung: vor X Stunden"`
-    - `1440..2879 Min` → `"Letzte Aktualisierung: vor 1 Tag"`
-    - `>= 2880 Min` → `"Letzte Aktualisierung: vor X Tagen"`
-  - [ ] 1.6: Funktion `facilioo_ticket_url(facilioo_id: str | None) -> str` — gibt `f"{settings.facilioo_ui_base_url}/tickets/{facilioo_id}"` zurueck (oder `"#"` wenn `facilioo_id` falsy). `facilioo_ui_base_url` ist neues Setting (Task 5).
-  - [ ] 1.7: Funktion `compute_placeholder_mode(db: Session, *, last_sync: datetime | None) -> bool` — `placeholder = (not settings.facilioo_mirror_enabled) or (last_sync is None and not _any_facilioo_tickets_exist(db))`. Hilfsfunktion `_any_facilioo_tickets_exist(db) -> bool` macht `db.execute(select(literal(1)).select_from(FaciliooTicket).limit(1)).scalar() is not None`. NICHT `count(*)` — ein Existenz-Check reicht.
+- [x] **Task 1: Service-Layer `app/services/facilioo_tickets.py`** (AC1, AC2, AC3, AC5)
+  - [x] 1.1: Neue Datei `app/services/facilioo_tickets.py` mit Modul-Docstring (deutsch oder englisch — konsistent zur Datei; Pattern aus `due_radar.py`)
+  - [x] 1.2: Funktion `get_open_tickets_for_object(db: Session, object_id: uuid.UUID, *, cap: int = 10) -> tuple[list[FaciliooTicket], bool]` — gibt `(rows, is_truncated)` zurueck. Query: `select(FaciliooTicket).where(FaciliooTicket.object_id == object_id, FaciliooTicket.is_archived.is_(False), FaciliooTicket.status.notin_(_OPEN_STATUS_FILTER)).order_by(FaciliooTicket.created_at.desc()).limit(cap + 1)`. `is_truncated = len(rows) > cap; rows = rows[:cap]`.
+  - [x] 1.3: Konstante `_OPEN_STATUS_FILTER = ("finished", "deleted", "closed", "resolved", "done")` — angepasst nach Spike-Doc: echte Werte "open"/"finished"/"deleted" + AC1-Defaults
+  - [x] 1.4: Funktion `get_last_facilioo_sync(db: Session) -> datetime | None` — portabler cast+LIKE-Ansatz fuer SQLite/Postgres; 7-Tage-Pre-Filter; try/except FR30
+  - [x] 1.5: Funktion `format_stale_hint` — liefert "vor X Minuten/Stunde/Stunden/Tag/Tagen"; now-Parameter fuer Tests; naive datetime als UTC behandelt
+  - [x] 1.6: Funktion `facilioo_ticket_url` — `f"{settings.facilioo_ui_base_url}/tickets/{facilioo_id}"`, "#" fuer falsy ID
+  - [x] 1.7: Funktion `compute_placeholder_mode` + `_any_facilioo_tickets_exist`
 
-- [ ] **Task 2: Object-Detail-Route erweitern** (AC1, AC2, AC3)
-  - [ ] 2.1: `app/routers/objects.py:object_detail()` — Imports ergaenzen: `from app.services.facilioo_tickets import get_open_tickets_for_object, get_last_facilioo_sync, format_stale_hint, compute_placeholder_mode`
-  - [ ] 2.2: VOR dem `templates.TemplateResponse(...)`-Call: 
-    ```python
-    facilioo_tickets, facilioo_truncated = get_open_tickets_for_object(db, detail.obj.id)
-    facilioo_last_sync = get_last_facilioo_sync(db)
-    facilioo_stale_hint = format_stale_hint(facilioo_last_sync)
-    facilioo_placeholder = compute_placeholder_mode(
-        db,
-        last_sync=facilioo_last_sync,
-    )
-    ```
-  - [ ] 2.3: Context-Vars in `templates.TemplateResponse(...)` ergaenzen: `facilioo_tickets`, `facilioo_truncated`, `facilioo_stale_hint`, `facilioo_placeholder`. Naming-Praefix `facilioo_*` schuetzt vor Template-Var-Kollision mit den ~30 anderen Vars (`tickets` allein ist zu generisch).
+- [x] **Task 2: Object-Detail-Route erweitern** (AC1, AC2, AC3)
+  - [x] 2.1: Import ergaenzt in `app/routers/objects.py`
+  - [x] 2.2: 4 Facilioo-Variablen vor TemplateResponse; try/except um `get_last_facilioo_sync` fuer FR30
+  - [x] 2.3: Context-Vars `facilioo_tickets`, `facilioo_truncated`, `facilioo_stale_hint`, `facilioo_placeholder` in TemplateResponse
 
-- [ ] **Task 3: Template `_obj_vorgaenge.html`** (AC1, AC2, AC3, AC4)
-  - [ ] 3.1: Neue Datei `app/templates/_obj_vorgaenge.html`
-  - [ ] 3.2: Section-Wrapper analog `_obj_stammdaten.html`:
-    ```html
-    <section class="rounded-lg bg-white border border-slate-200 p-6 mb-6" data-section="vorgaenge">
-        <h2 class="text-lg font-semibold text-slate-900 mb-4">Vorgaenge (Facilioo)</h2>
-        ...
-    </section>
-    ```
-  - [ ] 3.3: KEIN `{% if has_permission(...) %}`-Wrapper auf Sektions-Ebene (AC4)
-  - [ ] 3.4: Branch 1: `{% if facilioo_placeholder %}` → `<p class="text-sm text-slate-500 italic">Ticket-Integration in Vorbereitung.</p>`. Sektions-Ende.
-  - [ ] 3.5: Branch 2: `{% elif not facilioo_tickets %}` → `<p class="text-sm text-slate-500 italic">Keine offenen Vorgaenge in Facilioo.</p>` (+ wenn `facilioo_stale_hint`, davor den Banner aus 3.6)
-  - [ ] 3.6: Branch 3 (Tabelle): `{% if facilioo_stale_hint %}<div class="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{{ facilioo_stale_hint }}</div>{% endif %}` ueber der Tabelle
-  - [ ] 3.7: Tabelle (Pattern aus `_obj_versicherungen.html` / `_obj_stammdaten.html`):
-    ```html
-    <table class="w-full text-sm">
-        <thead class="text-xs uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200">
-            <tr>
-                <th class="text-left px-3 py-2 font-semibold">Titel</th>
-                <th class="text-left px-3 py-2 font-semibold">Status</th>
-                <th class="text-left px-3 py-2 font-semibold">Eingang</th>
-                <th class="text-left px-3 py-2 font-semibold">Bezug</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for t in facilioo_tickets %}
-            <tr class="border-t border-slate-100">
-                <td class="px-3 py-2">
-                    <a href="{{ facilioo_ticket_url(t.facilioo_id) }}"
-                       target="_blank" rel="noopener noreferrer"
-                       class="text-sky-700 hover:text-sky-900 hover:underline">
-                        {{ t.title or "(kein Titel)" }}
-                    </a>
-                </td>
-                <td class="px-3 py-2 text-slate-700">{{ t.status or "-" }}</td>
-                <td class="px-3 py-2 text-slate-700">{{ t.created_at.strftime("%d.%m.%Y") }}</td>
-                <td class="px-3 py-2 text-slate-500 text-xs">
-                    {{ t.raw_payload.get("contactName") or "-" }}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    ```
-  - [ ] 3.8: Footer-Hinweis: `{% if facilioo_truncated %}<p class="mt-3 text-xs text-slate-500">Weitere offene Vorgaenge in Facilioo.</p>{% endif %}` — Wortlaut bewusst ohne konkrete Zahl (Cap ist LIMIT 11, exakte Anzahl unbekannt; siehe Risiko 5)
+- [x] **Task 3: Template `_obj_vorgaenge.html`** (AC1, AC2, AC3, AC4)
+  - [x] 3.1-3.8: Alle Branches implementiert (Placeholder / Empty-State / Stale-Banner / Tabelle / Footer)
 
-- [ ] **Task 4: `_obj_vorgaenge.html` in `object_detail.html` einbinden** (AC1, AC4)
-  - [ ] 4.1: `app/templates/object_detail.html` Zeile 80 (`{% include "_obj_versicherungen.html" %}`) — DARUNTER `{% include "_obj_vorgaenge.html" %}` einfuegen, vor `_obj_menschen.html`
-  - [ ] 4.2: Reihenfolge-Begruendung im PR-Body festhalten: Versicherungen → Vorgaenge → Menschen ist die operative Lese-Reihenfolge (extern → operativ → vertraulich)
+- [x] **Task 4: `_obj_vorgaenge.html` in `object_detail.html` einbinden** (AC1, AC4)
+  - [x] 4.1: Include zwischen Versicherungen und Menschen eingefuegt
 
-- [ ] **Task 5: `facilioo_ticket_url`-Global + Settings** (AC1, AC2)
-  - [ ] 5.1: `app/config.py` — Feld `facilioo_ui_base_url: str = "https://app.facilioo.de"` ergaenzen mit Doc-Kommentar „Facilioo-UI-Basis fuer Ticket-Deeplinks; ggf. abweichend von `facilioo_base_url` (API)"
-  - [ ] 5.2: `app/config.py` — Feld `facilioo_stale_threshold_minutes: int = 10` ergaenzen (AC2 — konfigurierbar fuer Edge-Cases)
-  - [ ] 5.3: `app/templating.py` Zeile 183 — `templates.env.globals["facilioo_ticket_url"] = facilioo_ticket_url` (Import von `app.services.facilioo_tickets` oben einfuegen)
-  - [ ] 5.4: KEIN Helper-Import in den Routern noetig — Globals-Pattern reicht (analog `iban_format`, `provenance_pill`)
+- [x] **Task 5: `facilioo_ticket_url`-Global + Settings** (AC1, AC2)
+  - [x] 5.1: `facilioo_ui_base_url: str = "https://app.facilioo.de"` in `app/config.py`
+  - [x] 5.2: `facilioo_stale_threshold_minutes: int = 10` in `app/config.py`
+  - [x] 5.3: Global `facilioo_ticket_url` in `app/templating.py` registriert
 
-- [ ] **Task 6: Tests `tests/test_object_facilioo_section.py`** (AC6)
-  - [ ] 6.1: Neue Datei `tests/test_object_facilioo_section.py` anlegen
-  - [ ] 6.2: Setup-Helpers: `_make_object(db)` (analog `tests/test_steckbrief_routes_smoke.py:50-67`), `_make_ticket(db, *, object_id, status="open", title="Defekt", days_ago=0, is_archived=False)`, `_make_audit_finished(db, *, minutes_ago=5, job="facilioo_ticket_mirror")`
-  - [ ] 6.3: AC1-Tests: `test_section_renders_open_tickets_with_link_to_facilioo` — Object + 3 Tickets in DB, GET `/objects/{id}` → Response enthaelt alle 3 Titel + die Hrefs `https://app.facilioo.de/tickets/<facilioo_id>`
-  - [ ] 6.4: AC1: `test_section_caps_at_10_with_extra_hint` — 12 Tickets erstellen → Response zeigt 10 Zeilen + Footer „Weitere offene Vorgaenge in Facilioo."
-  - [ ] 6.5: AC1: `test_section_filters_archived_tickets` — 2 Tickets, 1 mit `is_archived=True` → Response zeigt nur 1 Zeile
-  - [ ] 6.6: AC1: `test_section_filters_closed_tickets` — 3 Tickets mit `status` in `{"open", "closed", "resolved"}` → Response zeigt nur den `open`
-  - [ ] 6.7: AC1: `test_section_empty_state_when_zero_open_tickets_but_mirror_ran` — 0 Tickets fuer Object + ein `sync_finished`-Audit existiert (woanders) + Mirror enabled → Response enthaelt „Keine offenen Vorgaenge in Facilioo." (NICHT Placeholder!)
-  - [ ] 6.8: AC2: `test_stale_banner_renders_after_threshold` — `sync_finished`-Audit 15 Min zurueck → Response enthaelt `bg-amber-50` UND Text „vor 15 Minuten"
-  - [ ] 6.9: AC2: `test_no_stale_banner_within_threshold` — `sync_finished`-Audit 5 Min zurueck → Response enthaelt KEIN `bg-amber-50` und kein „Letzte Aktualisierung"
-  - [ ] 6.10: AC2 Unit: `test_stale_hint_format_minutes_hours_days` — Tabelle `(input_minutes, expected_str)`: `(5, None)`, `(11, "vor 11 Minuten")`, `(60, "vor 1 Stunde")`, `(125, "vor 2 Stunden")`, `(1440, "vor 1 Tag")`, `(2880, "vor 2 Tagen")`. Mit Mock-`now`-Param.
-  - [ ] 6.11: AC2/AC5: `test_stale_query_error_is_swallowed` — Monkeypatch `app.services.facilioo_tickets.get_last_facilioo_sync` so, dass es wirft. GET `/objects/{id}` → kein 500er, Tabelle der Tickets noch sichtbar, KEIN Banner.
-  - [ ] 6.12: AC3: `test_placeholder_when_mirror_disabled` — `settings.facilioo_mirror_enabled = False` (via `monkeypatch.setattr`). Response enthaelt „Ticket-Integration in Vorbereitung."
-  - [ ] 6.13: AC3: `test_placeholder_when_no_tickets_and_no_sync_history` — DB leer fuer `facilioo_tickets` UND keine `sync_finished`-Audits. Response enthaelt „Ticket-Integration in Vorbereitung."
-  - [ ] 6.14: AC3: `test_no_placeholder_when_mirror_ran_but_object_has_zero_tickets` — Mirror lief mind. EIN MAL (audit_log-Eintrag existiert), Object hat 0 Tickets. Erwartet: Empty-State („Keine offenen Vorgaenge in Facilioo."), NICHT Placeholder.
-  - [ ] 6.15: AC4: `test_section_visible_with_view_only_permission` — User mit `objects:view` allein → Sektion „Vorgaenge (Facilioo)" sichtbar, Sektion `Menschen` (`data-section="menschen"`) NICHT sichtbar.
-  - [ ] 6.16: AC4: `test_section_does_not_appear_in_menschen_block` — User mit `view_confidential` → BEIDE Sektionen sichtbar, aber Vorgaenge-Tabelle erscheint im `data-section="vorgaenge"`-Block, NICHT im `data-section="menschen"`-Block (Regex/Strukturpruefung).
-  - [ ] 6.17: Unit: `test_facilioo_ticket_url_helper_format` — `facilioo_ticket_url("ABC123") == "https://app.facilioo.de/tickets/ABC123"`. Edge-Case: `facilioo_ticket_url(None) == "#"` (Defensive-Default).
+- [x] **Task 6: Tests `tests/test_object_facilioo_section.py`** (AC6)
+  - [x] 6.1-6.17: Alle 15 Tests implementiert und gruen
 
-- [ ] **Task 7: Smoke + Sprint-Status** (AC1–AC6)
-  - [ ] 7.1: `pytest tests/test_object_facilioo_section.py -v` — alle 17 Tests gruen
-  - [ ] 7.2: `pytest tests/test_steckbrief_routes_smoke.py -v` — Baseline gruen (keine Regression)
-  - [ ] 7.3: `pytest` (Full-Suite) — keine neuen Failures
-  - [ ] 7.4: Container-Smoke: `docker compose up --build`, Login, ein bekanntes Object oeffnen — Sektion sichtbar, Layout passt zu den anderen Sektionen
-  - [ ] 7.5: Sprint-Status: `output/implementation-artifacts/sprint-status.yaml` Story 4.4 → `review` (Hand-Off an Code-Review)
-  - [ ] 7.6: PR-Body: in „Live-Verifikation offen" festhalten, dass eine Live-Test gegen echten Facilioo-Tenant noetig ist (echte Tickets sichtbar, URL funktioniert, Stale-Banner an-/abschaltbar via Mirror-Pause)
+- [x] **Task 7: Smoke + Sprint-Status** (AC1–AC6)
+  - [x] 7.1: `pytest tests/test_object_facilioo_section.py -v` — 15/15 gruen
+  - [x] 7.2: `pytest tests/test_steckbrief_routes_smoke.py -v` — 47/47 gruen (SQL-Count-Grenze auf 23 angehoben)
+  - [x] 7.3: `pytest` (Full-Suite) — 927 passed, 5 xfailed, keine neuen Failures
+  - [ ] 7.4: Container-Smoke: offen (Live-Test gegen echten Facilioo-Tenant)
+  - [x] 7.5: Sprint-Status → `review`
+  - [x] 7.6: Live-Verifikation offen (im Completion-Notes-Abschnitt dokumentiert)
 
-- [ ] **Task 8: Doku-Followups** (Project-Context-Update, niedrige Prio)
-  - [ ] 8.1: `docs/project-context.md` — Im **„Facilioo-Mirror"**-Block (eingefuegt in Story 4.3 Task 5.5 / Doku-Followup) einen Verweis auf die Object-Detail-Sektion ergaenzen: „Tickets werden am Objekt-Detail in `_obj_vorgaenge.html` angezeigt; Stale-Banner > 10 Min."
-  - [ ] 8.2: `output/planning-artifacts/architecture.md:798` — Hinweis „Tickets in `_obj_menschen.html`" auf `_obj_vorgaenge.html` korrigieren (Permission-Konflikt mit Confidential-Gate)
-  - [ ] 8.3: Im PR-Body festhalten: bei Tag-3-No-Go fuer Facilioo bleibt Story 4.4 trotzdem `done` (liefert nur den Platzhalter-Pfad — siehe AC3).
+- [x] **Task 8: Doku-Followups** (Project-Context-Update, niedrige Prio)
+  - [x] 8.1: `docs/project-context.md` — Facilioo-Mirror-Block mit Verweis auf `_obj_vorgaenge.html` + Stale-Banner ergaenzt
+  - [x] 8.2: `output/planning-artifacts/architecture.md:798` — korrigiert auf `_obj_vorgaenge.html`
+  - [x] 8.3: Dokumentiert in Completion Notes
 
 ## Dev Notes
 
@@ -364,10 +288,38 @@ MVP-Default: `https://app.facilioo.de/tickets/{facilioo_id}`. Wenn Spike-Doc (St
 
 ### Agent Model Used
 
-claude-opus-4-7 (1M context)
+claude-sonnet-4-6
 
 ### Debug Log References
 
+- TZ-Bug: SQLite gibt naive datetimes zurueck; `format_stale_hint()` normalisiert naive auf UTC via `replace(tzinfo=timezone.utc)`.
+- `bg-amber-50` erscheint auch in `_obj_stammdaten.html` → Test-Assertions auf spezifischen Text "Letzte Aktualisierung" umgestellt.
+- `_OPEN_STATUS_FILTER` aus Spike-Doc angepasst: echte Facilioo-Werte "finished"/"deleted" + AC1-Defaults "closed"/"resolved"/"done" kombiniert.
+- JSONB-Portabilitaet: `cast(AuditLog.details_json, String).like(...)` statt `['job'].astext` fuer SQLite-Kompatibilitaet in Tests.
+- Route: `try/except` um `get_last_facilioo_sync`-Aufruf fuer FR30 (monkeypatch in `test_stale_query_error_is_swallowed` ersetzt die Funktion komplett, internes try/except greift nicht).
+- SQL-Count-Test: +2 Queries durch `get_open_tickets_for_object` + `get_last_facilioo_sync`; Limit von 21 auf 23 angehoben.
+
 ### Completion Notes List
 
+- Neuer Service `app/services/facilioo_tickets.py` mit 5 oeffentlichen Funktionen + 1 Hilfsfunktion.
+- Template `_obj_vorgaenge.html`: 3 Branches (Placeholder / Empty-State+Stale-Banner / Tabelle+Footer), kein Permission-Wrapper, Deeplinks via `facilioo_ticket_url` Global.
+- Route `object_detail()`: +4 Context-Vars (facilioo_*), +FR30-try/except um Sync-Query.
+- Settings: `facilioo_ui_base_url` + `facilioo_stale_threshold_minutes` in `app/config.py`.
+- Templating: `facilioo_ticket_url` als Jinja2-Global registriert.
+- 15 neue Tests, alle gruen. Smoke-Tests angepasst (SQL-Count-Limit). Full-Suite: 927 passed.
+- **Live-Verifikation offen**: Docker-Container + echte Facilioo-Tenant-Daten (Tickets sichtbar, URL funktioniert, Stale-Banner testen via Mirror-Pause).
+- Bei Tag-3-No-Go fuer Facilioo: Story 4.4 ist trotzdem `done` — Placeholder-Pfad (AC3) stellt sicher, dass die Objekt-Detail-Seite nie crasht.
+
 ### File List
+
+- `app/services/facilioo_tickets.py` (neu)
+- `app/templates/_obj_vorgaenge.html` (neu)
+- `tests/test_object_facilioo_section.py` (neu)
+- `app/routers/objects.py` (geaendert: Import + 4 Context-Vars + try/except)
+- `app/templates/object_detail.html` (geaendert: Include _obj_vorgaenge.html)
+- `app/templating.py` (geaendert: facilioo_ticket_url Global)
+- `app/config.py` (geaendert: 2 neue Settings)
+- `tests/test_steckbrief_routes_smoke.py` (geaendert: SQL-Count-Limit 21→23)
+- `output/planning-artifacts/architecture.md` (geaendert: S10 Korrektur)
+- `docs/project-context.md` (geaendert: Facilioo-Mirror-Block)
+- `output/implementation-artifacts/sprint-status.yaml` (geaendert: 4.4 → review)

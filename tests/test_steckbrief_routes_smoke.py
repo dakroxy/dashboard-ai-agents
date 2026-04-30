@@ -455,8 +455,9 @@ def test_detail_sql_statement_count(
     # Schadensfaelle-Liste mit policy/versicherer/unit-joinedloads (Story 2.3),
     # Units-Dropdown (Story 2.3).
     # Story 3.3 Pflegegrad-Score: +5 (1x Provenance-Batch + 3x Relational-Count + 1x Cache-Commit).
-    # Puffer fuer Framework-Setup -> max 21.
-    assert counter.count <= 21, (
+    # Story 4.4 Facilioo-Vorgaenge: +2 (get_open_tickets + get_last_facilioo_sync).
+    # Puffer fuer Framework-Setup -> max 23.
+    assert counter.count <= 23, (
         f"Zu viele SQL-Statements auf Detailseite: {counter.count}"
     )
 
