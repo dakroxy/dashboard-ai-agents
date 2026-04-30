@@ -4,9 +4,10 @@ Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werd
 
 ## Deferred from: code review of umlaut-sweep-ausserhalb-etv (2026-04-30)
 
-- **Workflow-Description-Strings in der Live-DB** [`app/main.py:_DEFAULT_WORKFLOWS` + `Workflow.description`-Spalte] — `_seed_default_workflow` ueberschreibt bestehende Rows nicht (`if exists: continue`), d. h. die alten ASCII-Schreibweisen (`Eigentuemer`, `Mietvertraege`, `fuer`, …) bleiben in Production weiterhin sichtbar im Workflow-Listing/Edit. Workflow-Descriptions sind aktuell nicht im UI editierbar. Migration noetig: einmaliger Update gegen die vier Default-Keys (`sepa_mandate`, `mietverwaltung_setup`, `contact_create`, `etv_signature_list`) — entweder per Alembic-Migration mit den neuen `description`-Werten oder ueber ein Admin-Reset-Knopf. Vor Produktiv-Sichtbarkeit nachziehen.
 - **`onsubmit="return confirm('…{{ name }}…')"` JS-Escape-Pattern** [`app/templates/case_detail.html:139,553` u. a.] — Pre-existing-Pattern: Wenn `name`/`filename` ein Apostroph enthaelt, brechen die Confirm-Dialoge weil Jinja-Autoescape `'` zu `&#39;` macht und das im HTML-Attribut zu `'` zurueckdekodiert wird → unterminierter JS-String. Nicht durch den Sweep eingefuehrt, aber durch den Sweep beruehrt. Empfehlung: `| tojson` fuer die Argumente oder `data-confirm` + JS-Listener.
 - **Audit-`details_json` enthaelt jetzt echte Umlaute** [`app/routers/documents.py:403` `details_json={"reason": result.error or "Extraktion unvollständig"}`] — Ops, die per `grep` durch JSON-Dumps oder Log-Aggregator suchen, muessen ab jetzt mit echten Umlauten greppen. Keine Code-Aenderung noetig, nur Dokumentation in einem Ops-Runbook.
+
+_Erledigt: „Workflow-Description-Strings in der Live-DB" — Migration 0017 (Commit 506e667) updatet description + system_prompt der vier Default-Keys mit ASCII-Marker-Schutz vor User-Edits._
 
 ## Deferred from: code review of 3-6-review-queue-approve-reject (2026-04-30)
 
