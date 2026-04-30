@@ -150,6 +150,10 @@ _Code review 2026-04-30 (3 layers: blind / edge-case / acceptance auditor) — d
 - [x] [Review][Reject] `_format_mea` Type-Fragility bei legacy strings (Blind Hunter) — kein realer Caller, interne Helper.
 - [x] [Review][Reject] Diverse Test-Mock-Quality nits (alle drei Reviewer).
 
+## Spec Change Log
+
+- **2026-04-30 — Live-Bug-Fix (Post-Deploy)**: Nach Live-Verifikation an HTS7a wiederholte sich die Summen-Zeile auf jeder PDF-Seite statt nur auf der letzten. Default von `<tfoot>` in CSS-Paged-Media ist `display: table-footer-group` — das repeatet auf jeder Page (analog `<thead>`). Fix in `app/templates/etv_signature_list_pdf.html`: explizit `tfoot { display: table-row-group; }` setzen, damit tfoot wie eine normale tbody-Reihe flow't und nur einmal am Ende erscheint. Inline-Code-Comment dokumentiert die Begruendung. Lokale Verifikation an HTS7a (16 Zeilen, 2 Pages): Page 1 zeigt `Summe` 0x, Page 2 (letzte) zeigt `Summe 10000` einmal. Die deferred-work-Notiz "Tfoot near-empty page" bleibt relevant — `table-row-group` loest das Repeat-Problem, nicht das Page-Break-Problem bei knappem Restplatz.
+
 ## Verification
 
 **Commands:**

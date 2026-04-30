@@ -62,6 +62,12 @@
     page-break-inside: avoid;
     height: 56pt;
   }
+  tfoot {
+    /* Default ist `table-footer-group`, was tfoot auf JEDER Seite repeatet.
+       Mit `table-row-group` flow't tfoot wie eine normale tbody-Reihe und
+       erscheint nur einmal am Ende — genau wie Summen-Zeile gewuenscht. */
+    display: table-row-group;
+  }
   tfoot tr {
     page-break-inside: avoid;
   }
