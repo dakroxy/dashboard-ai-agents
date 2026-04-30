@@ -62,6 +62,24 @@
     page-break-inside: avoid;
     height: 56pt;
   }
+  tfoot tr {
+    page-break-inside: avoid;
+  }
+  tfoot td {
+    border: 0.6pt solid #475569;
+    border-top: 1.2pt solid #111;
+    padding: 8pt 6pt;
+    font-size: 10pt;
+    font-weight: 700;
+  }
+  tfoot td.label {
+    text-align: right;
+    border-right: none;
+  }
+  tfoot td.empty {
+    border-left: none;
+    border-right: 0.6pt solid #475569;
+  }
   .col-owner { width: 30%; }
   .col-unit { width: 18%; }
   .col-mea  { width: 10%; text-align: right; }
@@ -89,14 +107,6 @@
     font-style: italic;
     padding: 16pt;
   }
-  footer {
-    position: fixed;
-    bottom: 4mm;
-    left: 12mm;
-    right: 12mm;
-    font-size: 8pt;
-    color: #6b7280;
-  }
 </style>
 </head>
 <body>
@@ -114,7 +124,7 @@
 <table>
   <thead>
     <tr>
-      <th class="col-owner">Eigentuemer</th>
+      <th class="col-owner">Eigentümer</th>
       <th class="col-unit">Einheit</th>
       <th class="col-mea">MEA</th>
       <th class="col-sign">Unterschrift</th>
@@ -144,10 +154,15 @@
       </tr>
     {% endif %}
   </tbody>
+  {% if rows %}
+  <tfoot>
+    <tr>
+      <td class="label" colspan="2">Summe</td>
+      <td class="col-mea">{{ mea_total }}</td>
+      <td class="empty" colspan="2"></td>
+    </tr>
+  </tfoot>
+  {% endif %}
 </table>
-
-<footer>
-  Erzeugt am {{ now.strftime("%d.%m.%Y %H:%M") }} &middot; Datenquelle Facilioo &middot; Vollmacht vorgekreuzt = Mandat in Facilioo hinterlegt
-</footer>
 </body>
 </html>

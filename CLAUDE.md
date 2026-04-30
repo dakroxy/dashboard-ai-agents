@@ -165,6 +165,7 @@ Sammelstelle fuer Anforderungen, die quer zu den Modulen liegen. Werden beizeite
 
 ## Design-Regeln (verbindlich, vom User vorgegeben)
 
+- **User-facing Texte: echte Umlaute.** In Templates, Banner-/Flash-Messages, Audit-Beschreibungen, PDF-Inhalten und Tile-Labels werden deutsche Woerter mit echten Umlauten geschrieben (`ä/ö/ü/ß`), nicht `ae/oe/ue/ss`. Identifier (Variablen, Funktionen, Klassen, Modul-Namen, Konstanten, Audit-Action-Keys) bleiben ASCII; Code-Kommentare bleiben unangetastet (bestehende ASCII-Schreibweise dort weiterfuehren). Altbestand wird im "Umlaut-Sweep ausserhalb ETV" abgeraeumt (siehe `output/implementation-artifacts/deferred-work.md`).
 - **Dateinamen von Scans sind NICHT als Info-Quelle nutzen.** Auch wenn das aktuelle Benennungsschema strukturiert wirkt, ist es nicht verlaesslich. Nur der PDF-Inhalt zaehlt. (Im Prompt verankert.)
 - **Pflichtfelder (SEPA)**: Objekt (WEG-Kuerzel oder WEG-Name+Adresse), Eigentuemer-Name, IBAN. Fehlt eines → `needs_review`, nicht blocken, nicht still ablehnen.
 - **Einheit ist optional** (`unit_nr` darf null sein).

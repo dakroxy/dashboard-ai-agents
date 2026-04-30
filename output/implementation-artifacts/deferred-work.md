@@ -2,6 +2,23 @@
 
 Sammelpunkt fuer Findings aus Code-Reviews, die bewusst nicht sofort gefixt werden.
 
+## Deferred from: code review of etv-signature-list-pdf-anpassungen (2026-04-30)
+
+- **Phase-3 Aggregator ohne `return_exceptions=True`** [`app/services/facilioo_client.py:331`] — `asyncio.gather(*attr_tasks)` fuer N Unit-`attribute-values`-Calls. Eine einzelne transiente Failure (nach 3 Retries) reisst die ganze PDF-Generierung in den Banner-Pfad. Bei 50+ Units pro WEG addiert sich das Risiko spuerbar. Konsistent mit der bereits-deferred Phase-1-Aggregation (siehe Eintrag unten); zusammen mit dieser angehen wenn Live-Feedback es zeigt.
+- **`_get_all_paged` Bare-List-Truncation** [`app/services/facilioo_client.py:120-123`] — Wenn ein Endpunkt eine bare `list[dict]` (ohne `{"items": ...}`-Wrapper) liefert UND der Server clampt auf < `_PAGE_SIZE=100`, terminiert der Loop nach Page 1 und droppt restliche Seiten. Aktuelle Live-Probe zeigt: alle drei neu-paginierten Endpunkte (`voting-groups/shares`, `mandates`, `units/{id}/attribute-values`) liefern dict-wrapped — also nicht aktiv triggerbar. Risiko-Surface ist durch die drei neuen Aufrufstellen gewachsen; Fix waere `if dict-shape: ueber totalPages, if list-shape: nur stoppen wenn `len < _PAGE_SIZE` UND zusaetzlich `len == 0`` oder generell auf `pageNumber/totalPages`-Header-Auswertung umstellen.
+- **`vg_details[].get("units")` Schema-Drift-Crash** [`app/services/facilioo_client.py:318`] — Wenn `/api/voting-groups/{id}` mal ein Non-Dict (Liste, String) zurueckliefert ohne 4xx, wirft `.get("units")` `AttributeError` — der Router faengt nur `FaciliooError`, andere Exceptions schlagen auf den globalen 500-Handler durch. Pre-existing in Phase 2; Phase 3 adresseirt das gleiche Pattern bei `attr_by_unit`. Defensiver Guard: `if not isinstance(vg, dict): continue` nach `vg_details[vg_index]`.
+- **Tfoot near-empty page** [`app/templates/etv_signature_list_pdf.html:158-167`] — Wenn der letzte tbody-Row + tfoot zusammen den Restplatz auf der Seite uebersteigen, kann WeasyPrint die tfoot auf eine fast leere fresh page schieben. `page-break-inside: avoid` greift pro Element, nicht ueber Datenzeile + tfoot zusammen. Loesung waere `tbody tr:last-child + tfoot { break-before: avoid; }` oder `thead { display: table-header-group }` plus tfoot-with-header-Repeat. Bei realem Auftreten in Live-PDFs nachfassen.
+
+## Deferred from: etv-signature-list-pdf-anpassungen (2026-04-30)
+
+- **Umlaut-Sweep ausserhalb ETV** — Im ETV-Modul sind alle user-facing Strings auf echte Umlaute (`ä/ö/ü/ß`) umgestellt; Bestand ausserhalb ist weiterhin in ASCII-Schreibweise (`ae/oe/ue/ss`). Eigene Story noetig fuer:
+    - Alle Templates ausserhalb ETV (~30 Dateien, ~50 betroffene Lines): `app/templates/admin/*`, `app/templates/_obj_*.html`, `app/templates/case_detail.html`, `app/templates/contact_create.html`, `app/templates/cases_list.html`, `app/templates/_due_radar_rows.html`, `app/templates/_extraction_field_*.html`, `app/templates/_registries_*.html` etc.
+    - Banner-/Flash-Messages und Audit-`details`-Strings in allen Routern (`app/routers/objects.py`, `cases.py`, `documents.py`, `contacts.py`, `admin.py`, `registries.py`).
+    - Andere Tile-Beschreibungen in `app/templates/index.html` (SEPA, Mietverwaltung, Contact-Create) inkl. „Oeffnen"-Button auf jeder Tile.
+    - Default-System-Prompts in `app/services/claude.py` (`DEFAULT_SYSTEM_PROMPT`, `DEFAULT_CHAT_SYSTEM_PROMPT`) und `app/services/mietverwaltung.py` (`DEFAULT_MIETVERWALTUNG_SYSTEM_PROMPT`, `DEFAULT_CONTACT_CREATE_SYSTEM_PROMPT`, typ-spezifische Extraction-Prompts) — **Achtung: Re-Live-Tests fuer Extraction noetig!** Aenderung am Prompt-Wording kann die Pydantic-Schema-Konformitaet der LLM-Antwort beeinflussen (Field-Namen wie "WEG-Kuerzel" → "WEG-Kürzel" muessen synchron im Pydantic-Schema und Prompt stehen).
+    - Test-Asserts auf deutsche Strings (`tests/test_*.py`).
+    - Code-Kommentare und Identifier bleiben **ausserhalb** des Sweep-Scope (per CLAUDE.md-Regel).
+
 ## Deferred from: code review of 3-5-review-queue-admin-ui-mit-filtern (2026-04-30)
 
 - **Pagination / Unbounded Result Set** [`app/routers/admin.py:_build_queue_query`] — `select(ReviewQueueEntry)` ohne `LIMIT`. v1 hat Queue mit 0 Entries (keine aktiven KI-Agenten); akzeptabel. Bei wachsender Queue (>200 Entries) auf `LIMIT/OFFSET` + Pagination-UI umstellen. Risiko: HTMX feuert pro Filter-Change einen Vollscan; bei grosser Queue OOM/DoS-Vektor.

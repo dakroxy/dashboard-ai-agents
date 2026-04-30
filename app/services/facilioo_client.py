@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
@@ -30,6 +31,12 @@ _PAGE_SIZE = 100
 # kein last-Flag, content immer voll) waere die Schleife sonst unbegrenzt.
 # 500 Seiten * 100 Items = 50k Conferences — well above any realistic Pool.
 _MAX_PAGES = 500
+
+# Facilioo-Tenant DBS, GET /api/attributes resolved name="Miteigentumsanteile".
+# Werte liegen pro Unit unter /api/units/{uid}/attribute-values als
+# {"attributeId": 1438, "value": "<MEA>"}. Robuster als /voting-groups/shares,
+# das in Facilioo nicht durchgaengig gepflegt wird (Wert "0").
+MEA_ATTRIBUTE_ID = 1438
 
 
 _logger = logging.getLogger(__name__)
@@ -215,16 +222,15 @@ async def get_conference_property(conf_id: int | str) -> dict:
 
 
 async def list_voting_group_shares(conf_id: int | str) -> list[dict]:
-    """Liste von ``{votingGroupId, shares}`` (MEA pro Stimmgruppe)."""
+    """Liste von ``{votingGroupId, shares}`` (MEA pro Stimmgruppe).
+
+    Paginated: Facilioo liefert max. 10 Eintraege pro Seite. ``_get_all_paged``
+    laeuft bis ``totalPages`` durch (wichtig bei WEGs mit > 10 Voting-Groups).
+    """
     async with _make_client() as client:
-        data = await _api_get(
+        return await _get_all_paged(
             client, f"/api/conferences/{conf_id}/voting-groups/shares"
         )
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        return data.get("items") or data.get("content") or []
-    return []
 
 
 async def get_voting_group(vg_id: int | str) -> dict:
@@ -234,14 +240,23 @@ async def get_voting_group(vg_id: int | str) -> dict:
 
 
 async def list_mandates(conf_id: int | str) -> list[dict]:
-    """Vollmacht-Liste: ``{propertyOwnerId, representativeId}``."""
+    """Vollmacht-Liste: ``{propertyOwnerId, representativeId}`` (paginated)."""
     async with _make_client() as client:
-        data = await _api_get(client, f"/api/conferences/{conf_id}/mandates")
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        return data.get("items") or data.get("content") or []
-    return []
+        return await _get_all_paged(
+            client, f"/api/conferences/{conf_id}/mandates"
+        )
+
+
+async def list_unit_attribute_values(unit_id: int | str) -> list[dict]:
+    """Alle Attribute-Werte einer Unit (paginated).
+
+    Eintrag-Form: ``{attributeId, value, attribute: {name, ...}, ...}``.
+    Filter auf ``attributeId == MEA_ATTRIBUTE_ID`` liefert die MEA als String.
+    """
+    async with _make_client() as client:
+        return await _get_all_paged(
+            client, f"/api/units/{unit_id}/attribute-values"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +267,12 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
     """Lädt alles, was die ETV-Unterschriftenliste pro Conference braucht.
 
     Phase 1: Conference, Property, Voting-Group-Shares, Mandates parallel.
+        ``shares`` und ``mandates`` werden paginiert geladen — Facilioo liefert
+        nur 10 Eintraege pro Seite, frueher gingen Zeilen bei >10 VGs verloren.
     Phase 2: Voting-Group-Details parallel (eine Welle pro vg_share).
+    Phase 3: MEA pro Unit aus ``/api/units/{uid}/attribute-values`` parallel.
+        Robuster als ``/voting-groups/shares`` — wird in Facilioo manchmal nicht
+        gepflegt (Wert "0"), die Unit-Eigenschaften aber schon.
 
     Rückgabe-Form::
 
@@ -260,7 +280,8 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
           "conference": {...},
           "property": {...},
           "voting_groups": [
-            {"voting_group": {...units, parties}, "shares": "..."},
+            {"voting_group": {...units, parties}, "shares": "...",
+             "mea_decimal": Decimal | None},
             ...
           ],
           "mandates": [...],
@@ -269,34 +290,16 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
     async with _make_client() as client:
         conf_task = _api_get(client, f"/api/conferences/{conf_id}")
         prop_task = _api_get(client, f"/api/conferences/{conf_id}/property")
-        shares_task = _api_get(
+        shares_task = _get_all_paged(
             client, f"/api/conferences/{conf_id}/voting-groups/shares"
         )
-        mandates_task = _api_get(
+        mandates_task = _get_all_paged(
             client, f"/api/conferences/{conf_id}/mandates"
         )
 
-        conference, property_, shares_data, mandates_data = await asyncio.gather(
+        conference, property_, shares, mandates = await asyncio.gather(
             conf_task, prop_task, shares_task, mandates_task
         )
-
-        if isinstance(shares_data, dict):
-            shares: list[dict] = (
-                shares_data.get("items") or shares_data.get("content") or []
-            )
-        elif isinstance(shares_data, list):
-            shares = shares_data
-        else:
-            shares = []
-
-        if isinstance(mandates_data, dict):
-            mandates: list[dict] = (
-                mandates_data.get("items") or mandates_data.get("content") or []
-            )
-        elif isinstance(mandates_data, list):
-            mandates = mandates_data
-        else:
-            mandates = []
 
         # Phase 2: alle Voting-Groups parallel
         vg_tasks = [
@@ -306,16 +309,73 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
         ]
         vg_details = await asyncio.gather(*vg_tasks) if vg_tasks else []
 
-    voting_groups = []
-    vg_index = 0
-    for s in shares:
-        if s.get("votingGroupId") is None:
-            continue
-        voting_groups.append({
-            "voting_group": vg_details[vg_index],
-            "shares": s.get("shares", ""),
+        voting_groups: list[dict] = []
+        vg_index = 0
+        for s in shares:
+            if s.get("votingGroupId") is None:
+                continue
+            voting_groups.append({
+                "voting_group": vg_details[vg_index],
+                "shares": s.get("shares", ""),
+            })
+            vg_index += 1
+
+        # Phase 3: MEA pro Unit (parallel, einmal pro unique Unit-ID).
+        unit_ids = list({
+            u.get("id")
+            for vg in voting_groups
+            for u in (vg["voting_group"].get("units") or [])
+            if u.get("id") is not None
         })
-        vg_index += 1
+        if unit_ids:
+            attr_tasks = [
+                _get_all_paged(client, f"/api/units/{uid}/attribute-values")
+                for uid in unit_ids
+            ]
+            attr_lists = await asyncio.gather(*attr_tasks)
+        else:
+            attr_lists = []
+
+    attr_by_unit: dict = dict(zip(unit_ids, attr_lists))
+    for entry in voting_groups:
+        total = Decimal("0")
+        seen = False
+        for u in (entry["voting_group"].get("units") or []):
+            uid = u.get("id")
+            if uid is None:
+                continue
+            for av in attr_by_unit.get(uid, []):
+                if av.get("attributeId") != MEA_ATTRIBUTE_ID:
+                    continue
+                raw = av.get("value")
+                if raw in (None, ""):
+                    continue
+                try:
+                    parsed = Decimal(str(raw))
+                except (InvalidOperation, ValueError):
+                    _logger.warning(
+                        "MEA-Wert nicht parsbar (unitId=%s, value=%r) — ignoriert.",
+                        uid,
+                        raw,
+                    )
+                    continue
+                # Decimal akzeptiert "NaN"/"Infinity"/"-Infinity"/"sNaN" als valide
+                # Konstruktoren — ohne is_finite()-Guard wuerde NaN-Vergiftung in
+                # die Summe propagieren und das PDF "NaN" / "Infinity" zeigen.
+                if not parsed.is_finite():
+                    _logger.warning(
+                        "MEA-Wert nicht endlich (unitId=%s, value=%r) — ignoriert.",
+                        uid,
+                        raw,
+                    )
+                    continue
+                total += parsed
+                seen = True
+                # Nur die erste valide MEA-Row pro Unit zaehlt — schuetzt vor
+                # Doppel-Aufaddieren bei (hypothetisch) mehreren attributeId-1438-
+                # Eintraegen pro Unit.
+                break
+        entry["mea_decimal"] = total if seen else None
 
     return {
         "conference": conference,

@@ -11,6 +11,7 @@ import logging
 import re
 import unicodedata
 from datetime import datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
@@ -57,9 +58,45 @@ def _load_workflow_or_403(db: Session, user: User) -> Workflow:
     if not can_access_resource(db, user, RESOURCE_TYPE_WORKFLOW, wf.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Keine Berechtigung fuer den ETV-Unterschriftenlisten-Workflow.",
+            detail="Keine Berechtigung für den ETV-Unterschriftenlisten-Workflow.",
         )
     return wf
+
+
+_MEA_PLACEHOLDER = "—"
+
+
+def _format_decimal(d: Decimal) -> str:
+    """Decimal in Fixed-Notation, Trailing-Zeros + Trailing-Punkt entfernt.
+
+    `Decimal("128").normalize()` rutscht in Exponential-Notation (`1.28E+2`),
+    was im PDF unleserlich waere. `format(d, "f")` zwingt Fixed-Notation, der
+    rstrip-Schritt bringt `128.00` zu `128` und `98.50` zu `98.5`.
+    """
+    s = format(d, "f")
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def _format_mea(d: Decimal | None) -> str:
+    """`Decimal | None` → Display-String fuer die MEA-Spalte."""
+    if d is None:
+        return _MEA_PLACEHOLDER
+    return _format_decimal(d)
+
+
+def _compute_total_mea(payload: dict) -> str:
+    """Summiert alle gepflegten MEA-Werte aller Voting-Groups."""
+    total = Decimal("0")
+    seen = False
+    for entry in payload.get("voting_groups", []):
+        d = entry.get("mea_decimal")
+        if d is None:
+            continue
+        total += d
+        seen = True
+    return _format_decimal(total) if seen else _MEA_PLACEHOLDER
 
 
 def _parse_conference_date(raw: str | None) -> datetime | None:
@@ -165,7 +202,7 @@ def _build_rows(payload: dict) -> list[dict]:
         rows.append({
             "owner_names": ", ".join(owner_names) if owner_names else "—",
             "units": " · ".join(unit_labels) if unit_labels else "—",
-            "shares": entry.get("shares", "") or "—",
+            "shares": _format_mea(entry.get("mea_decimal")),
             "has_mandate": has_mandate,
         })
     return rows
@@ -211,7 +248,7 @@ async def select_conference(
     except FaciliooError as exc:
         _logger.warning("Facilioo list_conferences fehlgeschlagen: %s", exc)
         error = (
-            "Facilioo aktuell nicht erreichbar — bitte spaeter erneut "
+            "Facilioo aktuell nicht erreichbar — bitte später erneut "
             "versuchen."
         )
 
@@ -313,8 +350,8 @@ async def generate_pdf(
             user,
             options=await _options_for_error_screen(),
             message=(
-                "PDF-Renderer (WeasyPrint) ist im Container nicht verfuegbar. "
-                "Bitte Container-Build / Image pruefen."
+                "PDF-Renderer (WeasyPrint) ist im Container nicht verfügbar. "
+                "Bitte Container-Build / Image prüfen."
             ),
         )
 
@@ -339,12 +376,13 @@ async def generate_pdf(
 
     header = _build_header(payload)
     rows = _build_rows(payload)
+    mea_total = _compute_total_mea(payload)
 
     html_str = templates.get_template("etv_signature_list_pdf.html").render(
         {
             "header": header,
             "rows": rows,
-            "now": datetime.now(_BERLIN_TZ),
+            "mea_total": mea_total,
         }
     )
 
@@ -359,8 +397,8 @@ async def generate_pdf(
             user,
             options=await _options_for_error_screen(),
             message=(
-                f"PDF-Erzeugung fuer Conference '{conference_id}' ist "
-                f"fehlgeschlagen: {type(exc).__name__}. Bitte Logs pruefen."
+                f"PDF-Erzeugung für Conference '{conference_id}' ist "
+                f"fehlgeschlagen: {type(exc).__name__}. Bitte Logs prüfen."
             ),
         )
 

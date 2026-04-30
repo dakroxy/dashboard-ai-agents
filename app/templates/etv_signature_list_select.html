@@ -3,7 +3,7 @@
 <div class="mb-6">
     <h1 class="text-2xl font-semibold">ETV-Unterschriftenliste</h1>
     <p class="text-sm text-slate-500 mt-1">
-        Eigentuemerversammlung auswaehlen, druckfertige Unterschriftenliste als PDF herunterladen.
+        Eigentümerversammlung auswählen, druckfertige Unterschriftenliste als PDF herunterladen.
     </p>
 </div>
 
@@ -16,7 +16,7 @@
 <form method="post" action="/workflows/etv-signature-list/generate"
       class="rounded-lg bg-white border border-slate-200 p-6 max-w-2xl">
     <label for="conference_id" class="block text-sm font-medium text-slate-700 mb-2">
-        Eigentuemerversammlung
+        Eigentümerversammlung
     </label>
     <select id="conference_id"
             name="conference_id"
@@ -24,12 +24,12 @@
             {% if not options %}disabled{% endif %}
             class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500 disabled:bg-slate-100 disabled:text-slate-400">
         {% if options %}
-        <option value="" disabled selected>— Versammlung waehlen —</option>
+        <option value="" disabled selected>— Versammlung wählen —</option>
         {% for opt in options %}
         <option value="{{ opt.id }}">{{ opt.label }}</option>
         {% endfor %}
         {% else %}
-        <option value="" disabled selected>Keine Versammlungen verfuegbar</option>
+        <option value="" disabled selected>Keine Versammlungen verfügbar</option>
         {% endif %}
     </select>
 

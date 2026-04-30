@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 import types
 import uuid
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -23,6 +24,7 @@ from app.models import ResourceAccess, User, Workflow
 from app.permissions import RESOURCE_TYPE_WORKFLOW
 from app.routers import etv_signature_list as etv_router
 from app.services import facilioo_client
+from app.templating import templates as jinja_templates
 
 
 # ---------------------------------------------------------------------------
@@ -38,14 +40,14 @@ def test_build_rows_marks_mandate_when_owner_id_matches():
                     "parties": [{"id": 11, "fullName": "Anna Beispiel"}],
                     "units": [{"number": "WE-1", "position": "EG li."}],
                 },
-                "shares": "100/1000",
+                "mea_decimal": Decimal("128"),
             },
             {
                 "voting_group": {
                     "parties": [{"id": 22, "fullName": "Bert Test"}],
                     "units": [{"number": "WE-2", "position": "EG re."}],
                 },
-                "shares": "120/1000",
+                "mea_decimal": Decimal("94"),
             },
         ],
         # Nur Owner 11 hat eine Vollmacht -> ☑
@@ -56,7 +58,7 @@ def test_build_rows_marks_mandate_when_owner_id_matches():
     assert rows[1]["has_mandate"] is False
     assert rows[0]["owner_names"] == "Anna Beispiel"
     assert rows[0]["units"] == "WE-1 (EG li.)"
-    assert rows[0]["shares"] == "100/1000"
+    assert rows[0]["shares"] == "128"
 
 
 def test_build_rows_joins_multiple_parties_with_comma():
@@ -70,7 +72,7 @@ def test_build_rows_joins_multiple_parties_with_comma():
                     ],
                     "units": [{"number": "WE-1", "position": "OG"}],
                 },
-                "shares": "200/1000",
+                "mea_decimal": Decimal("200"),
             }
         ],
         "mandates": [],
@@ -82,6 +84,78 @@ def test_build_rows_joins_multiple_parties_with_comma():
 def test_build_rows_empty_voting_groups_returns_empty_list():
     rows = etv_router._build_rows({"voting_groups": [], "mandates": []})
     assert rows == []
+
+
+def test_build_rows_renders_dash_when_mea_missing():
+    payload = {
+        "voting_groups": [
+            {
+                "voting_group": {
+                    "parties": [{"id": 1, "fullName": "Anna"}],
+                    "units": [{"number": "WE-1", "position": "EG"}],
+                },
+                "mea_decimal": None,
+            }
+        ],
+        "mandates": [],
+    }
+    rows = etv_router._build_rows(payload)
+    assert rows[0]["shares"] == "—"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (Decimal("128"), "128"),
+        (Decimal("128.00"), "128"),
+        (Decimal("98.57"), "98.57"),
+        (Decimal("98.50"), "98.5"),
+        (Decimal("0"), "0"),
+        (Decimal("0.1") + Decimal("0.2"), "0.3"),  # Float-Drift waere 0.30000000000000004
+    ],
+)
+def test_format_decimal_strips_trailing_zeros(raw, expected):
+    assert etv_router._format_decimal(raw) == expected
+
+
+def test_format_mea_returns_dash_for_none():
+    assert etv_router._format_mea(None) == "—"
+
+
+def test_format_mea_formats_decimal_via_format_decimal():
+    assert etv_router._format_mea(Decimal("128.00")) == "128"
+
+
+def test_compute_total_mea_sums_voting_groups():
+    payload = {
+        "voting_groups": [
+            {"mea_decimal": Decimal("128")},
+            {"mea_decimal": Decimal("94")},
+            {"mea_decimal": Decimal("193")},
+        ]
+    }
+    assert etv_router._compute_total_mea(payload) == "415"
+
+
+def test_compute_total_mea_skips_none_entries():
+    payload = {
+        "voting_groups": [
+            {"mea_decimal": Decimal("100")},
+            {"mea_decimal": None},
+            {"mea_decimal": Decimal("50.5")},
+        ]
+    }
+    assert etv_router._compute_total_mea(payload) == "150.5"
+
+
+def test_compute_total_mea_returns_dash_when_all_unset():
+    payload = {
+        "voting_groups": [
+            {"mea_decimal": None},
+            {"mea_decimal": None},
+        ]
+    }
+    assert etv_router._compute_total_mea(payload) == "—"
 
 
 def test_build_header_extracts_weg_name_and_formats_date():
@@ -292,6 +366,311 @@ async def test_list_conferences_walks_multiple_pages(monkeypatch):
     items = await facilioo_client.list_conferences()
     assert len(items) == 102
     assert items[0]["id"] == 1 and items[-1]["id"] == 102
+
+
+# ---------------------------------------------------------------------------
+# Aggregator: fetch_conference_signature_payload
+# ---------------------------------------------------------------------------
+
+
+def _aggregator_handler_factory(
+    *,
+    total_vgs: int,
+    page_size: int = 10,
+    mea_value_for_unit=None,
+    attribute_5xx_for_unit_id: int | None = None,
+):
+    """Baut einen httpx.MockTransport-Handler fuer den Aggregator.
+
+    Erzeugt `total_vgs` Voting-Groups ueber so viele Pages wie noetig (Page-Size 10).
+    Pro VG eine Unit mit ID `2_000_000 + vg_idx`. `mea_value_for_unit(uid)` liefert
+    den MEA-String oder None (kein Attribut gepflegt).
+    """
+
+    if mea_value_for_unit is None:
+        def mea_value_for_unit(uid):  # noqa: E306
+            return "100"
+
+    def handler(request):
+        path = request.url.path
+        params = dict(request.url.params)
+
+        if path.endswith("/property") or path == f"/api/conferences/123":
+            if path == "/api/conferences/123":
+                return httpx.Response(
+                    200,
+                    json={"id": 123, "title": "ETV Test", "date": "2026-05-12T18:30:00Z"},
+                )
+            return httpx.Response(
+                200, json={"name": "WEG TEST", "id": 999, "number": "TEST"}
+            )
+        if path == "/api/conferences/123/voting-groups/shares":
+            page = int(params.get("pageNumber", "1"))
+            requested_size = int(params.get("pageSize", str(page_size)))
+            actual_size = min(requested_size, page_size)
+            total_pages = (total_vgs + actual_size - 1) // actual_size
+            start = (page - 1) * actual_size
+            end = min(start + actual_size, total_vgs)
+            items = [
+                {"votingGroupId": 1_000_000 + i, "shares": "0"}
+                for i in range(start, end)
+            ]
+            return httpx.Response(
+                200,
+                json={
+                    "items": items,
+                    "pageNumber": page,
+                    "pageSize": actual_size,
+                    "totalPages": total_pages,
+                    "totalCount": total_vgs,
+                },
+            )
+        if path == "/api/conferences/123/mandates":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [{"propertyOwnerId": 11, "representativeId": 99}],
+                    "totalPages": 1,
+                },
+            )
+        if path.startswith("/api/voting-groups/"):
+            vg_id = int(path.rsplit("/", 1)[-1])
+            vg_idx = vg_id - 1_000_000
+            unit_id = 2_000_000 + vg_idx
+            return httpx.Response(
+                200,
+                json={
+                    "id": vg_id,
+                    "parties": [{"id": 11 + vg_idx, "fullName": f"Owner {vg_idx}"}],
+                    "units": [{"id": unit_id, "number": str(vg_idx), "position": ""}],
+                },
+            )
+        if path.startswith("/api/units/") and path.endswith("/attribute-values"):
+            uid = int(path.split("/")[3])
+            if attribute_5xx_for_unit_id is not None and uid == attribute_5xx_for_unit_id:
+                return httpx.Response(503, text="upstream down")
+            value = mea_value_for_unit(uid)
+            items = (
+                [{"attributeId": facilioo_client.MEA_ATTRIBUTE_ID, "value": value}]
+                if value is not None
+                else []
+            )
+            return httpx.Response(
+                200,
+                json={"items": items, "pageNumber": 1, "totalPages": 1},
+            )
+        return httpx.Response(404, json={"err": f"unexpected {path}"})
+
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_aggregator_paginates_voting_group_shares_beyond_page_one(monkeypatch):
+    """Regression: fetch_conference_signature_payload muss alle 16 VGs liefern,
+    nicht nur die ersten 10."""
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(_aggregator_handler_factory(total_vgs=16)),
+    )
+    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    assert len(payload["voting_groups"]) == 16
+
+
+@pytest.mark.asyncio
+async def test_aggregator_pulls_mea_from_unit_attribute_values(monkeypatch):
+    """Pro Unit lookup attribute-values, mea_decimal = Sum der Werte."""
+    # Pro Unit liefert Facilioo unterschiedliche MEA-Werte, je nach uid.
+    def mea_for_unit(uid):
+        # Erste VG: MEA 128, zweite: 94, dritte: 98.57.
+        idx = uid - 2_000_000
+        return {0: "128", 1: "94", 2: "98.57"}[idx]
+
+    handler = _aggregator_handler_factory(
+        total_vgs=3, mea_value_for_unit=mea_for_unit
+    )
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    decs = [vg["mea_decimal"] for vg in payload["voting_groups"]]
+    assert decs == [Decimal("128"), Decimal("94"), Decimal("98.57")]
+
+
+@pytest.mark.asyncio
+async def test_aggregator_sums_mea_when_voting_group_has_multiple_units(monkeypatch):
+    """Voting-Group mit n Units → mea_decimal ist die Summe."""
+    base_handler = _aggregator_handler_factory(
+        total_vgs=1, mea_value_for_unit=lambda uid: "50.25"
+    )
+
+    def handler(request):
+        path = request.url.path
+        # Einen Voting-Group-Detail-Call manipulieren: zwei Units statt einer.
+        if path.startswith("/api/voting-groups/"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1_000_000,
+                    "parties": [{"id": 11, "fullName": "A"}],
+                    "units": [
+                        {"id": 2_000_000, "number": "1", "position": ""},
+                        {"id": 2_000_001, "number": "2", "position": ""},
+                    ],
+                },
+            )
+        return base_handler(request)
+
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    assert payload["voting_groups"][0]["mea_decimal"] == Decimal("100.50")
+
+
+@pytest.mark.asyncio
+async def test_aggregator_marks_mea_none_when_no_attribute_present(monkeypatch):
+    """Unit ohne attributeId=1438 → mea_decimal=None (Fallback rendert '—')."""
+    handler = _aggregator_handler_factory(
+        total_vgs=2, mea_value_for_unit=lambda uid: None
+    )
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    assert all(vg["mea_decimal"] is None for vg in payload["voting_groups"])
+
+
+@pytest.mark.asyncio
+async def test_aggregator_propagates_facilioo_error_on_attribute_5xx(monkeypatch):
+    """Persistente 5xx auf attribute-values bricht den Aggregator als
+    FaciliooError ab — Router faengt das im Banner-Pfad."""
+    handler = _aggregator_handler_factory(
+        total_vgs=1, attribute_5xx_for_unit_id=2_000_000
+    )
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+    with pytest.raises(facilioo_client.FaciliooError):
+        await facilioo_client.fetch_conference_signature_payload(123)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("poison_value", ["NaN", "Infinity", "-Infinity", "sNaN"])
+async def test_aggregator_skips_nan_and_infinity_values(monkeypatch, poison_value):
+    """Defensiv: Decimal('NaN'/'Infinity'/'-Infinity'/'sNaN') sind valide
+    Konstruktoren; ohne `is_finite()`-Guard wuerde der Wert die Summe und
+    den PDF-Output vergiften."""
+    handler = _aggregator_handler_factory(
+        total_vgs=1, mea_value_for_unit=lambda uid: poison_value
+    )
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    # Kein finiter Wert -> mea_decimal=None (rendert spaeter als "—").
+    assert payload["voting_groups"][0]["mea_decimal"] is None
+
+
+@pytest.mark.asyncio
+async def test_aggregator_uses_first_attribute_value_when_multiple_present(monkeypatch):
+    """Defensiv: falls Facilioo je zwei attributeId=1438-Rows pro Unit liefert
+    (Schema-Drift / History), nimmt der Aggregator nur die erste — sonst wuerde
+    die MEA der Unit doppelt aufsummiert."""
+    base_handler = _aggregator_handler_factory(total_vgs=1)
+
+    def handler(request):
+        path = request.url.path
+        if path.startswith("/api/units/") and path.endswith("/attribute-values"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {"attributeId": facilioo_client.MEA_ATTRIBUTE_ID, "value": "128"},
+                        {"attributeId": facilioo_client.MEA_ATTRIBUTE_ID, "value": "999"},
+                        {"attributeId": 9999, "value": "ignore"},
+                    ],
+                    "totalPages": 1,
+                },
+            )
+        return base_handler(request)
+
+    monkeypatch.setattr(
+        "app.services.facilioo_client.httpx.AsyncClient",
+        _patched_facilioo_client(handler),
+    )
+    payload = await facilioo_client.fetch_conference_signature_payload(123)
+    # Erste valide Row (128), nicht 128+999=1127.
+    assert payload["voting_groups"][0]["mea_decimal"] == Decimal("128")
+
+
+# ---------------------------------------------------------------------------
+# PDF-Template-Render-Tests (Jinja, ohne WeasyPrint)
+# ---------------------------------------------------------------------------
+
+
+def _render_pdf_template(rows, mea_total):
+    return jinja_templates.get_template("etv_signature_list_pdf.html").render(
+        {
+            "header": {
+                "weg_name": "WEG Test",
+                "date_label": "01.01.2026",
+                "time_label": "18:00",
+                "location": "",
+                "room": "",
+                "title": "",
+            },
+            "rows": rows,
+            "mea_total": mea_total,
+        }
+    )
+
+
+def test_pdf_template_renders_summen_zeile_when_rows_present():
+    html = _render_pdf_template(
+        rows=[{"owner_names": "A", "units": "1", "shares": "128", "has_mandate": False}],
+        mea_total="128",
+    )
+    assert "<tfoot>" in html
+    assert "Summe" in html
+    # MEA-Wert in der Summen-Zelle.
+    assert ">128<" in html
+
+
+def test_pdf_template_omits_summen_zeile_when_no_rows():
+    html = _render_pdf_template(rows=[], mea_total="—")
+    assert "<tfoot>" not in html
+    assert "Keine Stimmgruppen hinterlegt" in html
+
+
+def test_pdf_template_has_no_erzeugt_am_footer():
+    html = _render_pdf_template(
+        rows=[{"owner_names": "A", "units": "1", "shares": "100", "has_mandate": False}],
+        mea_total="100",
+    )
+    assert "Erzeugt am" not in html
+    assert "<footer>" not in html.lower()
+
+
+def test_pdf_template_uses_real_umlaut_in_header():
+    html = _render_pdf_template(
+        rows=[{"owner_names": "A", "units": "1", "shares": "100", "has_mandate": False}],
+        mea_total="100",
+    )
+    assert "Eigentümer" in html
+    assert "Eigentuemer" not in html
+
+
+def test_select_template_uses_real_umlauts():
+    html = jinja_templates.get_template("etv_signature_list_select.html").render(
+        {"options": [], "error": None, "user": None, "title": "ETV"}
+    )
+    assert "Eigentümerversammlung" in html
+    assert "Eigentuemerversammlung" not in html
 
 
 # ---------------------------------------------------------------------------
