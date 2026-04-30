@@ -1,6 +1,6 @@
 # Story 4.1: Facilioo-API-Spike
 
-Status: review
+Status: done
 
 ## Story
 
@@ -76,7 +76,7 @@ kein neuer Router. Output ist eine Dokumentationsdatei + optionale Erweiterung d
     4. `https://api.facilioo.de/v2/api-docs`
 
     Bei Sackgasse: existierende Endpunkt-Liste aus `app/services/facilioo_client.py` (`/api/conferences`, `/api/voting-groups`, `/api/units/{id}/attribute-values`, `/api/conferences/{id}/mandates`) als Hinweis nutzen — Tickets liegen wahrscheinlich unter `/api/tickets` oder `/api/properties/{id}/tickets`. Letzte Eskalationsstufe: Facilioo-Support kontaktieren (Kontakt im 1Password-Vault `KI`).
-  - [x] 1.2: GET Ticket-Liste testen — bestehenden `facilioo_client.py`-Client verwenden (Token bereits in `settings.facilioo_bearer_token`); alternativ direkter `httpx`-Call mit `_make_client()` im Python-REPL
+  - [x] 1.2: GET Ticket-Liste testen — bestehenden `facilioo_client.py`-Client verwenden (Token bereits in `settings.facilioo_bearer_token`); alternativ direkter `httpx`-Call mit `_make_client()` im Python-REPL. **Spike-Befund (2026-04-30):** korrekter Endpunkt ist `/api/properties/{facilioo_id}/processes` (nicht `/api/tickets` — der wirft 404). Details s. `docs/integration/facilioo-spike.md`.
   - [x] 1.3: DTO-Shape auswerten: relevante Felder + **Container-Wrapper** notieren (Top-Level-List vs. `{items}` vs. `{content}` vs. anderes — relevant für `_get_all_paged`-Reuse in 4.2)
   - [x] 1.4: Property-Mapping klären: Gibt es ein `impower_property_id`-äquivalentes Feld oder brauchen wir neues `Object.facilioo_property_id`?
 
@@ -317,4 +317,54 @@ claude-sonnet-4-6 (1M context)
 
 - `docs/integration/facilioo-spike.md` (neu)
 - `output/implementation-artifacts/sprint-status.yaml` (aktualisiert)
-- `output/implementation-artifacts/4-1-facilioo-api-spike.md` (Tasks + Status aktualisiert)
+- `output/implementation-artifacts/4-1-facilioo-api-spike.md` (neu, Status auf `done` gesetzt nach Code-Review)
+
+### Review Findings
+
+Code-Review 2026-04-30 (3 parallele adversarial Reviewer: Blind Hunter + Edge Case Hunter + Acceptance Auditor, alle Opus 4.7).
+
+**Resolution 2026-04-30:** Alle 12 Decision-Needed-Items wurden direkt durch Claude (Opus 4.7) entschieden — User-Anweisung "Bitte alles patchen und selbst entscheiden". Entscheidungen wurden inline ins Spike-Doku `docs/integration/facilioo-spike.md` integriert (Sektionen Auth-Flow, Property-Mapping, Status-Wahrheitsregel, Delta-Strategie, Rate-Limits, Architektur-Rename, Abhängigkeiten 4.2–4.4, Anmerkungen). Alle 11 Patches angewendet. Konservative/defensive Defaults gewählt (Pflichtfeld-Härtungen, Two-Phase-Commit für Set-Diff, separate `facilioo_last_modified`-Spalte, `pg_advisory_lock` für Single-flight, Properties-Cache mit 5-min-TTL, Token-Health-Check ab T-7).
+
+**Decision-needed (12)** — fachliche Entscheidung notwendig, bevor das Spike-Doku gehärtet werden kann:
+
+- [x] [Review][Decision] Property-Mapping-Robustheit — DEMO-Filter-Strategie (heuristisch via Prefix? expliziter `.isdigit()`-Check? explizite Whitelist?), Whitespace-Stripping in `externalId`, Duplicate-Handling (zwei Properties mit selber `externalId`), NULL-`impower_property_id`-Handling. Welche Härtungen gehören als Vorgabe für Story 4.3 ins Spike-Doku? [`docs/integration/facilioo-spike.md:91-101`]
+- [x] [Review][Decision] Soft-Delete-Semantik abgrenzen — drei Konzepte (Facilioo `deleted`-Timestamp, `isFinished: bool`, lokal `is_archived`) konkurrieren; welches gewinnt? Re-Aktivierungs-Verhalten? Set-Diff-Risiko bei abgebrochenem Pull (Two-Phase-Commit / Pull-Vollständigkeits-Check)? [`docs/integration/facilioo-spike.md:91-93, 132-136, 184-191`]
+- [x] [Review][Decision] Status-Mapping ORM ↔ API — `FaciliooTicket.status: String` vs. API liefert `isFinished: bool` (+ `stageId` in Live-Daten immer null). Welche String-Werte schreiben (`"open"/"done"/"archived"`)? Mapping-Funktion in `facilioo.py` oder im Mirror-Job? [`docs/integration/facilioo-spike.md:60-69, 132-136`]
+- [x] [Review][Decision] Performance-Sicherheitspuffer — Mirror dauert geschätzt ~55 s, Polling-Intervall 60 s. Watchdog-Schwelle? Skip-if-Running via PostgreSQL `pg_advisory_lock`? Behandlung von Properties mit > 100 Prozessen (Schiefverteilung)? [`docs/integration/facilioo-spike.md:136, 147, 167`]
+- [x] [Review][Decision] Time-Zone + Delta-Vergleich — `lastModified` von Facilioo: UTC-naiv oder mit Offset? ORM `updated_at`-onupdate-Falle: bei jedem UPSERT läuft das hoch und kappt den Delta-Vergleich. Brauchen wir separate `facilioo_last_modified`-Spalte für den Vergleich? [`docs/integration/facilioo-spike.md:88, 132-136`]
+- [x] [Review][Decision] Migration-Story-Zuordnung — `ALTER TABLE facilioo_tickets ADD COLUMN is_archived` gehört in Story 4.2 (Client) oder Story 4.3 (Mirror)? Nächste Migration-Nummer ist `0018_*`. Spike-Doku festschreiben. [`docs/integration/facilioo-spike.md:184-191, 197-203`]
+- [x] [Review][Decision] Token-Rotation-Strategie — JWT exp 2026-05-14 (≈ 2 Wochen). Pre-expiry-Warning ab T-7 (WARN-Log? Audit-Event? Sync-Status DEGRADED?)? JWT-exp-Health-Check beim App-Boot? UI-Notification bei 401? [`docs/integration/facilioo-spike.md:19, 226`]
+- [x] [Review][Decision] Throttle + Concurrency-Implementation — `asyncio.Semaphore(1) + asyncio.sleep` vs. `aiolimiter` für 1 req/s? Mirror-Lock vs. manuelles Re-Sync-Button (advisory_lock auf gleicher Key)? Mehrere Mirror-Läufe parallel verhindern? [`docs/integration/facilioo-spike.md:147, 197-203`]
+- [x] [Review][Decision] Wording + Tenant-Scope — bleibt User-facing der Begriff "Tickets" (DB-Tabelle, Story-Spec) während Facilioo intern "Prozesse" sagt? `partyId` aus `fullyQualifiedNumber` impliziert Multi-Tenancy — welche Mandanten sieht unser Token? [`docs/integration/facilioo-spike.md:46, 74`]
+- [x] [Review][Decision] Properties-Cache-TTL — `_get_all_paged("/api/properties")` pro Mirror-Lauf = 1440 Calls/Tag bei 1-Min-Polling. Cache in `app.state` mit 5-min-TTL? Oder per-Run akzeptiert (~2 KB pro Call)? [`docs/integration/facilioo-spike.md:91-101`]
+- [x] [Review][Decision] typeId-/Kategorie-Anzeige in Story 4.4 — `/api/process-types` liefert nur IDs ohne Namen. Lookup-Cache bauen (statisches Dict pflegen) oder nur `subject` zeigen wie aktuell empfohlen? Funktionseinschränkung gegenüber Facilioo-UI bewusst? [`docs/integration/facilioo-spike.md:228`]
+- [x] [Review][Decision] Story 4.4 AC3 — Spike sagt "No-Go-Fallback (AC3) entfällt, da GO". Bleibt der UI-Fallback "Ticket-Integration in Vorbereitung" als Code/Template erhalten (resilient gegen Facilioo-Ausfall) oder wird das AC entfernt? [`docs/integration/facilioo-spike.md:240`]
+
+**Patch (11)** — eindeutig fixbare Inhaltsfehler/Lücken im Spike-Doku oder der Story-Spec:
+
+- [x] [Review][Patch] Pagination-Inkonsistenz: `totalCount=14` + `pageSize=100` ergibt `totalPages=1`, nicht `2` wie im Beispiel-JSON [`docs/integration/facilioo-spike.md:173-176`]
+- [x] [Review][Patch] Falsche Wortwahl "auf 0,5 req/s **erhöhen**" — 0,5 req/s ist langsamer, nicht aggressiver [`docs/integration/facilioo-spike.md:147`]
+- [x] [Review][Patch] Rename-Scope drastisch unterschätzt: Spike behauptet "1 Import-Stelle" — `tests/test_etv_signature_list.py` hat zusätzlich `from app.services import facilioo_client` + ~25 Mock-String-Pfade `"app.services.facilioo_client.httpx.AsyncClient"`; alle durch Rename betroffen [`docs/integration/facilioo-spike.md:155-161`, `4-1-facilioo-api-spike.md:415-424`]
+- [x] [Review][Patch] Story-Status-Zirkularität: Story-Spec sagt `Status: review`, aber Sprint-YAML steht auf `done` und Task 4.4 ("Sprint auf done setzen") ist abgehakt; File-List kennzeichnet `4-1-...md` als "aktualisiert" obwohl Datei neu ist [`4-1-facilioo-api-spike.md:3, 350, 528`]
+- [x] [Review][Patch] JWT-TTL-Widerspruch: "TTL ~12 Monate ab Ausstellung" + "exp = 2026-05-14" passen nicht zusammen, falls der Token erst seit ETV-Setup 2026-04-29 in Verwendung ist — Faktencheck nötig (echte TTL ablesen aus JWT-Payload) [`docs/integration/facilioo-spike.md:19, 226`]
+- [x] [Review][Patch] "ø 8 Prozesse pro Property" wirkt erfunden — Stichprobe waren PLS22 (14) + IKF21 (16); Mittelwert wäre 15. Entweder echte Zahl errechnen (262 Prozesse / Properties mit Mapping) oder Range angeben [`docs/integration/facilioo-spike.md:136`]
+- [x] [Review][Patch] AC2-Lücke `priority`-Feld: Spec listet "Priorität" als optional erwartetes Feld — DTO-Tabelle erwähnt es nicht; entweder ergänzen oder Aussage "Priorität in API nicht vorhanden" explizit machen [`docs/integration/facilioo-spike.md:48-69`]
+- [x] [Review][Patch] AC2-Lücke "Verlinkung": Spec erwartet Deep-Link zur Facilioo-UI als optionales Feld — Spike-Doku schweigt; entweder URL-Pattern angeben (`https://app.facilioo.de/processes/{id}`?) oder explizit "kein Deep-Link verfügbar" notieren [`docs/integration/facilioo-spike.md:48-69`]
+- [x] [Review][Patch] Task 1.1 Swagger-URLs (4 Kandidaten aus der Story) nicht im Spike-Doku dokumentiert — nur in Debug-Notes; Reproduzierbarkeit für spätere Re-Verifikation fehlt [`docs/integration/facilioo-spike.md:24-44`]
+- [x] [Review][Patch] GO-Begründung enthält keinen Aufwands-Audit gegen No-Go-Kriterium "API-Änderungen > 2 Tage Rework" aus AC5 — Liste der zusätzlichen Arbeit (Lookup-Layer, Endpunkt-Wechsel, neue Migration, Rename) gegen 2-Tage-Schwelle stellen [`docs/integration/facilioo-spike.md:7-11`]
+- [x] [Review][Patch] Story-File Task 1.2 Code-Beispiel `_api_get(client, "/api/tickets", ...)` ist nach Spike-Befund veraltet (Endpoint nicht existent) — Update-Note oder Korrektur auf `/api/properties/{id}/processes` [`4-1-facilioo-api-spike.md:138`]
+
+**Defer (10)** — gehören in Folge-Stories 4.2/4.3/4.4:
+
+- [x] [Review][Defer] Pagination-Container-Drift Defensive (Schema-Assertion, FAIL-FAST-Test) — deferred, gehört in Story 4.2 Schema/Boundary-Test
+- [x] [Review][Defer] Rename-Folgewirkung in Memories und CLAUDE.md (Mentions von `facilioo_client.py`) mit-updaten — deferred, gehört in Story 4.2 Rename-Task
+- [x] [Review][Defer] Smoke-Test im Mirror: Konsistenz `/api/processes?propertyId=X` vs. `/api/properties/{id}/processes` (Bug-Detection bei Server-Update) — deferred, gehört in Story 4.3
+- [x] [Review][Defer] `facilioo_id` int → str-Cast vor UPSERT (DTO ist int, ORM-Spalte ist string) — deferred, gehört in Story 4.2 Schema
+- [x] [Review][Defer] Cold-Start httpx-Timeout (default 30s ggf. zu kurz für ersten Tagesaufruf) — deferred, gehört in Story 4.2 Client-Config
+- [x] [Review][Defer] Periodischer Re-Probe (alle 30 Tage), ob Delta-Query-Param plötzlich greift — deferred, Backlog (low prio)
+- [x] [Review][Defer] Endpunkt-Pfad als Konstante in `facilioo.py` + CI-Smoke-Test (404-Frühwarnung) — deferred, gehört in Story 4.2
+- [x] [Review][Defer] Pydantic-Field-Aliases für `lastModified`/`updatedAt`-Defensive (zukünftige API-Drift) — deferred, gehört in Story 4.2 Schema
+- [x] [Review][Defer] `/api/properties` Pagination bei > 100 Properties (heute 64; `_get_all_paged` deckt es technisch ab) — deferred, gehört in Story 4.3 Defensive
+- [x] [Review][Defer] `_get_all_paged`-Reuse Live-Test gegen echten Facilioo-Container — deferred, gehört in Story 4.2 Boundary-Test (Integration-Test mit Live-Recording)
+
+**Dismissed (2):** Sprint-Status-Formalia ("Epic 4 → in-progress" wurde bereits durch Story 4.0 gesetzt, nicht durch 4.1 — keine echte Regression); "nichts manuell zu tun" beim Ordner-Anlegen (vage, nicht actionable).
