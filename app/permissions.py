@@ -44,15 +44,15 @@ PERMISSIONS: list[Permission] = [
         "Alle Dokumente sehen (auch von anderen Usern)",
         "Dokumente",
     ),
-    Permission("documents:approve", "Dokumente freigeben / Impower-Schreibpfad ausloesen", "Dokumente"),
-    Permission("documents:delete", "Dokumente loeschen", "Dokumente"),
+    Permission("documents:approve", "Dokumente freigeben / Impower-Schreibpfad auslösen", "Dokumente"),
+    Permission("documents:delete", "Dokumente löschen", "Dokumente"),
     # Workflows
-    Permission("workflows:view", "Workflow-Uebersicht ansehen", "Workflows"),
+    Permission("workflows:view", "Workflow-Übersicht ansehen", "Workflows"),
     Permission("workflows:edit", "Workflows/Prompts editieren", "Workflows"),
     # Objekte (Steckbrief)
     Permission("objects:view", "Objekte ansehen", "Objekte"),
     Permission("objects:edit", "Objekte bearbeiten", "Objekte"),
-    Permission("objects:approve_ki", "KI-Vorschlaege freigeben", "Objekte"),
+    Permission("objects:approve_ki", "KI-Vorschläge freigeben", "Objekte"),
     Permission(
         "objects:view_confidential",
         "Vertrauliche Felder lesen",
@@ -66,7 +66,7 @@ PERMISSIONS: list[Permission] = [
     # Admin
     Permission("users:manage", "User und Rollen verwalten", "Admin"),
     Permission("audit_log:view", "Audit-Log ansehen", "Admin"),
-    Permission("audit_log:delete", "Audit-Log-Eintraege loeschen", "Admin"),
+    Permission("audit_log:delete", "Audit-Log-Einträge löschen", "Admin"),
     Permission("impower:debug", "Impower-Debug-Endpoints nutzen", "Admin"),
     Permission(
         "sync:admin",

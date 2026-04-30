@@ -29,7 +29,7 @@
                 {% if is_new %}
                 <input type="text" name="key" required placeholder="z. B. buchhaltung"
                        class="w-full rounded-md border border-slate-200 p-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-slate-400">
-                <p class="text-xs text-slate-500 mt-1">Kleinbuchstaben, Ziffern, Unterstrich. Spaeter nicht mehr aenderbar.</p>
+                <p class="text-xs text-slate-500 mt-1">Kleinbuchstaben, Ziffern, Unterstrich. Später nicht mehr änderbar.</p>
                 {% else %}
                 <input type="text" value="{{ role.key }}" disabled
                        class="w-full rounded-md border border-slate-200 p-2 text-sm font-mono bg-slate-50 text-slate-500">
@@ -71,7 +71,7 @@
     <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-3">
         <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Workflow-Zugriff</h2>
         <p class="text-xs text-slate-500">
-            User dieser Rolle sehen nur ausgewaehlte Workflows. Per-User-Overrides koennen einzelne Workflows zusaetzlich erlauben oder verbieten.
+            User dieser Rolle sehen nur ausgewählte Workflows. Per-User-Overrides können einzelne Workflows zusätzlich erlauben oder verbieten.
         </p>
         <div class="space-y-1">
             {% for wf in workflows %}
@@ -94,8 +94,8 @@
         <div>
             {% if not is_new and not role.is_system_role %}
             <form action="/admin/roles/{{ role.id }}/delete" method="post"
-                  onsubmit="return confirm('Rolle wirklich loeschen? Das ist nur moeglich, wenn kein User mehr zugeordnet ist.');">
-                <button type="submit" class="text-sm text-rose-700 hover:underline">Rolle loeschen</button>
+                  onsubmit="return confirm('Rolle wirklich löschen? Das ist nur möglich, wenn kein User mehr zugeordnet ist.');">
+                <button type="submit" class="text-sm text-rose-700 hover:underline">Rolle löschen</button>
             </form>
             {% endif %}
         </div>

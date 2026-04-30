@@ -141,7 +141,7 @@ def update_extraction_field(
     if doc.workflow is None or doc.workflow.key != "sepa_mandate":
         raise HTTPException(
             status_code=400,
-            detail="Inline-Edit nur fuer SEPA-Lastschrift-Dokumente.",
+            detail="Inline-Edit nur für SEPA-Lastschrift-Dokumente.",
         )
 
     latest = (
@@ -153,7 +153,7 @@ def update_extraction_field(
     if latest is None or not latest.extracted:
         raise HTTPException(
             status_code=400,
-            detail="Keine Extraktion vorhanden — Edit nicht moeglich.",
+            detail="Keine Extraktion vorhanden — Edit nicht möglich.",
         )
 
     new_value = _coerce_value(field, value_raw)

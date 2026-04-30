@@ -255,9 +255,9 @@ class TestComposeSystemPrompt:
     def test_chat_mode_adds_appendix(self):
         wf = _workflow("Base prompt.")
         result = _compose_system_prompt(wf, chat_mode=True)
-        assert "RUECKFRAGEN-MODUS" in result
+        assert "RÜCKFRAGEN-MODUS" in result
 
     def test_non_chat_mode_no_appendix(self):
         wf = _workflow("Base prompt.")
         result = _compose_system_prompt(wf, chat_mode=False)
-        assert "RUECKFRAGEN-MODUS" not in result
+        assert "RÜCKFRAGEN-MODUS" not in result

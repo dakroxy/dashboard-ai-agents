@@ -42,7 +42,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     if userinfo is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google lieferte keine Nutzer-Info zurueck.",
+            detail="Google lieferte keine Nutzer-Info zurück.",
         )
 
     if userinfo.get("hd") != settings.google_hosted_domain:

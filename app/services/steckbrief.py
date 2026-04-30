@@ -393,10 +393,10 @@ TECHNIK_HEIZUNG: tuple[TechnikField, ...] = (
     TechnikField("heating_type", "Heizungs-Typ", "text"),
     TechnikField("year_heating", "Baujahr Heizung", "int_year"),
     TechnikField("heating_company", "Wartungsfirma", "text"),
-    TechnikField("heating_hotline", "Stoerungs-Hotline", "tel"),
+    TechnikField("heating_hotline", "Störungs-Hotline", "tel"),
 )
 TECHNIK_HISTORIE: tuple[TechnikField, ...] = (
-    TechnikField("year_built", "Baujahr Gebaeude", "int_year"),
+    TechnikField("year_built", "Baujahr Gebäude", "int_year"),
     TechnikField("year_roof", "Jahr letzte Dach-Sanierung", "int_year"),
     TechnikField("year_electrics", "Jahr Elektrik-Check", "int_year"),
 )
@@ -453,7 +453,7 @@ def parse_technik_value(field_key: str, raw: str) -> tuple[Any | None, str | Non
 # ---------------------------------------------------------------------------
 
 ZUGANGSCODE_FIELDS: tuple[TechnikField, ...] = (
-    TechnikField("entry_code_main_door", "Haustuer-Code", "code"),
+    TechnikField("entry_code_main_door", "Haustür-Code", "code"),
     TechnikField("entry_code_garage", "Garage-Code", "code"),
     TechnikField("entry_code_technical_room", "Technikraum-Code", "code"),
 )

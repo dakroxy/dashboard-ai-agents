@@ -580,7 +580,7 @@ def test_zugangscode_decryption_failure_shows_placeholder(
 
     resp = zug_admin_client.get(f"/objects/{obj.id}")
     assert resp.status_code == 200
-    assert "Code nicht verfuegbar" in resp.text
+    assert "Code nicht verfügbar" in resp.text
 
 
 def test_zugangscode_decryption_failure_writes_audit(

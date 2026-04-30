@@ -28,7 +28,7 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
             </svg>
-            <span class="text-sm">Suche Eigent&uuml;mer in Impower&hellip;</span>
+            <span class="text-sm">Suche Eigentümer in Impower&hellip;</span>
         </div>
 
     {% elif document.status in ["approved", "writing"] %}
@@ -54,16 +54,16 @@
         {% set editable = document.status in ["extracted", "needs_review", "matched", "error"] and has_permission(user, "documents:approve") %}
         <dl class="grid grid-cols-1 gap-x-5 gap-y-3 text-sm">
             {% set fields = [
-                ("WEG-K&uuml;rzel", "weg_kuerzel"),
+                ("WEG-Kürzel", "weg_kuerzel"),
                 ("WEG", "weg_name"),
                 ("Adresse WEG", "weg_adresse"),
                 ("Einheit", "unit_nr"),
-                ("Eigent&uuml;mer", "owner_name"),
+                ("Eigentümer", "owner_name"),
                 ("IBAN", "iban"),
                 ("BIC", "bic"),
                 ("Bank", "bank_name"),
                 ("SEPA-Datum", "sepa_date"),
-                ("Gl&auml;ubiger-ID", "creditor_id")
+                ("Gläubiger-ID", "creditor_id")
             ] %}
             {% for label, key in fields %}
                 {% set value = extraction.extracted.get(key) %}
@@ -110,9 +110,9 @@
                             {{ mr["contact"]["display_name"] }}
                             <span class="text-xs text-slate-400 ml-1">(Score {{ "%.0f"|format(mr["contact"]["score"] * 100) }}%)</span>
                             {% if mr["contact"]["open_contract_ids"] %}
-                            <span class="text-xs text-emerald-600 ml-1">{{ mr["contact"]["open_contract_ids"]|length }} offene Vertr&auml;ge</span>
+                            <span class="text-xs text-emerald-600 ml-1">{{ mr["contact"]["open_contract_ids"]|length }} offene Verträge</span>
                             {% else %}
-                            <span class="text-xs text-amber-600 ml-1">keine offenen Vertr&auml;ge</span>
+                            <span class="text-xs text-amber-600 ml-1">keine offenen Verträge</span>
                             {% endif %}
                         </dd>
                         {% else %}
@@ -121,7 +121,7 @@
                     </div>
                 </dl>
                 {% if mr.get("ambiguous") %}
-                <p class="text-xs text-amber-700 mt-2">&#9888; Mehrdeutiges Matching &mdash; bitte pr&uuml;fen.</p>
+                <p class="text-xs text-amber-700 mt-2">&#9888; Mehrdeutiges Matching &mdash; bitte prüfen.</p>
                 {% endif %}
                 {% for note in (mr.get("notes") or []) %}
                 <p class="text-xs text-slate-500 mt-1">{{ note }}</p>
@@ -144,7 +144,7 @@
                 <div class="flex items-start gap-2 text-sm text-emerald-800">
                     <span class="shrink-0">&#10003;</span>
                     <span>
-                        Mandat bereits mit dieser IBAN eingetragen &mdash; nichts ge&auml;ndert.
+                        Mandat bereits mit dieser IBAN eingetragen &mdash; nichts geändert.
                         <span class="text-xs text-slate-500 ml-1">
                             (Mandat-ID {{ ir.get("direct_debit_mandate_id") }}, Bank-Account-ID {{ ir.get("bank_account_id") }})
                         </span>
@@ -159,7 +159,7 @@
                     <li>&#10003; Direct-Debit-Mandat angelegt (ID {{ ir.get("direct_debit_mandate_id") }})</li>
                     {% if ir.get("unit_contract_mandate_ids") %}
                     <li>&#10003; {{ ir["unit_contract_mandate_ids"]|length }}
-                        Vertrag{% if ir["unit_contract_mandate_ids"]|length != 1 %}sverkn&uuml;pfungen{% else %}sverkn&uuml;pfung{% endif %}
+                        Vertrag{% if ir["unit_contract_mandate_ids"]|length != 1 %}sverknüpfungen{% else %}sverknüpfung{% endif %}
                         erstellt
                     </li>
                     {% endif %}
@@ -173,7 +173,7 @@
         <div class="mt-5 pt-4 border-t border-slate-100">
             {% if document.status == "needs_review" %}
             <p class="text-xs text-amber-700 mb-3">
-                &#9888; Bitte Extraktion und Matching pr&uuml;fen. Felder direkt &uuml;ber das Stift-Symbol oder im Chat korrigieren.
+                &#9888; Bitte Extraktion und Matching prüfen. Felder direkt über das Stift-Symbol oder im Chat korrigieren.
             </p>
             {% endif %}
             <form action="/documents/{{ document.id }}/approve" method="post">
@@ -213,11 +213,11 @@
             <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-8 8a1 1 0 01-1.41 0l-4-4a1 1 0 011.41-1.41L8 12.58l7.29-7.29a1 1 0 011.414 0z" clip-rule="evenodd"/>
             </svg>
-            Mandat bereits in Impower vorhanden &mdash; nichts ge&auml;ndert.
+            Mandat bereits in Impower vorhanden &mdash; nichts geändert.
         </div>
         {% endif %}
 
     {% else %}
-        <div class="text-sm text-slate-500">Kein Extraktions-Ergebnis verf&uuml;gbar.</div>
+        <div class="text-sm text-slate-500">Kein Extraktions-Ergebnis verfügbar.</div>
     {% endif %}
 </div>

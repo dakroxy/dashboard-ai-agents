@@ -36,7 +36,7 @@
                     <option value="{{ m_id }}" {% if m_id == workflow.chat_model %}selected{% endif %}>{{ m_label }}</option>
                     {% endfor %}
                 </select>
-                <p class="mt-1 text-xs text-slate-500">Beantwortet R&uuml;ckfragen / Korrekturen. Haiku nicht empfohlen &mdash; scheitert an 20+stelligen Ziffern.</p>
+                <p class="mt-1 text-xs text-slate-500">Beantwortet Rückfragen / Korrekturen. Haiku nicht empfohlen &mdash; scheitert an 20+stelligen Ziffern.</p>
             </div>
         </div>
 
@@ -67,13 +67,13 @@
     <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-2">
         <div class="flex items-baseline justify-between">
             <label class="block text-xs font-medium text-slate-600 uppercase tracking-wide">Lernnotizen</label>
-            <span class="text-xs text-slate-400">wird dem Prompt angeh&auml;ngt</span>
+            <span class="text-xs text-slate-400">wird dem Prompt angehängt</span>
         </div>
         <p class="text-xs text-slate-500">
-            Zus&auml;tzliche Regeln aus bisherigen Korrekturen. Wird dem System-Prompt
-            bei jeder Extraktion &amp; Chat-Antwort angeh&auml;ngt. So l&auml;sst sich
-            der Agent &uuml;ber die Zeit gezielt schaerfen, ohne den Haupt-Prompt zu
-            &auml;ndern.
+            Zusätzliche Regeln aus bisherigen Korrekturen. Wird dem System-Prompt
+            bei jeder Extraktion &amp; Chat-Antwort angehängt. So lässt sich
+            der Agent über die Zeit gezielt schärfen, ohne den Haupt-Prompt zu
+            ändern.
         </p>
         <textarea name="learning_notes"
                   rows="8"

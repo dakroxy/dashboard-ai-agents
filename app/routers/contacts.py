@@ -58,7 +58,7 @@ def _load_workflow_or_403(db: Session, user: User) -> Workflow:
     if not can_access_resource(db, user, RESOURCE_TYPE_WORKFLOW, wf.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Keine Berechtigung fuer den Kontakt-Anlage-Workflow.",
+            detail="Keine Berechtigung für den Kontakt-Anlage-Workflow.",
         )
     return wf
 
@@ -275,7 +275,7 @@ async def confirm_create_contact(
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ungueltiger payload_json: {exc}",
+            detail=f"Ungültiger payload_json: {exc}",
         )
 
     try:

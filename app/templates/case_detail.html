@@ -27,7 +27,7 @@
     {% if counts.missing == 0 and counts.total > 0 %}
         <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
             <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-            vollstaendig
+            vollständig
         </span>
     {% elif counts.total == 0 %}
         <span class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200">offen</span>
@@ -64,7 +64,7 @@
 
 <div class="mb-5 flex items-start justify-between gap-4">
     <div class="min-w-0">
-        <a href="/cases/" class="text-sm text-slate-500 hover:text-slate-900">&larr; Alle Faelle</a>
+        <a href="/cases/" class="text-sm text-slate-500 hover:text-slate-900">&larr; Alle Fälle</a>
         <form action="/cases/{{ case.id }}/name" method="post" class="mt-1 flex items-center gap-2">
             <input type="text" name="name" value="{{ case.name or '' }}"
                    placeholder="Name des Falls, z. B. MV SBA9 · Senator-Braun-Allee 9"
@@ -124,7 +124,7 @@
                             </div>
                             {% elif latest and latest.status == "needs_review" %}
                             <div class="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                                Pflichtfelder unvollstaendig.
+                                Pflichtfelder unvollständig.
                             </div>
                             {% endif %}
                         </div>
@@ -154,7 +154,7 @@
 
         {% if has_permission(user, "documents:upload") %}
         <div class="rounded-lg bg-white border border-slate-200 p-4">
-            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Dokument hinzufuegen</h3>
+            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Dokument hinzufügen</h3>
             <form action="/cases/{{ case.id }}/documents" method="post" enctype="multipart/form-data" class="space-y-2">
                 <input type="file" name="file" accept="application/pdf" required
                        class="block w-full text-xs text-slate-700 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-slate-900 file:text-white hover:file:bg-slate-800 file:cursor-pointer">
@@ -179,7 +179,7 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span class="text-blue-900">KI-Extraktion laeuft… Seite aktualisiert sich automatisch.</span>
+            <span class="text-blue-900">KI-Extraktion läuft… Seite aktualisiert sich automatisch.</span>
         </div>
         {% endif %}
 
@@ -195,10 +195,10 @@
                 ● 3 Rechnung
             </a>
             <a href="#sec-owner" class="px-2 py-1 rounded {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if owner_counts.missing == 0 else 'bg-amber-50 text-amber-700 border-amber-200' }} border font-medium">
-                ● 4 Eigentuemer
+                ● 4 Eigentümer
             </a>
             <a href="#sec-buildings" class="px-2 py-1 rounded bg-slate-100 text-slate-600 border-slate-200 border font-medium">
-                ● 5 Gebaeude · {{ buildings|length }}
+                ● 5 Gebäude · {{ buildings|length }}
             </a>
             <a href="#sec-units" class="px-2 py-1 rounded {{ 'bg-emerald-50 text-emerald-700 border-emerald-200' if units|length else 'bg-slate-100 text-slate-600 border-slate-200' }} border font-medium">
                 ● 6 Einheiten · {{ units|length }}
@@ -219,8 +219,8 @@
                     {{ section_status_pill(property_counts) }}
                     {% if "property" in overrides %}
                     <form action="/cases/{{ case.id }}/state/reset/property" method="post"
-                          onsubmit="return confirm('Manuelle Werte fuer Objekt zuruecksetzen?');">
-                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                          onsubmit="return confirm('Manuelle Werte für Objekt zurücksetzen?');">
+                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                     </form>
                     {% endif %}
                 </div>
@@ -240,7 +240,7 @@
                 </div>
 
                 <div class="col-span-4">
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Strasse &amp; Hausnummer *</label>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Straße &amp; Hausnummer *</label>
                     <input type="text" name="street" value="{{ prop.get('street') or '' }}"
                            class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
                     {{ field_pill(field_source(case.state, "property", "street")) }}
@@ -267,7 +267,7 @@
                     {{ field_pill(field_source(case.state, "property", "city")) }}
                 </div>
                 <div class="col-span-3">
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Glaeubiger-ID *</label>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Gläubiger-ID *</label>
                     <input type="text" name="creditor_id" value="{{ prop.get('creditor_id') or '' }}"
                            class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm font-mono">
                     {{ field_pill(field_source(case.state, "property", "creditor_id")) }}
@@ -299,14 +299,14 @@
             <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
                     <h2 class="font-semibold">2. Verwaltungsvertrag</h2>
-                    <p class="text-xs text-slate-500 mt-0.5">Laufzeit, Objektbetreuung, Gebuehren</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Laufzeit, Objektbetreuung, Gebühren</p>
                 </div>
                 <div class="flex items-center gap-2">
                     {{ section_status_pill(mc_counts) }}
                     {% if "management_contract" in overrides %}
                     <form action="/cases/{{ case.id }}/state/reset/management_contract" method="post"
-                          onsubmit="return confirm('Manuelle Werte fuer Verwaltung zuruecksetzen?');">
-                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                          onsubmit="return confirm('Manuelle Werte für Verwaltung zurücksetzen?');">
+                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                     </form>
                     {% endif %}
                 </div>
@@ -366,7 +366,7 @@
                 </div>
                 {% if "billing_address" in overrides %}
                 <form action="/cases/{{ case.id }}/state/reset/billing_address" method="post">
-                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                 </form>
                 {% endif %}
             </header>
@@ -381,7 +381,7 @@
                 </label>
                 <div id="billing-fields" class="grid grid-cols-6 gap-4 {% if is_same %}hidden{% endif %}">
                     <div class="col-span-4">
-                        <label class="block text-xs font-medium text-slate-600 mb-1">Strasse &amp; Hausnummer</label>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Straße &amp; Hausnummer</label>
                         <input type="text" name="street" value="{{ (billing or {}).get('street') or '' }}"
                                class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
                     </div>
@@ -422,7 +422,7 @@
             <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
                     <h2 class="font-semibold">4. Objekteigentuemer</h2>
-                    <p class="text-xs text-slate-500 mt-0.5">aus Grundbuch erkannt · Impower-Kontakt anlegen oder bestehenden waehlen</p>
+                    <p class="text-xs text-slate-500 mt-0.5">aus Grundbuch erkannt · Impower-Kontakt anlegen oder bestehenden wählen</p>
                 </div>
                 <div class="flex items-center gap-2">
                     {% if owner and (owner.get('last_name') or owner.get('company_name')) %}
@@ -437,7 +437,7 @@
                     {{ section_status_pill(owner_counts) }}
                     {% if "owner" in overrides %}
                     <form action="/cases/{{ case.id }}/state/reset/owner" method="post">
-                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                        <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                     </form>
                     {% endif %}
                 </div>
@@ -489,7 +489,7 @@
                 <div class="col-span-3"></div>
 
                 <div class="col-span-4">
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Strasse</label>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Straße</label>
                     <input type="text" name="street" value="{{ (owner or {}).get('street') or '' }}"
                            class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
                     {{ field_pill(field_source(case.state, "owner", "street")) }}
@@ -527,12 +527,12 @@
         <section id="sec-buildings" class="rounded-lg bg-white border border-slate-200">
             <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h2 class="font-semibold">5. Gebaeude · {{ buildings|length }}</h2>
-                    <p class="text-xs text-slate-500 mt-0.5">Bloecke auf dem Grundstueck</p>
+                    <h2 class="font-semibold">5. Gebäude · {{ buildings|length }}</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Blöcke auf dem Grundstück</p>
                 </div>
                 {% if "buildings" in overrides %}
                 <form action="/cases/{{ case.id }}/state/reset/buildings" method="post">
-                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                 </form>
                 {% endif %}
             </header>
@@ -550,7 +550,7 @@
                         </div>
                         {% if has_permission(user, "documents:upload") %}
                         <form action="/cases/{{ case.id }}/state/buildings/{{ loop.index0 }}/delete" method="post"
-                              onsubmit="return confirm('Gebaeude {{ b.name }} entfernen?');">
+                              onsubmit="return confirm('Gebäude {{ b.name }} entfernen?');">
                             <button type="submit" class="text-xs text-slate-400 hover:text-red-600">entfernen</button>
                         </form>
                         {% endif %}
@@ -558,14 +558,14 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="text-sm text-slate-400">Keine Gebaeude erkannt. Unten hinzufuegen.</p>
+                <p class="text-sm text-slate-400">Keine Gebäude erkannt. Unten hinzufügen.</p>
                 {% endif %}
 
                 {% if has_permission(user, "documents:upload") %}
                 <form action="/cases/{{ case.id }}/state/buildings/add" method="post" class="flex items-center gap-2 pt-2 border-t border-slate-100">
                     <input type="text" name="name" placeholder="z. B. Block F, Haus 2"
                            class="flex-1 px-3 py-2 rounded-md border border-slate-300 text-sm">
-                    <button type="submit" class="px-3 py-2 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-800">+ Gebaeude</button>
+                    <button type="submit" class="px-3 py-2 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-800">+ Gebäude</button>
                 </form>
                 {% endif %}
             </div>
@@ -576,11 +576,11 @@
             <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
                     <h2 class="font-semibold">6. Einheiten · {{ units|length }}</h2>
-                    <p class="text-xs text-slate-500 mt-0.5">erkannt aus Mieterliste/Mietvertraegen · inline editierbar</p>
+                    <p class="text-xs text-slate-500 mt-0.5">erkannt aus Mieterliste/Mietverträgen · inline editierbar</p>
                 </div>
                 {% if "units" in overrides %}
                 <form action="/cases/{{ case.id }}/state/reset/units" method="post">
-                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                 </form>
                 {% endif %}
             </header>
@@ -590,10 +590,10 @@
                         <tr class="text-left text-[11px] font-medium text-slate-500 uppercase tracking-wide">
                             <th class="py-2 px-3">Nr.</th>
                             <th class="py-2 px-3">Typ</th>
-                            <th class="py-2 px-3">Gebaeude</th>
+                            <th class="py-2 px-3">Gebäude</th>
                             <th class="py-2 px-3">Stockw.</th>
                             <th class="py-2 px-3">Lage</th>
-                            <th class="py-2 px-3 text-right">Flaeche m²</th>
+                            <th class="py-2 px-3 text-right">Fläche m²</th>
                             <th class="py-2 px-3 text-right">Heizfl.</th>
                             <th class="py-2 px-3 text-right">Pers.</th>
                             <th class="py-2 px-3">Mieter</th>
@@ -629,10 +629,10 @@
                                         <option value="PARKING" {% if u.unit_type == "PARKING" %}selected{% endif %}>Stellplatz</option>
                                         <option value="OTHER" {% if u.unit_type == "OTHER" %}selected{% endif %}>Sonstiges</option>
                                     </select>
-                                    <input type="text" name="building_name" value="{{ u.building_name or '' }}" placeholder="Gebaeude" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
+                                    <input type="text" name="building_name" value="{{ u.building_name or '' }}" placeholder="Gebäude" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
                                     <input type="text" name="floor" value="{{ u.floor or '' }}" placeholder="Stockw." class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
                                     <input type="text" name="position" value="{{ u.position or '' }}" placeholder="Lage" class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
-                                    <input type="text" name="living_area" value="{{ u.living_area if u.living_area is not none else '' }}" placeholder="Flaeche" class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
+                                    <input type="text" name="living_area" value="{{ u.living_area if u.living_area is not none else '' }}" placeholder="Fläche" class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
                                     <input type="text" name="heating_area" value="{{ u.heating_area if u.heating_area is not none else '' }}" placeholder="Heizfl." class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
                                     <input type="text" name="persons" value="{{ u.persons if u.persons is not none else '' }}" placeholder="Pers." class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
                                     <input type="text" name="tenant_name" value="{{ u.tenant_name or '' }}" placeholder="Mieter" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
@@ -652,7 +652,7 @@
                         {% if not units %}
                         <tr>
                             <td colspan="10" class="py-4 px-3 text-center text-sm text-slate-400">
-                                Keine Einheiten erkannt. Unten manuell hinzufuegen.
+                                Keine Einheiten erkannt. Unten manuell hinzufügen.
                             </td>
                         </tr>
                         {% endif %}
@@ -663,7 +663,7 @@
             {% if has_permission(user, "documents:upload") %}
             <div class="border-t border-slate-100 p-4">
                 <details>
-                    <summary class="cursor-pointer text-xs text-slate-500 hover:text-slate-900">+ Einheit manuell hinzufuegen</summary>
+                    <summary class="cursor-pointer text-xs text-slate-500 hover:text-slate-900">+ Einheit manuell hinzufügen</summary>
                     <form action="/cases/{{ case.id }}/state/units/add" method="post" class="mt-3 grid grid-cols-12 gap-2 text-xs">
                         <input type="text" name="number" placeholder="Nr. *" required class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
                         <select name="unit_type" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
@@ -673,14 +673,14 @@
                             <option value="PARKING">Stellplatz</option>
                             <option value="OTHER">Sonstiges</option>
                         </select>
-                        <input type="text" name="building_name" placeholder="Gebaeude" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
+                        <input type="text" name="building_name" placeholder="Gebäude" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
                         <input type="text" name="floor" placeholder="Stockw." class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
                         <input type="text" name="position" placeholder="Lage" class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
-                        <input type="text" name="living_area" placeholder="Flaeche m²" class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
+                        <input type="text" name="living_area" placeholder="Fläche m²" class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
                         <input type="text" name="heating_area" placeholder="Heizfl." class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
                         <input type="text" name="persons" placeholder="Pers." class="col-span-1 px-2 py-1.5 rounded border border-slate-300 text-right">
                         <input type="text" name="tenant_name" placeholder="Mieter" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
-                        <button type="submit" class="col-span-12 px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-800">Einheit hinzufuegen</button>
+                        <button type="submit" class="col-span-12 px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-800">Einheit hinzufügen</button>
                     </form>
                 </details>
             </div>
@@ -691,12 +691,12 @@
         <section id="sec-contracts" class="rounded-lg bg-white border border-slate-200">
             <header class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h2 class="font-semibold">7. Mietvertraege · {{ tenant_contracts|length }}</h2>
+                    <h2 class="font-semibold">7. Mietverträge · {{ tenant_contracts|length }}</h2>
                     <p class="text-xs text-slate-500 mt-0.5">pro Einheit ein Vertrag · Mieter, Miete, Kaution</p>
                 </div>
                 {% if "tenant_contracts" in overrides %}
                 <form action="/cases/{{ case.id }}/state/reset/tenant_contracts" method="post">
-                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zuruecksetzen</button>
+                    <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                 </form>
                 {% endif %}
             </header>
@@ -876,13 +876,13 @@
 
                 {% if not tenant_contracts %}
                 <p class="text-sm text-slate-400 text-center py-4">
-                    Noch keine Mietvertraege. Lade Mietvertrags-PDFs hoch oder fuege manuell einen Vertrag hinzu.
+                    Noch keine Mietverträge. Lade Mietvertrags-PDFs hoch oder füge manuell einen Vertrag hinzu.
                 </p>
                 {% endif %}
 
                 {% if has_permission(user, "documents:upload") %}
                 <details class="border-t border-slate-100 pt-3">
-                    <summary class="cursor-pointer text-xs text-slate-500 hover:text-slate-900">+ Mietvertrag manuell hinzufuegen</summary>
+                    <summary class="cursor-pointer text-xs text-slate-500 hover:text-slate-900">+ Mietvertrag manuell hinzufügen</summary>
                     <form action="/cases/{{ case.id }}/state/tenant_contracts/add" method="post" class="mt-3 grid grid-cols-6 gap-3 text-sm">
                         <div class="col-span-2">
                             <label class="block text-[11px] font-medium text-slate-600 mb-1">Einheit Nr.</label>
@@ -909,7 +909,7 @@
                             <input type="text" name="cold_rent" class="w-full px-3 py-2 rounded-md border border-slate-300 text-right">
                         </div>
                         <div class="col-span-6">
-                            <button type="submit" class="px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-800">Vertrag hinzufuegen</button>
+                            <button type="submit" class="px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-800">Vertrag hinzufügen</button>
                         </div>
                     </form>
                 </details>
@@ -926,7 +926,7 @@
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <div class="text-sm text-blue-900">
-                <p class="font-medium">Impower-Uebertragung laeuft&hellip;</p>
+                <p class="font-medium">Impower-Übertragung läuft&hellip;</p>
                 <p class="text-xs mt-0.5">Schritte erledigt: {{ (ir.steps_completed or [])|length }} / 9 &middot; Seite aktualisiert sich automatisch.</p>
             </div>
         </div>
@@ -940,7 +940,7 @@
                     <p class="font-medium">In Impower angelegt</p>
                     <ul class="mt-1 text-xs space-y-0.5">
                         <li>Property-ID: <code class="font-mono">{{ ir.property_id }}</code></li>
-                        <li>Eigentuemer-Contact: <code class="font-mono">{{ (ir.contacts or {}).get("owner_id") }}</code></li>
+                        <li>Eigentümer-Contact: <code class="font-mono">{{ (ir.contacts or {}).get("owner_id") }}</code></li>
                         <li>{{ (ir.unit_ids or {})|length }} Einheit(en), {{ (ir.tenant_contract_ids or {})|length }} Mietvertrag(e) verdrahtet</li>
                     </ul>
                 </div>
@@ -954,7 +954,7 @@
                 </svg>
                 <div class="text-sm text-red-900 flex-1">
                     <p class="font-medium">
-                        {% if case.status == "partial" %}Teilweise Uebertragung &mdash; einige Schritte offen{% else %}Uebertragung fehlgeschlagen{% endif %}
+                        {% if case.status == "partial" %}Teilweise Übertragung &mdash; einige Schritte offen{% else %}Übertragung fehlgeschlagen{% endif %}
                     </p>
                     <p class="text-xs mt-0.5">Schritte erledigt: {{ (ir.steps_completed or [])|length }}</p>
                     <ul class="mt-2 text-xs space-y-1">
@@ -962,7 +962,7 @@
                         <li class="bg-red-100 rounded px-2 py-1"><span class="font-medium">{{ err.step }}:</span> {{ err.message }}</li>
                         {% endfor %}
                     </ul>
-                    <p class="text-xs mt-2 text-red-800">Mit „Erneut ausfuehren" fortsetzen &mdash; bereits angelegte IDs werden uebersprungen.</p>
+                    <p class="text-xs mt-2 text-red-800">Mit „Erneut ausführen" fortsetzen &mdash; bereits angelegte IDs werden übersprungen.</p>
                 </div>
             </div>
         </div>
@@ -982,16 +982,16 @@
 
                 {% if writable and preflight_ok %}
                 <form action="/cases/{{ case.id }}/write" method="post"
-                      onsubmit="return confirm('Jetzt in Impower anlegen? Alle Pflichtfelder werden uebertragen.');">
+                      onsubmit="return confirm('Jetzt in Impower anlegen? Alle Pflichtfelder werden übertragen.');">
                     <button type="submit"
                             class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
-                        {% if case.status in ("partial", "error") %}Erneut ausfuehren{% else %}Nach Impower uebertragen{% endif %}
+                        {% if case.status in ("partial", "error") %}Erneut ausführen{% else %}Nach Impower übertragen{% endif %}
                     </button>
                 </form>
                 {% elif writable %}
                 <button type="button" disabled
                         class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm opacity-50 cursor-not-allowed"
-                        title="Fehlt: {% if not prop_ok %}Objekt-Nr./Adresse{% endif %}{% if not owner_ok %} · Eigentuemer{% endif %}{% if not units_ok %} · Einheit(en){% endif %}">
+                        title="Fehlt: {% if not prop_ok %}Objekt-Nr./Adresse{% endif %}{% if not owner_ok %} · Eigentümer{% endif %}{% if not units_ok %} · Einheit(en){% endif %}">
                     Pflichtfelder fehlen
                 </button>
                 {% endif %}

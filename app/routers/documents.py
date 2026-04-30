@@ -52,16 +52,16 @@ _APPROVABLE_STATUSES = {"extracted", "needs_review", "matched", "error"}
 
 # Anzeige-Labels fuer die zehn editierbaren Extraktionsfelder.
 _EXTRACTION_FIELD_LABELS: dict[str, str] = {
-    "weg_kuerzel": "WEG-K&uuml;rzel",
+    "weg_kuerzel": "WEG-Kürzel",
     "weg_name": "WEG",
     "weg_adresse": "Adresse WEG",
     "unit_nr": "Einheit",
-    "owner_name": "Eigent&uuml;mer",
+    "owner_name": "Eigentümer",
     "iban": "IBAN",
     "bic": "BIC",
     "bank_name": "Bank",
     "sepa_date": "SEPA-Datum",
-    "creditor_id": "Gl&auml;ubiger-ID",
+    "creditor_id": "Gläubiger-ID",
 }
 
 
@@ -400,7 +400,7 @@ def _run_extraction(
                 entity_id=doc.id,
                 user_email=user_email,
                 action="document_needs_review",
-                details_json={"reason": result.error or "Extraktion unvollstaendig"},
+                details_json={"reason": result.error or "Extraktion unvollständig"},
             ))
         db.commit()
     finally:
@@ -485,7 +485,7 @@ async def upload_document(
     if not can_access_workflow(db, user, workflow):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Keine Berechtigung fuer Workflow '{workflow.key}'.",
+            detail=f"Keine Berechtigung für Workflow '{workflow.key}'.",
         )
 
     sha256 = hashlib.sha256(content).hexdigest()
@@ -829,7 +829,7 @@ async def extraction_field_edit_form(
     if extraction is None or not extraction.extracted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Keine Extraktion vorhanden — Edit nicht moeglich.",
+            detail="Keine Extraktion vorhanden — Edit nicht möglich.",
         )
     current_value = extraction.extracted.get(field)
     return templates.TemplateResponse(

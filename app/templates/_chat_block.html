@@ -1,7 +1,7 @@
 <div id="chat-panel" class="rounded-lg bg-white border border-slate-200 p-5">
     <div class="flex items-center justify-between mb-4">
         <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Chat</h2>
-        <span class="text-xs text-slate-400">R&uuml;ckfragen &amp; Korrekturen</span>
+        <span class="text-xs text-slate-400">Rückfragen &amp; Korrekturen</span>
     </div>
 
     {% if chat_messages %}
@@ -26,7 +26,7 @@
     </div>
     {% else %}
     <p class="text-sm text-slate-400 italic mb-4">
-        Schreib der KI eine R&uuml;ckfrage oder Korrektur &mdash; z.&thinsp;B.
+        Schreib der KI eine Rückfrage oder Korrektur &mdash; z.&thinsp;B.
         <span class="not-italic text-slate-500">&bdquo;IBAN 3. Ziffer muss eine 7 sein&ldquo;</span>.
     </p>
     {% endif %}
@@ -39,7 +39,7 @@
         <textarea name="message"
                   required
                   rows="2"
-                  placeholder="R&uuml;ckfrage oder Korrektur an die KI&hellip;"
+                  placeholder="Rückfrage oder Korrektur an die KI&hellip;"
                   class="w-full rounded-md border border-slate-200 p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-slate-400"></textarea>
         <div class="flex items-center justify-between gap-3">
             <div class="htmx-indicator flex items-center gap-2 text-xs text-slate-500">

@@ -52,7 +52,7 @@ DOC_TYPES: list[tuple[str, str]] = [
     ("verwaltervertrag", "Verwaltervertrag"),
     ("grundbuch", "Grundbuchauszug"),
     ("mietvertrag", "Mietvertrag"),
-    ("mieterliste", "Mieterliste / Flaechenliste"),
+    ("mieterliste", "Mieterliste / Flächenliste"),
     ("sonstiges", "Sonstiges"),
 ]
 VALID_DOC_TYPES: frozenset[str] = frozenset(k for k, _ in DOC_TYPES)
@@ -343,7 +343,7 @@ async def list_cases(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Keine Berechtigung fuer Workflow '{workflow.key}'.",
+            detail=f"Keine Berechtigung für Workflow '{workflow.key}'.",
         )
 
     query = (
@@ -397,7 +397,7 @@ async def create_case(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Keine Berechtigung fuer Workflow '{workflow.key}'.",
+            detail=f"Keine Berechtigung für Workflow '{workflow.key}'.",
         )
 
     case = Case(

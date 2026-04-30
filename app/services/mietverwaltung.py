@@ -42,15 +42,15 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 CASE_CHAT_PROMPT = """Du bist der Mietverwaltungs-Agent. Der Nutzer hat einen
-„Fall" mit n PDFs (Verwaltervertrag, Grundbuch, Mieterliste, Mietvertraege
+„Fall" mit n PDFs (Verwaltervertrag, Grundbuch, Mieterliste, Mietverträge
 u. a.) hochgeladen. Die KI hat pro PDF typ-spezifische Felder extrahiert.
 Der konsolidierte Case-State (gemergte Daten plus manuelle User-Overrides)
 wird dir in jeder Runde mitgegeben.
 
 Deine Aufgaben:
 
-1. Antworte auf Rueckfragen zum aktuellen Stand (Deutsch, kurz, praezise).
-2. Wenn der Nutzer eine Korrektur oder Ergaenzung vornehmen will, schlage
+1. Antworte auf Rückfragen zum aktuellen Stand (Deutsch, kurz, präzise).
+2. Wenn der Nutzer eine Korrektur oder Ergänzung vornehmen will, schlage
    einen konkreten Override-Patch vor — als JSON-Codeblock am Ende deiner
    Antwort. Struktur:
 
@@ -68,19 +68,19 @@ Deine Aufgaben:
 }
 ```
 
-Regeln fuer den Patch:
-- Sende NUR Sektionen mit Aenderungen. Felder, die gleich bleiben sollen,
-  nicht erwaehnen.
-- Fuer Dict-Sektionen (property, management_contract, billing_address,
-  owner): nur die zu aendernden Felder. Der Server merged sie ueber den
+Regeln für den Patch:
+- Sende NUR Sektionen mit Änderungen. Felder, die gleich bleiben sollen,
+  nicht erwähnen.
+- Für Dict-Sektionen (property, management_contract, billing_address,
+  owner): nur die zu ändernden Felder. Der Server merged sie über den
   bestehenden Stand.
-- Fuer Listen (buildings, units, tenant_contracts): gib die KOMPLETTE neue
-  Liste, wenn du sie veraenderst — der Server ersetzt die Liste komplett.
-- IBAN ohne Leerzeichen, Geldbetraege als Zahl (Punkt als Dezimal),
+- Für Listen (buildings, units, tenant_contracts): gib die KOMPLETTE neue
+  Liste, wenn du sie veränderst — der Server ersetzt die Liste komplett.
+- IBAN ohne Leerzeichen, Geldbeträge als Zahl (Punkt als Dezimal),
   Datumsfelder im ISO-Format YYYY-MM-DD.
-- ISO-Laender 2-buchstabig (DE/AT/CH).
+- ISO-Länder 2-buchstabig (DE/AT/CH).
 
-Wenn keine Aenderung gewuenscht ist (pure Info-Frage), lass den
+Wenn keine Änderung gewünscht ist (pure Info-Frage), lass den
 JSON-Codeblock weg. Halluziniere keine Werte — wenn du etwas nicht sicher
 weisst, sag das.
 """
@@ -143,7 +143,7 @@ def _extract_case_patch(text: str) -> tuple[str, dict[str, Any] | None, str | No
                 SchwiftyIBAN(normalized)
                 contract["iban"] = normalized
             except Exception as exc:
-                iban_warnings.append(f"IBAN '{normalized}' verworfen ({exc}).")
+                iban_warnings.append(f"IBAN '{normalized}' ungültig ({exc}) — verworfen.")
                 contract["iban"] = None
 
     warning = "; ".join(iban_warnings) if iban_warnings else None
@@ -212,7 +212,7 @@ def chat_about_case(
         },
         {
             "role": "assistant",
-            "content": "Verstanden. Der aktuelle Stand ist mir bekannt. Was moechtest du pruefen oder aendern?",
+            "content": "Verstanden. Der aktuelle Stand ist mir bekannt. Was möchtest du prüfen oder ändern?",
         },
     ]
     for msg in history:
@@ -274,42 +274,42 @@ VALID_DOC_TYPES: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 
 CLASSIFY_PROMPT = """Du bekommst ein einzelnes PDF aus einer Mietverwaltungs-Neuanlage.
-Bestimme den Dokument-Typ. Moegliche Werte:
+Bestimme den Dokument-Typ. Mögliche Werte:
 
-- "verwaltervertrag"  — Verwaltervertrag zwischen Eigentuemer und Hausverwaltung,
-  enthaelt typisch Objekt-Nr., Adresse, Vertragsbeginn/-ende, Gebuehren,
-  Objektbetreuer, Glaeubiger-ID.
-- "grundbuch"         — Grundbuchauszug, Abteilung I zeigt den/die Eigentuemer.
-- "mietvertrag"       — Mietvertrag zwischen Eigentuemer und einem Mieter;
-  bezieht sich auf eine konkrete Einheit, enthaelt Kaltmiete/Betriebskosten/
+- "verwaltervertrag"  — Verwaltervertrag zwischen Eigentümer und Hausverwaltung,
+  enthält typisch Objekt-Nr., Adresse, Vertragsbeginn/-ende, Gebühren,
+  Objektbetreuer, Gläubiger-ID.
+- "grundbuch"         — Grundbuchauszug, Abteilung I zeigt den/die Eigentümer.
+- "mietvertrag"       — Mietvertrag zwischen Eigentümer und einem Mieter;
+  bezieht sich auf eine konkrete Einheit, enthält Kaltmiete/Betriebskosten/
   Heizkosten, Kaution.
-- "mieterliste"       — Mieter- oder Flaechenliste: tabellarische Uebersicht
-  ueber alle Einheiten eines Objekts, oft mit Flaechen, Blocknummern, Mieter-
-  Namen, Personen. Kann auch eine Einheiten-/Flaechenliste ohne Mieter sein.
+- "mieterliste"       — Mieter- oder Flächenliste: tabellarische Übersicht
+  über alle Einheiten eines Objekts, oft mit Flächen, Blocknummern, Mieter-
+  Namen, Personen. Kann auch eine Einheiten-/Flächenliste ohne Mieter sein.
 - "sonstiges"         — Passt zu keinem der vier obigen (z. B. Energieausweis,
   Nebenkostenabrechnung, Schriftwechsel).
 
-Antworte AUSSCHLIESSLICH mit gueltigem JSON:
+Antworte AUSSCHLIESSLICH mit gültigem JSON:
 
-{"doc_type": "<einer der obigen Werte>", "confidence": "high"|"medium"|"low", "reason": "<1 Satz Begruendung>"}
+{"doc_type": "<einer der obigen Werte>", "confidence": "high"|"medium"|"low", "reason": "<1 Satz Begründung>"}
 
-Dateinamen sind unzuverlaessig und duerfen nicht in die Entscheidung
-einfliessen — nur der Inhalt zaehlt.
+Dateinamen sind unzuverlässig und dürfen nicht in die Entscheidung
+einfliessen — nur der Inhalt zählt.
 """
 
 
-_PROMPT_BASE = """Du extrahierst strukturierte Felder aus einem PDF fuer die
+_PROMPT_BASE = """Du extrahierst strukturierte Felder aus einem PDF für die
 Mietverwaltungs-Anlage in Impower. Regeln, die immer gelten:
 
-1. Der Dateiname ist unzuverlaessig; nutze nur den PDF-Inhalt.
+1. Der Dateiname ist unzuverlässig; nutze nur den PDF-Inhalt.
 2. Fehlende oder unklare Werte: ``null`` setzen. Nicht raten.
 3. Datumsfelder im ISO-Format YYYY-MM-DD.
-4. Geldbetraege als Zahl (Punkt als Dezimal, kein Euro-Zeichen, keine
+4. Geldbeträge als Zahl (Punkt als Dezimal, kein Euro-Zeichen, keine
    1.000er-Trennung) — z. B. 13925.15.
-5. IBAN ohne Leerzeichen. BIC in Grossbuchstaben.
-6. Laenderkennzeichen als ISO-2 (``DE``, ``AT``, ``CH``).
-7. Antworte ausschliesslich mit gueltigem JSON nach dem Schema — kein Markdown,
-   kein erklaerender Text davor/danach.
+5. IBAN ohne Leerzeichen. BIC in Großbuchstaben.
+6. Länderkennzeichen als ISO-2 (``DE``, ``AT``, ``CH``).
+7. Antworte ausschließlich mit gültigem JSON nach dem Schema — kein Markdown,
+   kein erklärender Text davor/danach.
 """
 
 
@@ -322,13 +322,13 @@ JSON-Schema:
 
 {
   "property": {
-    "number":      string oder null,   // Objekt-Nr. / WEG-Kuerzel wie SBA9
+    "number":      string oder null,   // Objekt-Nr. / WEG-Kürzel wie SBA9
     "name":        string oder null,   // Objektbezeichnung, falls separat genannt
-    "street":      string oder null,   // Strasse + Hausnummer
+    "street":      string oder null,   // Straße + Hausnummer
     "postal_code": string oder null,
     "city":        string oder null,
     "country":     string oder null,   // ISO-2, default "DE"
-    "creditor_id": string oder null    // Glaeubiger-ID (DE..ZZZ...)
+    "creditor_id": string oder null    // Gläubiger-ID (DE..ZZZ...)
   },
   "management_contract": {
     "management_company_name": string oder null,  // Name der Verwaltung
@@ -352,7 +352,7 @@ JSON-Schema:
 
 PROMPT_GRUNDBUCH = _PROMPT_BASE + """
 
-Dokument-Typ: GRUNDBUCHAUSZUG. Extrahiere den/die Eigentuemer (Abteilung I)
+Dokument-Typ: GRUNDBUCHAUSZUG. Extrahiere den/die Eigentümer (Abteilung I)
 und die Objektadresse (Bestandsverzeichnis).
 
 JSON-Schema:
@@ -373,7 +373,7 @@ JSON-Schema:
     "last_name":              string oder null,
     "company_name":           string oder null,
     "trade_register_number":  string oder null,   // HRB-Nr.
-    "street":                 string oder null,   // Eigentuemer-Anschrift
+    "street":                 string oder null,   // Eigentümer-Anschrift
     "postal_code":            string oder null,
     "city":                   string oder null,
     "country":                string oder null
@@ -384,9 +384,9 @@ JSON-Schema:
 
 Hinweise:
 - Bei Ehepaar (Eigentum zu je 1/2): type=PERSON, beide Namen im ``last_name``
-  zusammenfuegen (``Max und Erika Mustermann``) und in ``notes`` erwaehnen.
+  zusammenfügen (``Max und Erika Mustermann``) und in ``notes`` erwähnen.
 - Bei COMPANY: HRB-Nr. ins ``trade_register_number``-Feld. Ist das Unternehmen
-  zusaetzlich als Erbengemeinschaft / BGB-Gesellschaft notiert, bleibt
+  zusätzlich als Erbengemeinschaft / BGB-Gesellschaft notiert, bleibt
   type=COMPANY und Details in ``notes``.
 """
 
@@ -444,7 +444,7 @@ JSON-Schema:
 }
 
 Hinweise:
-- Gewerbe vs. Wohnung: wenn das Dokument Gewerberaum/Gewerbemiete/MwSt. erwaehnt,
+- Gewerbe vs. Wohnung: wenn das Dokument Gewerberaum/Gewerbemiete/MwSt. erwähnt,
   ``unit_type=COMMERCIAL`` und ``vat_relevant=true``.
 - Wenn nur eine Gesamtmiete genannt ist und Betriebs-/Heizkosten nicht
   getrennt ausgewiesen sind, setze die Einzelposten auf null und nutze
@@ -454,7 +454,7 @@ Hinweise:
 
 PROMPT_MIETERLISTE = _PROMPT_BASE + """
 
-Dokument-Typ: MIETERLISTE oder FLAECHENLISTE. Extrahiere die Einheiten-
+Dokument-Typ: MIETERLISTE oder FLÄCHENLISTE. Extrahiere die Einheiten-
 Tabelle. Manche Listen haben Block-Bezeichnungen (Block F, Block B etc.);
 falls vorhanden, erfasse sie im ``buildings``-Array.
 
@@ -492,8 +492,8 @@ JSON-Schema:
 }
 
 Hinweise:
-- Gib jede Einheit genau einmal zurueck, auch wenn sie in der Quell-Tabelle
-  mehrfach auftaucht (z. B. Flaechenliste + Mieterliste nebeneinander).
+- Gib jede Einheit genau einmal zurück, auch wenn sie in der Quell-Tabelle
+  mehrfach auftaucht (z. B. Flächenliste + Mieterliste nebeneinander).
 - ``persons`` nur setzen wenn die Liste eine Personenzahl pro Einheit
   ausweist; sonst null.
 - ``buildings`` darf leer sein, wenn die Liste keine Block-Bezeichnung hat.
@@ -503,13 +503,13 @@ Hinweise:
 PROMPT_SONSTIGES = _PROMPT_BASE + """
 
 Dokument-Typ: SONSTIGES (z. B. Energieausweis, Nebenkostenabrechnung,
-Schriftwechsel). Liefere eine Kurz-Zusammenfassung und nuetzliche
+Schriftwechsel). Liefere eine Kurz-Zusammenfassung und nützliche
 Einzelangaben als freie KV.
 
 JSON-Schema:
 
 {
-  "summary":        string,                         // 1-3 Saetze: was ist das?
+  "summary":        string,                         // 1-3 Sätze: was ist das?
   "useful_fields":  object,                          // freie KV, z. B. {"energy_rating": "C", "heating_type": "Gas"}
   "confidence": "high" | "medium" | "low",
   "notes":      string
@@ -789,7 +789,7 @@ def _validate_iban_or_drop(data: dict[str, Any], path: list[str]) -> str | None:
         SchwiftyIBAN(normalized)
     except Exception as exc:  # noqa: BLE001
         node[path[-1]] = None
-        return f"IBAN '{normalized}' ungueltig ({exc}) — verworfen."
+        return f"IBAN '{normalized}' ungültig ({exc}) — verworfen."
     node[path[-1]] = normalized
     return None
 
@@ -906,7 +906,7 @@ def _compose_extract_system_prompt(
     if notes:
         prompt += (
             "\n\n---\n\nLERN-NOTIZEN (aus bisherigen Korrekturen — "
-            f"beruecksichtige diese):\n{notes}"
+            f"berücksichtige diese):\n{notes}"
         )
     return prompt
 

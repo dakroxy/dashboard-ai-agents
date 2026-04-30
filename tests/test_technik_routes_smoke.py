@@ -142,8 +142,8 @@ def test_technik_section_labels_in_german(steckbrief_admin_client, make_object):
     assert "Heizungs-Typ" in body
     assert "Baujahr Heizung" in body
     assert "Wartungsfirma" in body
-    assert "Stoerungs-Hotline" in body
-    assert "Baujahr Gebaeude" in body
+    assert "Störungs-Hotline" in body
+    assert "Baujahr Gebäude" in body
     assert "Jahr letzte Dach-Sanierung" in body
     assert "Jahr Elektrik-Check" in body
 

@@ -613,7 +613,7 @@ async def _ensure_bank_account(
         SchwiftyIBAN(clean_iban)
     except Exception as exc:
         raise ImpowerError(
-            f"IBAN '{clean_iban}' ist ungueltig ({exc}). Bitte im Chat pruefen.",
+            f"IBAN '{clean_iban}' ist ungültig ({exc}). Bitte im Chat prüfen.",
             -1,
         ) from exc
     contact = await _get_contact_full(client, contact_id)
@@ -635,7 +635,7 @@ async def _ensure_bank_account(
     if not clean_bic:
         raise ImpowerError(
             f"BIC fehlt und konnte aus der IBAN {clean_iban} nicht abgeleitet werden "
-            "(BLZ unbekannt). Bitte BIC im Chat ergaenzen oder IBAN pruefen.",
+            "(BLZ unbekannt). Bitte BIC im Chat ergänzen oder IBAN prüfen.",
             -1,
         )
     new_account: dict[str, Any] = {

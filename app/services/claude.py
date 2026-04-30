@@ -29,99 +29,99 @@ DEFAULT_MODEL = "claude-opus-4-7"
 DEFAULT_CHAT_MODEL = "claude-sonnet-4-6"
 
 AVAILABLE_MODELS: list[tuple[str, str]] = [
-    ("claude-opus-4-7", "Claude Opus 4.7 (hoechste Qualitaet)"),
+    ("claude-opus-4-7", "Claude Opus 4.7 (höchste Qualität)"),
     ("claude-sonnet-4-6", "Claude Sonnet 4.6 (ausgewogen)"),
-    ("claude-haiku-4-5", "Claude Haiku 4.5 (schnell, guenstig)"),
+    ("claude-haiku-4-5", "Claude Haiku 4.5 (schnell, günstig)"),
 ]
 
 DEFAULT_SYSTEM_PROMPT = """Du bist ein Assistent, der aus eingescannten SEPA-Lastschriftmandaten
-die relevanten Felder extrahiert. Antworte ausschliesslich mit einem JSON-Objekt
+die relevanten Felder extrahiert. Antworte ausschließlich mit einem JSON-Objekt
 nach dem vorgegebenen Schema.
 
 Kontext zum Einsatz:
-- Die Extraktion landet in einem Freigabe-Workflow fuer die Hausverwaltungs-Software
-  Impower; ein Mitarbeiter prueft anschliessend und gibt frei oder korrigiert.
-- Es gibt zwei gebraeuchliche Formular-Varianten in diesem Unternehmen:
-  (1) Neues Impower-Template mit expliziten Feldern "Objekt-Nr." (WEG-Kuerzel wie
-      HAM61, BRE11 o.ae.) und "Einheits-Nr.".
-  (2) Aelteres DBS-Formular ohne diese Felder; die WEG ergibt sich nur aus dem
-      Anschriften- oder Gebaeudeblock.
-  Beide Varianten muessen zuverlaessig gelesen werden.
+- Die Extraktion landet in einem Freigabe-Workflow für die Hausverwaltungs-Software
+  Impower; ein Mitarbeiter prüft anschließend und gibt frei oder korrigiert.
+- Es gibt zwei gebräuchliche Formular-Varianten in diesem Unternehmen:
+  (1) Neues Impower-Template mit expliziten Feldern "Objekt-Nr." (WEG-Kürzel wie
+      HAM61, BRE11 o.ä.) und "Einheits-Nr.".
+  (2) Älteres DBS-Formular ohne diese Felder; die WEG ergibt sich nur aus dem
+      Anschriften- oder Gebäudeblock.
+  Beide Varianten müssen zuverlässig gelesen werden.
 
 JSON-Schema (exakt diese Feldnamen verwenden):
 {
-  "weg_kuerzel":  string oder null,   // WEG-Kuerzel wie HAM61, BRE11
+  "weg_kuerzel":  string oder null,   // WEG-Kürzel wie HAM61, BRE11
   "weg_name":     string oder null,   // Name der WEG
   "weg_adresse":  string oder null,   // Anschrift der WEG
   "unit_nr":      string oder null,   // Einheits-Nr., optional
-  "owner_name":   string oder null,   // Voller Name des Eigentuemers
+  "owner_name":   string oder null,   // Voller Name des Eigentümers
   "iban":         string oder null,   // IBAN ohne Leerzeichen
   "bic":          string oder null,   // BIC/SWIFT
   "bank_name":    string oder null,   // Bankname, falls angegeben
   "sepa_date":    string oder null,   // Unterschriftsdatum ISO YYYY-MM-DD
-  "creditor_id":  string oder null,   // Glaeubiger-ID (DE..ZZZ...)
+  "creditor_id":  string oder null,   // Gläubiger-ID (DE..ZZZ...)
   "confidence":   "high" | "medium" | "low",
   "notes":        string              // kurze Bemerkungen oder ""
 }
 
 Regeln:
 1. Der Dateiname ist dir nicht bekannt und darf keine Rolle spielen. Nutze
-   ausschliesslich den Inhalt des PDFs.
+   ausschließlich den Inhalt des PDFs.
 2. Die Einheits-Nr. (`unit_nr`) ist OPTIONAL. Wenn sie im Dokument nicht klar
    erkennbar ist, setze sie auf null — nicht raten.
-3. IBAN: Entferne Leerzeichen; gib sie im Format ohne Blanks zurueck. Bei
+3. IBAN: Entferne Leerzeichen; gib sie im Format ohne Blanks zurück. Bei
    offensichtlichen OCR-Fehlern (O statt 0, I statt 1 usw.) korrigiere dezent,
    wenn dadurch eine plausible deutsche IBAN entsteht. Im Zweifel: Original
    stehen lassen und `confidence` senken.
 4. SEPA-Datum (`sepa_date`): Unterschriftsdatum im ISO-Format YYYY-MM-DD. Wenn
    nur Monat/Jahr angegeben ist, nutze den 1. des Monats.
-5. WEG-Kuerzel (`weg_kuerzel`): Kurzform wie HAM61, BRE11 — falls im Formular
-   als "Objekt-Nr.", "WEG-Kuerzel" o.ae. explizit genannt.
+5. WEG-Kürzel (`weg_kuerzel`): Kurzform wie HAM61, BRE11 — falls im Formular
+   als "Objekt-Nr.", "WEG-Kürzel" o.ä. explizit genannt.
 6. WEG-Name (`weg_name`) und WEG-Adresse (`weg_adresse`): Name und Anschrift
-   der Wohneigentuemergemeinschaft; wenn im Formular kein Kuerzel auftaucht,
+   der Wohneigentümergemeinschaft; wenn im Formular kein Kürzel auftaucht,
    ist das oft der einzige Hinweis.
-7. Glaeubiger-ID (`creditor_id`): Format "DE..ZZZ...", pro WEG unterschiedlich.
-8. Fehlt ein Feld vollstaendig, gib null zurueck — niemals "N/A", "-" oder
+7. Gläubiger-ID (`creditor_id`): Format "DE..ZZZ...", pro WEG unterschiedlich.
+8. Fehlt ein Feld vollständig, gib null zurück — niemals "N/A", "-" oder
    leerer String.
 9. `confidence`:
-   - "high" = Pflichtfelder (Eigentuemer-Name, IBAN und WEG-Kuerzel ODER
+   - "high" = Pflichtfelder (Eigentümer-Name, IBAN und WEG-Kürzel ODER
      WEG-Name) klar lesbar und unstrittig.
    - "medium" = alle Pflichtfelder lesbar, aber einzelne Werte unsicher oder
-     widerspruechlich.
+     widersprüchlich.
    - "low" = mindestens ein Pflichtfeld unklar, mehrdeutig oder nicht
      auffindbar.
-10. `notes`: kurze Bemerkungen zu Auffaelligkeiten (handschriftliche Aenderungen,
+10. `notes`: kurze Bemerkungen zu Auffälligkeiten (handschriftliche Änderungen,
     Durchstreichungen, unklare Ziffern, abweichende Formular-Variante usw.).
-    Maximal ein oder zwei Saetze. Wenn nichts auffaellt, leerer String.
+    Maximal ein oder zwei Sätze. Wenn nichts auffällt, leerer String.
 
-Gib NUR das JSON aus — kein Markdown-Codefence, kein erklaerender Text davor
+Gib NUR das JSON aus — kein Markdown-Codefence, kein erklärender Text davor
 oder danach, keine Kommentare im JSON.
 """
 
 
-DEFAULT_MIETVERWALTUNG_SYSTEM_PROMPT = """Du unterstuetzt bei der Neuanlage einer Mietverwaltung in Impower. Ein Fall
+DEFAULT_MIETVERWALTUNG_SYSTEM_PROMPT = """Du unterstützt bei der Neuanlage einer Mietverwaltung in Impower. Ein Fall
 besteht aus mehreren PDFs, die zusammen ein Objekt beschreiben:
 
-- Verwaltervertrag (Objekt-Stammdaten, Verwaltervertrag-Laufzeit, Gebuehren,
-  Glaeubiger-ID, Objektbetreuer, Objektbuchhalter).
-- Grundbuchauszug (Eigentuemer).
-- Mietvertraege je Einheit (Mieter, Vertragsdaten, Kaltmiete, Betriebskosten,
+- Verwaltervertrag (Objekt-Stammdaten, Verwaltervertrag-Laufzeit, Gebühren,
+  Gläubiger-ID, Objektbetreuer, Objektbuchhalter).
+- Grundbuchauszug (Eigentümer).
+- Mietverträge je Einheit (Mieter, Vertragsdaten, Kaltmiete, Betriebskosten,
   Heizkosten, Kaution, ggf. Lastschriftmandat).
-- Mieter- oder Flaechenliste (Einheiten-Uebersicht, Flaechen, Personen).
+- Mieter- oder Flächenliste (Einheiten-Übersicht, Flächen, Personen).
 - Sonstiges (z. B. Energieausweis).
 
 Dein Job:
 1. Erkenne den Dokument-Typ (einer der obigen).
-2. Extrahiere die fuer diesen Typ relevanten Felder strukturiert.
+2. Extrahiere die für diesen Typ relevanten Felder strukturiert.
 3. Markiere unklare/fehlende Werte explizit mit null statt zu raten.
 
-Dateinamen sind unzuverlaessig und duerfen nicht als Quelle dienen. Nur der
-Inhalt des PDFs zaehlt. Beide in diesem Unternehmen gebraeuchlichen Formular-
-Varianten (Impower-Template und aelteres DBS-Formular) sind moeglich.
+Dateinamen sind unzuverlässig und dürfen nicht als Quelle dienen. Nur der
+Inhalt des PDFs zählt. Beide in diesem Unternehmen gebräuchlichen Formular-
+Varianten (Impower-Template und älteres DBS-Formular) sind möglich.
 
 Die genaue JSON-Struktur pro Doc-Typ wird beim Aufruf spezifiziert. Antworte
-ausschliesslich mit gueltigem JSON nach dem vorgegebenen Schema — kein
-Markdown, kein erklaerender Text.
+ausschließlich mit gültigem JSON nach dem vorgegebenen Schema — kein
+Markdown, kein erklärender Text.
 """
 
 
@@ -160,34 +160,34 @@ Extrahiere / strukturiere die Kontaktdaten in diesem Schema:
 }
 
 Regeln:
-1. Wenn ein Firmenname UND eine Person (z. B. Geschaeftsfuehrer) genannt sind,
+1. Wenn ein Firmenname UND eine Person (z. B. Geschäftsführer) genannt sind,
    lege das als COMPANY mit company_name an; Personen-Felder (first_name,
    last_name) bleiben leer oder stehen in notes als Zusatzinfo.
-2. Bei Eigentuemer-Gemeinschaften (Ehepaar ohne Firma): type=PERSON, beide
+2. Bei Eigentümer-Gemeinschaften (Ehepaar ohne Firma): type=PERSON, beide
    Namen in last_name zusammenfassen ("Max und Erika Mustermann") oder notes.
 3. country defaultet zu "DE" wenn nicht anders ersichtlich.
 4. Keine Werte raten — fehlt ein Feld, setze null.
 
-Antworte ausschliesslich mit gueltigem JSON."""
+Antworte ausschließlich mit gültigem JSON."""
 
 
 CHAT_PROMPT_APPENDIX = """
 
 ---
 
-RUECKFRAGEN-MODUS:
-Nach der ersten Extraktion koennen Mitarbeiter-Rueckfragen oder Korrekturen
+RÜCKFRAGEN-MODUS:
+Nach der ersten Extraktion können Mitarbeiter-Rückfragen oder Korrekturen
 kommen — z.B. "Die IBAN ist falsch, die 3. Ziffer muss eine 7 sein" oder
-"Der Name ist Fluegel, nicht Floegel". Antworte darauf:
-1. Zuerst kurz auf Deutsch, was du verstehst und ggf. anpasst (1-3 Saetze).
-2. Wenn du eine Anpassung an der Extraktion vornimmst, haenge ANSCHLIESSEND
+"Der Name ist Flügel, nicht Flögel". Antworte darauf:
+1. Zuerst kurz auf Deutsch, was du verstehst und ggf. anpasst (1-3 Sätze).
+2. Wenn du eine Anpassung an der Extraktion vornimmst, hänge ANSCHLIESSEND
    einen Markdown-Codeblock mit dem KOMPLETTEN neuen JSON (alle Felder) an:
 
 ```json
 { "weg_kuerzel": ..., "weg_name": ..., "owner_name": ..., ...alle Felder... }
 ```
 
-Wenn keine Anpassung noetig ist, lass den JSON-Block weg.
+Wenn keine Anpassung nötig ist, lass den JSON-Block weg.
 Halluziniere keine Werte — wenn du im PDF etwas nicht finden kannst, sag das.
 """
 
@@ -244,7 +244,7 @@ def _compose_system_prompt(workflow: "Workflow", chat_mode: bool = False) -> str
     if notes:
         prompt += (
             "\n\n---\n\n"
-            "LERN-NOTIZEN (aus bisherigen Korrekturen — beruecksichtige diese):\n"
+            "LERN-NOTIZEN (aus bisherigen Korrekturen — berücksichtige diese):\n"
             f"{notes}"
         )
     if chat_mode:
@@ -446,15 +446,15 @@ def chat_about_mandate(
                     "text": (
                         "Das hier ist das Mandat. Die bisherige Extraktion:\n\n"
                         f"```json\n{current_json}\n```\n\n"
-                        "Im Folgenden stellt der Mitarbeiter Rueckfragen oder "
-                        "Korrekturen. Antworte gemaess der Regeln im System-Prompt."
+                        "Im Folgenden stellt der Mitarbeiter Rückfragen oder "
+                        "Korrekturen. Antworte gemäß der Regeln im System-Prompt."
                     ),
                 },
             ],
         },
         {
             "role": "assistant",
-            "content": "Verstanden. Ich habe Mandat und bisherige Extraktion vor mir. Was soll ich pruefen oder anpassen?",
+            "content": "Verstanden. Ich habe Mandat und bisherige Extraktion vor mir. Was soll ich prüfen oder anpassen?",
         },
     ]
     for msg in history:
@@ -519,9 +519,9 @@ def chat_about_mandate(
             except Exception as exc:
                 updated = None
                 warning = (
-                    f"\n\n[Hinweis] Korrektur nicht uebernommen: die angegebene "
-                    f"IBAN '{new_iban}' ist ungueltig ({exc}). "
-                    f"Bitte noch einmal pruefen — deutsche IBANs haben 22 Zeichen."
+                    f"\n\n[Hinweis] Korrektur nicht übernommen: die angegebene "
+                    f"IBAN '{new_iban}' ist ungültig ({exc}). "
+                    f"Bitte noch einmal prüfen — deutsche IBANs haben 22 Zeichen."
                 )
                 text_only = (text_only or "") + warning
 

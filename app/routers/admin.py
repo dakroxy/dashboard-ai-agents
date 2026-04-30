@@ -209,7 +209,7 @@ async def update_user(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Ungueltige Rolle.",
+                detail="Ungültige Rolle.",
             )
         if db.query(Role).filter(Role.id == new_role_id).first() is None:
             raise HTTPException(
@@ -609,7 +609,7 @@ async def delete_role(
     if role.is_system_role:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="System-Rollen koennen nicht geloescht werden.",
+            detail="System-Rollen können nicht gelöscht werden.",
         )
     in_use = db.query(User).filter(User.role_id == role.id).count()
     if in_use > 0:

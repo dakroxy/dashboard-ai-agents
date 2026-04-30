@@ -339,7 +339,7 @@ async def object_detail(
                 except DecryptionError:
                     _dec_value = None
                     _dec_error = (
-                        "Code nicht verfuegbar — Schluessel-Konfiguration pruefen"
+                        "Code nicht verfügbar — Schlüssel-Konfiguration prüfen"
                     )
                     _zug_decrypt_failed = True
                     audit(
@@ -613,7 +613,7 @@ def _zugangscode_field_ctx(
         except DecryptionError:
             dec_value = None
             dec_error = (
-                "Code nicht verfuegbar — Schluessel-Konfiguration pruefen"
+                "Code nicht verfügbar — Schlüssel-Konfiguration prüfen"
             )
             audit(
                 db,
@@ -682,7 +682,7 @@ async def zugangscode_field_edit(
     if not has_permission(user, "objects:view_confidential"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Keine Berechtigung fuer Zugangscodes",
+            detail="Keine Berechtigung für Zugangscodes",
         )
     if field not in ZUGANGSCODE_FIELD_KEYS:
         raise HTTPException(
@@ -726,7 +726,7 @@ async def zugangscode_field_save(
     if not has_permission(user, "objects:view_confidential"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Keine Berechtigung fuer Zugangscodes",
+            detail="Keine Berechtigung für Zugangscodes",
         )
     if field_name not in ZUGANGSCODE_FIELD_KEYS:
         raise HTTPException(
@@ -1092,7 +1092,7 @@ def _parse_date(val: str | None) -> date | None:
     try:
         return date.fromisoformat(val.strip())
     except ValueError:
-        raise HTTPException(422, detail=f"Ungueltiges Datum: {val!r}")
+        raise HTTPException(422, detail=f"Ungültiges Datum: {val!r}")
 
 
 def _parse_decimal(val: str | None) -> Decimal | None:
@@ -1101,7 +1101,7 @@ def _parse_decimal(val: str | None) -> Decimal | None:
     try:
         return Decimal(val.strip().replace(",", "."))
     except InvalidOperation:
-        raise HTTPException(422, detail=f"Ungueltige Zahl: {val!r}")
+        raise HTTPException(422, detail=f"Ungültige Zahl: {val!r}")
 
 
 def _render_versicherungen(
@@ -1284,7 +1284,7 @@ async def police_create(
         try:
             parsed_versicherer_id = uuid.UUID(versicherer_id.strip())
         except ValueError:
-            raise HTTPException(422, detail="Ungueltige Versicherer-ID")
+            raise HTTPException(422, detail="Ungültige Versicherer-ID")
 
     parsed_start = _parse_date(start_date)
     parsed_end = _parse_date(end_date)
@@ -1294,7 +1294,7 @@ async def police_create(
         try:
             parsed_months = int(notice_period_months.strip())
         except ValueError:
-            raise HTTPException(422, detail="Ungueltige Monatsangabe")
+            raise HTTPException(422, detail="Ungültige Monatsangabe")
     parsed_praemie = _parse_decimal(praemie)
 
     err = validate_police_dates(parsed_start, parsed_end, parsed_due)
@@ -1378,7 +1378,7 @@ async def police_update(
         try:
             parsed_versicherer_id = uuid.UUID(versicherer_id.strip())
         except ValueError:
-            raise HTTPException(422, detail="Ungueltige Versicherer-ID")
+            raise HTTPException(422, detail="Ungültige Versicherer-ID")
 
     parsed_start = _parse_date(start_date)
     parsed_end = _parse_date(end_date)
@@ -1388,7 +1388,7 @@ async def police_update(
         try:
             parsed_months = int(notice_period_months.strip())
         except ValueError:
-            raise HTTPException(422, detail="Ungueltige Monatsangabe")
+            raise HTTPException(422, detail="Ungültige Monatsangabe")
     parsed_praemie = _parse_decimal(praemie)
 
     err = validate_police_dates(parsed_start, parsed_end, parsed_due)
@@ -1480,7 +1480,7 @@ async def wartungspflicht_create(
         try:
             parsed_dienstleister_id = uuid.UUID(dienstleister_id.strip())
         except ValueError:
-            raise HTTPException(status_code=422, detail="Ungueltige Dienstleister-ID")
+            raise HTTPException(status_code=422, detail="Ungültige Dienstleister-ID")
         if db.get(Dienstleister, parsed_dienstleister_id) is None:
             return HTMLResponse(
                 content="<p class='text-red-600 text-sm p-2'>Dienstleister nicht gefunden.</p>",
@@ -1492,7 +1492,7 @@ async def wartungspflicht_create(
         try:
             parsed_intervall = int(intervall_monate.strip())
         except ValueError:
-            raise HTTPException(status_code=422, detail="Ungueltige Intervall-Angabe")
+            raise HTTPException(status_code=422, detail="Ungültige Intervall-Angabe")
         if parsed_intervall is not None and parsed_intervall < 1:
             return HTMLResponse(
                 content="<p class='text-red-600 text-sm p-2'>Intervall muss mindestens 1 Monat sein.</p>",
@@ -1596,7 +1596,7 @@ async def notiz_view(
     obj = _load_accessible_object(db, object_id, user)
     eig = db.get(Eigentuemer, eigentuemer_id)
     if not eig or eig.object_id != obj.id:
-        raise HTTPException(404, detail="Eigentuemer nicht gefunden")
+        raise HTTPException(404, detail="Eigentümer nicht gefunden")
     note_text = (obj.notes_owners or {}).get(str(eigentuemer_id)) or ""
     return templates.TemplateResponse(
         request, "_obj_notiz_view.html",
@@ -1615,12 +1615,12 @@ async def notiz_edit(
     if not has_permission(user, "objects:view_confidential"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Keine Berechtigung fuer vertrauliche Felder",
+            detail="Keine Berechtigung für vertrauliche Felder",
         )
     obj = _load_accessible_object(db, object_id, user)
     eig = db.get(Eigentuemer, eigentuemer_id)
     if not eig or eig.object_id != obj.id:
-        raise HTTPException(404, detail="Eigentuemer nicht gefunden")
+        raise HTTPException(404, detail="Eigentümer nicht gefunden")
     note_text = (obj.notes_owners or {}).get(str(eigentuemer_id)) or ""
     return templates.TemplateResponse(
         request, "_obj_notiz_edit.html",
@@ -1640,12 +1640,12 @@ async def notiz_save(
     if not has_permission(user, "objects:view_confidential"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Keine Berechtigung fuer vertrauliche Felder",
+            detail="Keine Berechtigung für vertrauliche Felder",
         )
     obj = _load_accessible_object(db, object_id, user)
     eig = db.get(Eigentuemer, eigentuemer_id)
     if not eig or eig.object_id != obj.id:
-        raise HTTPException(404, detail="Eigentuemer nicht gefunden")
+        raise HTTPException(404, detail="Eigentümer nicht gefunden")
 
     new_notes = dict(obj.notes_owners or {})
     note_clean = (note or "").strip()

@@ -171,7 +171,7 @@ def test_object_detail_finance_section_live_balance_fallback(
     # Stammdaten-Sektion immer noch sichtbar (AC2 — Seite kein 500)
     assert "Stammdaten" in body
     # Fallback-Text + bekannter Saldo
-    assert "Saldo aktuell nicht verfuegbar" in body
+    assert "Saldo aktuell nicht verfügbar" in body
     assert "Zuletzt:" in body
     assert "999.50" in body
     assert 'data-balance-error="true"' in body
@@ -188,7 +188,7 @@ def test_object_detail_finance_section_live_balance_fallback_no_history(
     response = steckbrief_admin_client.get(f"/objects/{obj.id}")
     assert response.status_code == 200
     body = response.text
-    assert "Saldo aktuell nicht verfuegbar" in body
+    assert "Saldo aktuell nicht verfügbar" in body
     assert "&mdash;" in body
 
 

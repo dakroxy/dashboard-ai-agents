@@ -5,7 +5,7 @@
     <h1 class="text-2xl font-semibold">Kontakt anlegen</h1>
     <p class="text-sm text-slate-500 mt-1">
         Impower-Kontakt (Person / Unternehmen / Verwaltungsunternehmen). Duplicate-Check
-        laeuft vor jeder Anlage &mdash; bestehende Treffer werden angezeigt, bevor wir
+        läuft vor jeder Anlage &mdash; bestehende Treffer werden angezeigt, bevor wir
         neu schreiben.
     </p>
 </div>
@@ -41,8 +41,8 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
         </svg>
         <div class="text-sm text-amber-900">
-            <p class="font-medium">{{ duplicates|length }} moegliche{% if duplicates|length == 1 %}r{% else %}s{% endif %} Duplikat{% if duplicates|length != 1 %}e{% endif %} gefunden</p>
-            <p class="mt-0.5 text-amber-800">Bitte pruefen, bevor Sie neu anlegen. Wenn es eine Uebereinstimmung ist, brechen Sie ab und verwenden den bestehenden Kontakt.</p>
+            <p class="font-medium">{{ duplicates|length }} mögliche{% if duplicates|length == 1 %}r{% else %}s{% endif %} Duplikat{% if duplicates|length != 1 %}e{% endif %} gefunden</p>
+            <p class="mt-0.5 text-amber-800">Bitte prüfen, bevor Sie neu anlegen. Wenn es eine Übereinstimmung ist, brechen Sie ab und verwenden den bestehenden Kontakt.</p>
         </div>
     </div>
     <ul class="divide-y divide-amber-200 border-t border-amber-200">
@@ -72,7 +72,7 @@
 <div class="mb-5 rounded-lg bg-white border border-slate-200 p-5">
     <h2 class="text-sm font-semibold mb-3">Trotzdem neu anlegen?</h2>
     <p class="text-sm text-slate-600 mb-3">
-        Die obigen Treffer sind nur Vorschlaege. Wenn keiner passt, koennen Sie den Kontakt
+        Die obigen Treffer sind nur Vorschläge. Wenn keiner passt, können Sie den Kontakt
         trotzdem anlegen.
     </p>
     <form action="/contacts/confirm" method="post" class="flex items-center gap-3">
@@ -166,7 +166,7 @@
         </div>
 
         <div class="col-span-2">
-            <label class="block text-xs font-medium text-slate-600 mb-1">Tel. Geschaeftlich</label>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Tel. Geschäftlich</label>
             <input type="text" name="phone_business" value="{{ f.phone_business }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
         </div>
         <div class="col-span-2">
@@ -183,7 +183,7 @@
         <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Anschrift</h3>
         <div class="grid grid-cols-6 gap-4">
             <div class="col-span-4">
-                <label class="block text-xs font-medium text-slate-600 mb-1">Strasse</label>
+                <label class="block text-xs font-medium text-slate-600 mb-1">Straße</label>
                 <input type="text" name="addr_street" value="{{ f.addr_street }}" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
             </div>
             <div class="col-span-2">

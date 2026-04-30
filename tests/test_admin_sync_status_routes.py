@@ -96,7 +96,7 @@ def test_sync_status_renders_empty_state(sync_admin_client):
     resp = sync_admin_client.get("/admin/sync-status")
     assert resp.status_code == 200
     assert "Sync-Status" in resp.text
-    assert "Noch keine Laeufe" in resp.text or "keine Laeufe" in resp.text
+    assert "Noch keine Läufe" in resp.text or "keine Läufe" in resp.text
 
 
 def test_sync_status_renders_last_run_summary(sync_admin_client, db):

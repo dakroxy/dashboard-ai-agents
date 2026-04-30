@@ -181,7 +181,7 @@ async def _write_owner_contact(
         return ir["contacts"]["owner_id"]
     owner = state.get("owner") or {}
     if not (owner.get("last_name") or owner.get("company_name")):
-        raise ImpowerError("Kein Eigentuemer im Case-State.", -1)
+        raise ImpowerError("Kein Eigentümer im Case-State.", -1)
 
     addresses = []
     addr = _address_payload(
@@ -206,7 +206,7 @@ async def _write_owner_contact(
     )
     if _is_error(result) or not isinstance(result, dict) or "id" not in result:
         raise ImpowerError(
-            f"Eigentuemer-Contact anlegen fehlgeschlagen: "
+            f"Eigentümer-Contact anlegen fehlgeschlagen: "
             f"{result.get('_msg') if isinstance(result, dict) else 'unbekannt'}",
             (result.get("_error", -1) if isinstance(result, dict) else -1),
         )

@@ -49,7 +49,7 @@ WEAKEST_FIELD_LABELS: dict[str, tuple[str, str]] = {
     # C1 — Stammdaten (ids via Task 3 in Story 3.4 hinzugefuegt)
     "full_address": ("Adresse", "#field-full_address"),
     "impower_property_id": ("Impower-Eigenschaft", "#field-impower_property_id"),
-    "has_eigentuemer": ("Eigentuemer", "#eigentuemer-section"),
+    "has_eigentuemer": ("Eigentümer", "#eigentuemer-section"),
     # C4 — Technik (ids bereits vorhanden via _obj_technik_field_view.html)
     "shutoff_water_location": ("Absperrung Wasser", "#field-shutoff_water_location"),
     "shutoff_electricity_location": ("Absperrung Strom", "#field-shutoff_electricity_location"),

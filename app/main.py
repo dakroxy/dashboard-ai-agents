@@ -65,7 +65,7 @@ _DEFAULT_WORKFLOWS: tuple[dict[str, str], ...] = (
         "key": "sepa_mandate",
         "name": "SEPA-Lastschriftmandate",
         "description": (
-            "Extraktion von Eigentuemer, WEG, IBAN und SEPA-Datum aus "
+            "Extraktion von Eigentümer, WEG, IBAN und SEPA-Datum aus "
             "eingescannten SEPA-Lastschriftmandaten. Ziel: automatische "
             "Pflege in Impower nach Human-in-the-Loop-Freigabe."
         ),
@@ -76,7 +76,7 @@ _DEFAULT_WORKFLOWS: tuple[dict[str, str], ...] = (
         "name": "Mietverwaltung anlegen",
         "description": (
             "Neuanlage einer kompletten Mietverwaltung in Impower aus 1-n PDFs "
-            "(Verwaltervertrag, Grundbuch, Mieterliste, Mietvertraege). "
+            "(Verwaltervertrag, Grundbuch, Mieterliste, Mietverträge). "
             "Fall-basiert: mehrere Dokumente bilden zusammen einen Fall."
         ),
         "system_prompt": DEFAULT_MIETVERWALTUNG_SYSTEM_PROMPT,
@@ -87,7 +87,7 @@ _DEFAULT_WORKFLOWS: tuple[dict[str, str], ...] = (
         "description": (
             "Sub-Workflow zum Anlegen eines Impower-Kontakts (Person oder "
             "Unternehmen). Wiederverwendbar aus anderen Workflows (z. B. "
-            "aus Mietverwaltung heraus fuer Eigentuemer/Mieter)."
+            "aus Mietverwaltung heraus für Eigentümer/Mieter)."
         ),
         "system_prompt": DEFAULT_CONTACT_CREATE_SYSTEM_PROMPT,
     },
@@ -95,7 +95,7 @@ _DEFAULT_WORKFLOWS: tuple[dict[str, str], ...] = (
         "key": "etv_signature_list",
         "name": "ETV-Unterschriftenliste",
         "description": (
-            "Druckfertige Unterschriftenliste fuer eine Eigentuemer-"
+            "Druckfertige Unterschriftenliste für eine Eigentümer-"
             "versammlung (ETV). Liest Conferences + Voting-Groups + "
             "Mandate aus Facilioo und rendert ein A4-Querformat-PDF. "
             "Kein Claude — reiner Read-/Render-Pfad."
