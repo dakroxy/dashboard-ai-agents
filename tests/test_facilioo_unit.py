@@ -89,12 +89,17 @@ async def test_5xx_retry_consumes_full_backoff_sequence(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_5xx_max_retries_then_raises(monkeypatch):
+    sleeps: list[float] = []
+
     async def fake_sleep(s):
-        pass
+        sleeps.append(s)
 
     monkeypatch.setattr("app.services.facilioo.asyncio.sleep", fake_sleep)
 
+    call_count = [0]
+
     def handler(request):
+        call_count[0] += 1
         return _resp(503, text="Service Unavailable")
 
     async with _mock_client(handler) as client:
@@ -102,6 +107,10 @@ async def test_5xx_max_retries_then_raises(monkeypatch):
             await facilioo._api_get(client, "/test", rate_gate=False)
 
     assert exc_info.value.status_code == 503
+    # Initial-Call + 5 Retries = 6 Calls; volle Backoff-Sequenz konsumiert.
+    # Schuetzt gegen Regression auf _MAX_RETRIES_5XX = 0.
+    assert call_count[0] == 6, f"Erwartet 6 Calls (Initial + 5 Retries), gesehen: {call_count[0]}"
+    assert sleeps == [2, 5, 15, 30, 60]
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +200,10 @@ async def test_429_caps_retries_at_3(monkeypatch):
 
     monkeypatch.setattr("app.services.facilioo.asyncio.sleep", fake_sleep)
 
+    call_count = [0]
+
     def handler(request):
+        call_count[0] += 1
         return _resp(429, text="Too Many", headers={"Retry-After": "1"})
 
     async with _mock_client(handler) as client:
@@ -200,6 +212,86 @@ async def test_429_caps_retries_at_3(monkeypatch):
 
     assert exc_info.value.status_code == 429
     assert "Rate-Limit nach 3 Retries" in str(exc_info.value)
+    # Initial-Call + 3 Retries = 4 Calls; beim 4. Aufruf greift Cap (>= 3).
+    # Schuetzt gegen Off-by-one-Regression beim >=-Vergleich.
+    assert call_count[0] == 4, f"Erwartet 4 Calls (Initial + 3 Retries), gesehen: {call_count[0]}"
+
+
+# ---------------------------------------------------------------------------
+# Combined 5xx + 429-Storm: Counter laufen unabhaengig
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_combined_5xx_429_storm_keeps_counters_independent(monkeypatch):
+    """5xx und 429 abwechselnd: beide Counter laufen unabhaengig hoch.
+
+    Sequenz: 5xx, 429, 5xx, 429, 200 → 5 Calls, 4 Sleeps.
+    Erwartete Sleeps:
+      - 2x 5xx-Backoff (Indices 0, 1 → [2, 5])
+      - 2x 429-Wait (Retry-After=1 → [1, 1])
+    Reihenfolge: [2, 1, 5, 1] (5xx-Backoff → 429-Wait → 5xx-Backoff → 429-Wait).
+    """
+    sleeps: list[float] = []
+
+    async def fake_sleep(s):
+        sleeps.append(s)
+
+    monkeypatch.setattr("app.services.facilioo.asyncio.sleep", fake_sleep)
+
+    handler = _seq_handler(
+        _resp(503),
+        _resp(429, headers={"Retry-After": "1"}),
+        _resp(503),
+        _resp(429, headers={"Retry-After": "1"}),
+        _resp(200, json={"ok": True}),
+    )
+
+    async with _mock_client(handler) as client:
+        result = await facilioo._api_get(client, "/test", rate_gate=False)
+
+    assert result == {"ok": True}
+    assert sleeps == [2, 1, 5, 1]
+
+
+# ---------------------------------------------------------------------------
+# 204 No Content + leerer Body + Non-JSON-Body
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_204_no_content_returns_none():
+    def handler(request):
+        return httpx.Response(204)
+
+    async with _mock_client(handler) as client:
+        result = await facilioo._api_get(client, "/test", rate_gate=False)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_empty_2xx_body_returns_none():
+    def handler(request):
+        return httpx.Response(200, content=b"")
+
+    async with _mock_client(handler) as client:
+        result = await facilioo._api_get(client, "/test", rate_gate=False)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_non_json_2xx_body_raises_facilioo_error():
+    """200er Status + Non-JSON-Body (z. B. Cloudflare-Maintenance-Seite mit 200)
+    muss einen FaciliooError werfen, nicht ungewrappten JSONDecodeError."""
+    def handler(request):
+        return httpx.Response(200, text="<html>not json</html>")
+
+    async with _mock_client(handler) as client:
+        with pytest.raises(facilioo.FaciliooError) as exc_info:
+            await facilioo._api_get(client, "/test", rate_gate=False)
+
+    assert exc_info.value.status_code == 200
+    assert "Non-JSON-Body" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

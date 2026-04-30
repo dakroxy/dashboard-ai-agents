@@ -1,6 +1,6 @@
 # Story 4.2: Facilioo-Client mit Retry & Rate-Gate
 
-Status: review
+Status: done
 
 ## Story
 
@@ -314,3 +314,20 @@ claude-sonnet-4-6 (1M context)
 - `tests/test_facilioo_client_boundary.py` (neu — 2 Boundary-Tests, Tasks 7.4–7.5)
 - `output/implementation-artifacts/sprint-status.yaml` (Story 4.2 → `review`)
 - `output/implementation-artifacts/4-2-facilioo-client-mit-retry-rate-gate.md` (Story-File mit Checkmarks + Status)
+
+### Review Findings
+
+Code-Review 2026-04-30 (3 parallele Layer: Blind Hunter, Edge Case Hunter, Acceptance Auditor) — 5 Patches, 7 Defer, 16 Dismiss.
+
+- [x] [Review][Patch] `resp.json()` ohne 204/Non-JSON-Guard wirft ungewrappte `JSONDecodeError` — `app/services/facilioo.py:149` (medium, Edge Case Hunter) — gefixt: 204/empty → None, Non-JSON → FaciliooError
+- [x] [Review][Patch] `test_429_caps_retries_at_3` zählt Calls nicht — Off-by-one in `>=` würde unbemerkt durchrutschen — `tests/test_facilioo_unit.py:188-202` (Acceptance Auditor F1) — gefixt: `assert call_count[0] == 4` ergänzt
+- [x] [Review][Patch] `test_5xx_max_retries_then_raises` zählt Calls + Sleeps nicht — `_MAX_RETRIES_5XX=0`-Regression bliebe grün — `tests/test_facilioo_unit.py:91-104` (Acceptance Auditor F2) — gefixt: `assert call_count[0] == 6` + `sleeps == [2, 5, 15, 30, 60]` ergänzt
+- [x] [Review][Patch] Combined 5xx+429-Storm-Test fehlt — Counter-Trennung + Recursion-Depth nicht testabgedeckt — `tests/test_facilioo_unit.py` (Edge Case Hunter) — gefixt: `test_combined_5xx_429_storm_keeps_counters_independent` + 3 Tests für 204/empty/non-JSON ergänzt
+- [x] [Review][Patch] Redundanter `monkeypatch.setattr` im `finally` des Boundary-Self-Checks — `tests/test_facilioo_client_boundary.py:88-90` (Blind Hunter) — gefixt: finally-Block entfernt, monkeypatch-Cleanup übernimmt
+- [x] [Review][Defer] Multi-Worker `_last_request_time` Modul-State-Drift — pre-existing Pattern (Impower auch), Multi-Worker nicht im Scope — deferred
+- [x] [Review][Defer] `test_etv_paths_skip_rate_gate` aussagearm — 1-Page-Smoke fängt das Skip-Verhalten nicht zwingend — deferred
+- [x] [Review][Defer] Boundary-Scan-Erweiterung auf `scripts/` — heute nur `app/` — deferred
+- [x] [Review][Defer] Boundary-Scan fängt hardcoded URLs `api.facilioo.de` nicht — Heuristik-Erweiterung — deferred
+- [x] [Review][Defer] `_MAX_PAGES`-Cap-Reach Telemetry/Logging — Schema-Drift-Detection — deferred
+- [x] [Review][Defer] `fetch_conference_signature_payload` partial-failure-Verhalten in `gather()` — pre-existing — deferred
+- [x] [Review][Defer] Token-Rotation = Container-Restart in CLAUDE.md dokumentieren — Doku-Lücke — deferred

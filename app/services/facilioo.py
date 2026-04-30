@@ -146,7 +146,18 @@ async def _api_get(
             msg = resp.text.strip()[:300]
         raise FaciliooError(msg, resp.status_code)
 
-    return resp.json()
+    # 204 No Content oder leerer 2xx-Body — Caller bekommt None statt
+    # ungewrappter JSONDecodeError. Analog impower.py:521-523.
+    if resp.status_code == 204 or not resp.content:
+        return None
+    try:
+        return resp.json()
+    except ValueError as exc:
+        # ValueError ist Superklasse von json.JSONDecodeError.
+        raise FaciliooError(
+            f"Non-JSON-Body von Facilioo (Status {resp.status_code})",
+            resp.status_code,
+        ) from exc
 
 
 async def _get_all_paged(

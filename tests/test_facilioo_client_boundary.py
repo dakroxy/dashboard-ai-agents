@@ -65,6 +65,8 @@ def test_no_facilioo_calls_outside_gate():
 
 def test_boundary_scan_finds_seeded_violation(tmp_path, monkeypatch):
     """Self-Check: synthetisches File mit Boundary-Token wird als Verstoss erkannt."""
+    import pytest
+
     import tests.test_facilioo_client_boundary as mod
 
     fake = tmp_path / "fake_service.py"
@@ -77,14 +79,7 @@ def test_boundary_scan_finds_seeded_violation(tmp_path, monkeypatch):
         "    )\n"
     )
 
-    orig_dirs = mod._SCAN_DIRS
-    orig_allow = mod._ALLOW_LIST
     monkeypatch.setattr(mod, "_SCAN_DIRS", [tmp_path])
     monkeypatch.setattr(mod, "_ALLOW_LIST", frozenset())
-    try:
-        import pytest
-        with pytest.raises(AssertionError):
-            mod.test_no_facilioo_calls_outside_gate()
-    finally:
-        monkeypatch.setattr(mod, "_SCAN_DIRS", orig_dirs)
-        monkeypatch.setattr(mod, "_ALLOW_LIST", orig_allow)
+    with pytest.raises(AssertionError):
+        mod.test_no_facilioo_calls_outside_gate()
