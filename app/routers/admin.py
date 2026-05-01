@@ -1171,7 +1171,7 @@ async def list_review_queue_rows(
 ):
     q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
     entries = _prepare_entries(db.execute(q).scalars().all())
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "admin/_review_queue_rows.html",
         {
@@ -1179,6 +1179,8 @@ async def list_review_queue_rows(
             "user": user,
         },
     )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.post("/review-queue/{entry_id}/approve")
@@ -1279,9 +1281,11 @@ async def reject_form_fragment(
             status_code=410,
             detail=f"Eintrag bereits entschieden (status={entry.status})",
         )
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request, "admin/_reject_form.html", {"entry_id": entry_id}
     )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ---------------------------------------------------------------------------

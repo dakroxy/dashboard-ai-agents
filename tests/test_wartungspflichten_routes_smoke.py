@@ -28,6 +28,7 @@ from app.models import (
     Wartungspflicht,
 )
 from app.models.registry import Dienstleister
+from tests.conftest import _make_session_cookie, _TEST_CSRF_TOKEN
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +80,8 @@ def steckbrief_admin_client(db, admin_user):
     app.dependency_overrides[get_current_user] = override_user
     app.dependency_overrides[get_optional_user] = override_user
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        c.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
     app.dependency_overrides.clear()
 
@@ -106,6 +109,8 @@ def viewer_client(db):
     app.dependency_overrides[get_current_user] = override_user
     app.dependency_overrides[get_optional_user] = override_user
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        c.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
     app.dependency_overrides.clear()
 
@@ -133,6 +138,8 @@ def editor_no_registries_client(db):
     app.dependency_overrides[get_current_user] = override_user
     app.dependency_overrides[get_optional_user] = override_user
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        c.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
     app.dependency_overrides.clear()
 

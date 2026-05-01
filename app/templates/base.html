@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
 </head>
-<body class="bg-slate-50 text-slate-900 antialiased">
+<body class="bg-slate-50 text-slate-900 antialiased" hx-headers='{"X-CSRF-Token": "{{ csrf_token(request) }}"}'>
 <div class="flex min-h-screen">
 
     {% if user %}

@@ -237,6 +237,13 @@ def write_field_human(
     # No-Op-Vergleich unten vergleicht darum alten Ciphertext gegen neuen
     # Ciphertext und schlaegt immer durch. Absicht fuer v1.
     if field in _ENCRYPTED_FIELDS.get(entity_type, frozenset()):
+        # Guard gegen Double-Encrypt: bereits-verschluesselter Wert (v1:-Prefix)
+        # wuerde erneut verschluesselt → WriteGateError statt stiller Korruption.
+        if isinstance(value, str) and value.startswith("v1:"):
+            raise WriteGateError(
+                f"value already encrypted (v1: prefix detected); "
+                f"refusing double-encrypt for field={field!r} entity={entity_type!r}"
+            )
         if value is not None and isinstance(value, str) and value.strip():
             from app.services.field_encryption import encrypt_field as _enc
             value = _enc(value, entity_type=entity_type, field=field)

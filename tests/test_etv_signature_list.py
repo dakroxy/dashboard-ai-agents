@@ -22,6 +22,7 @@ from app.db import get_db
 from app.main import app
 from app.models import ResourceAccess, User, Workflow
 from app.permissions import RESOURCE_TYPE_WORKFLOW
+from tests.conftest import _make_session_cookie, _TEST_CSRF_TOKEN
 from app.routers import etv_signature_list as etv_router
 from app.services import facilioo
 from app.templating import templates as jinja_templates
@@ -928,6 +929,8 @@ def test_generate_returns_403_without_workflow_access(monkeypatch, db):
 
     try:
         with TestClient(app, raise_server_exceptions=True) as client:
+            client.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+            client.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
             resp = client.post(
                 "/workflows/etv-signature-list/generate",
                 data={"conference_id": "6944"},

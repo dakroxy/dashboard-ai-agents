@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import datetime, timezone
 
@@ -124,6 +125,9 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     db.refresh(user)
 
     request.session["user_id"] = str(user.id)
+    # CSRF-Token einmal pro Session setzen (stabil bis Logout).
+    if not request.session.get("csrf_token"):
+        request.session["csrf_token"] = secrets.token_urlsafe(32)
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
 

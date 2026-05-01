@@ -42,6 +42,7 @@ from app.services.claude import (
     DEFAULT_MODEL,
     DEFAULT_SYSTEM_PROMPT,
 )
+from app.middleware.csrf import CSRFMiddleware
 from app.services.photo_store import LocalPhotoStore, create_photo_store
 from app.services.facilioo_mirror import (
     start_poller as start_facilioo_poller,
@@ -336,13 +337,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Dashboard KI-Agenten", lifespan=lifespan)
 
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.secret_key,
-    same_site="lax",
-    https_only=settings.app_env != "development",
-    max_age=60 * 60 * 24 * 7,
-)
+# Middleware-Reihenfolge (Starlette: letzter add_middleware-Call = aeusserste Schicht):
+#
+#   1. @app.middleware SecurityHeaders  — Basis, innerste Schicht
+#   2. add_middleware(CSRFMiddleware)   — innen, laeuft NACH Session
+#   3. add_middleware(SessionMiddleware) — aeusserste Schicht, laeuft ZUERST
+#
+# Request-Flow: Session → CSRF → SecurityHeaders → Router
+# Response-Flow: Router → SecurityHeaders (Headers setzen) → CSRF → Session
+#
+# CSRF liest scope["session"]["csrf_token"] — Session muss dafuer zuerst laufen.
 
 
 @app.middleware("http")
@@ -357,6 +361,17 @@ async def set_default_security_headers(request: Request, call_next):
         response = PlainTextResponse("Internal Server Error", status_code=500)
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response
+
+
+app.add_middleware(CSRFMiddleware)
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    same_site="lax",
+    https_only=settings.app_env != "development",
+    max_age=60 * 60 * 24 * 7,
+)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

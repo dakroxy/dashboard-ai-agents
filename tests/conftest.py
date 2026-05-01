@@ -28,11 +28,30 @@ os.environ.setdefault("IMPOWER_BEARER_TOKEN", "")
 os.environ.setdefault("IMPOWER_MIRROR_ENABLED", "false")
 os.environ.setdefault("FACILIOO_MIRROR_ENABLED", "false")
 
+import json as _json
+from base64 import b64encode as _b64encode
+
+import itsdangerous as _itsdangerous
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+# Stabiles Test-CSRF-Token — in allen Fixtures identisch, damit Middleware-Check besteht.
+_TEST_CSRF_TOKEN = "csrf-test-token-dbshome-dev"
+
+
+def _make_session_cookie(data: dict) -> str:
+    """Erzeugt einen signierten Starlette-Session-Cookie fuer Tests.
+
+    Benutzt dieselbe Signing-Logik wie Starletttes SessionMiddleware
+    (itsdangerous.TimestampSigner + b64encode(json)).
+    """
+    secret = os.environ.get("SECRET_KEY", "test-secret-key-do-not-use")
+    signer = _itsdangerous.TimestampSigner(secret)
+    payload = _b64encode(_json.dumps(data).encode())
+    return signer.sign(payload).decode()
 
 # Teach SQLite how to render Postgres-specific column types used in the models.
 # This only affects DDL (CREATE TABLE) — DML type processors are inherited from
@@ -160,6 +179,13 @@ def auth_client(db, test_user):
     app.dependency_overrides[get_optional_user] = override_user
 
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        # CSRF-Session-Cookie + Header setzen, damit Middleware-Check besteht.
+        c.cookies.set(
+            "session",
+            _make_session_cookie({"user_id": str(test_user.id), "csrf_token": _TEST_CSRF_TOKEN}),
+        )
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
+
         # Lifespan hat die Default-Workflows geseedet; der test_user hat aber
         # keine Rolle, ueber die Resource-Access auf diese Workflows vererbt
         # wuerde. Um die bestehenden Router-Tests (Upload/Approve) nicht bei
@@ -240,6 +266,11 @@ def steckbrief_admin_client(db):
     app.dependency_overrides[get_optional_user] = override_user
 
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        c.cookies.set(
+            "session",
+            _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}),
+        )
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
 
     app.dependency_overrides.clear()
@@ -262,6 +293,13 @@ def anon_client():
     app.dependency_overrides[get_optional_user] = override_optional_user
 
     with TestClient(app, raise_server_exceptions=False, follow_redirects=False) as c:
+        # CSRF-Token setzen, damit anon-POST-Tests nicht schon an CSRF-403 scheitern.
+        # Auth-Fehler (302 redirect oder 403 forbidden) kommen danach aus der Route.
+        c.cookies.set(
+            "session",
+            _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}),
+        )
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
 
     app.dependency_overrides.clear()

@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-04-30 (Story 4.4 Code-Review → done)
+# last_updated: 2026-05-01 (Story 5-1 review + 5-2 ready-for-dev)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-04-30 (Story 4.4 Code-Review → done)
+last_updated: 2026-05-01 (Stories 5-1 in-progress + 5-2 ready-for-dev + 5-3 ready-for-dev)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -78,10 +78,41 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: Facilioo-Ticket-Integration (Launch-Optional)
-  epic-4: in-progress
+  epic-4: done
   4-0-code-hygiene-helpers-und-triage: done
   4-1-facilioo-api-spike: done
   4-2-facilioo-client-mit-retry-rate-gate: done
   4-3-1-min-poll-job-mit-delta-support: done
   4-4-facilioo-tickets-am-objekt-detail: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
+
+  # Epic 5: Technische Schulden & Hardening
+  # Abarbeitung aller Deferred-Work-Eintraege aus Epic-1-4 Code-Reviews.
+  # Pre-Prod-Stories (5-1, 5-2) muessen vor externem Rollout erledigt sein.
+  # Post-Prod-Stories (5-3 bis 5-8) sind technische Schulden ohne Launch-Blocker.
+  epic-5: in-progress
+  # --- Pre-Prod (Pflicht vor Rollout) ---
+  # Deferred: #3/#80/#82/#119 CSRF, #5 Cache-Control, #87/#89/#142 Length-Caps,
+  #           #116 Double-Encrypt, #121 Jinja2-Autoescape, #4 IDOR approve_ki, #81 extraction/view
+  5-1-security-hardening: review
+  # Deferred: #34 Cache-Race, #77 Concurrent-Save, #83 notes_owners-Race,
+  #           #91 Multi-Worker-Boot, #128 Orphan-File, #129 OOM, #63/#69 neg. Praemie, #140 Range
+  5-2-data-integrity-concurrency: ready-for-dev
+  # --- Post-Prod (technische Schulden) ---
+  # Deferred: #7 #8 #9 #23 #35 #43 #96 #111 #115 #127 #138 #139 #141 #143 #145 #147 #148 #150 #151
+  5-3-backend-robustheit-crash-guards: ready-for-dev
+  # Deferred: #11 #26 #31 #33 #37 #55 #57 #99 #104 #106 #112 #120 #125 #133
+  5-4-performance-query-optimierung: backlog
+  # Deferred: #1 #10 #12 #13 #14 #15 #16 #17 #18 #19 #27 #50 #51 #52 #53 #54
+  #           #56 #58 #59 #60 #61 #75 #78 #79 #137 #149 #152
+  5-5-ux-polish-frontend: backlog
+  # Deferred: #2 #20 #24 #25 #29 #30 #36 #38 #44 #45 #46 #62 #65 #66 #70 #73 #74
+  #           #85 #88 #90 #92 #93 #98 #100 #101 #102 #103 #105 #107 #108 #109 #110
+  #           #113 #114 #117 #118 #122 #123 #126 #130 #131 #132 #134 #135 #136 #144 #146
+  5-6-code-qualitaet-refactoring: backlog
+  # Deferred: #21 #28 #32 #40 #41 #42 #47 #48 #49 #67 #74 #86 #94 #95 #97 #124 #152
+  5-7-test-coverage: backlog
+  # Deferred: 6 neue aus 4.4-CR (JSONB-cast, URL-Encode, NULL-Status, Tiebreaker,
+  #           Spec-Drift, Schema-Validator) + #6 view-only-Reviewer
+  5-8-facilioo-hardening: backlog
+  epic-5-retrospective: optional

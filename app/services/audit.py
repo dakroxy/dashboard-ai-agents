@@ -128,7 +128,11 @@ def _client_ip(request: Request) -> str | None:
     # X-Forwarded-For vorrangig (hinter Reverse-Proxy wie Elestio-Router).
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
-        return fwd.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
+        ip = fwd.split(",")[0].strip()
+    elif request.client:
+        ip = request.client.host
+    else:
+        return None
+    # audit_log.ip_address ist String(45) — Truncation verhindert DB-Constraint-Error
+    # bei gespoofen X-Forwarded-For-Chains (kein ALTER COLUMN noetig, Spalte korrekt seit 0007).
+    return ip[:45] if ip else None

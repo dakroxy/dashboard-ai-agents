@@ -42,6 +42,8 @@ def create_schadensfall(
     description: str | None,
     unit_id: uuid.UUID | None,
 ) -> Schadensfall:
+    if description and len(description) > 5000:
+        raise ValueError("description exceeds 5000 chars")
     schaden = Schadensfall(policy_id=policy.id)
     db.add(schaden)
     db.flush()

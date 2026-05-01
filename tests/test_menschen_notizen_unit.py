@@ -16,6 +16,7 @@ from app.auth import get_current_user, get_optional_user
 from app.db import get_db
 from app.main import app
 from app.models import AuditLog, Eigentuemer, FieldProvenance, Object, User
+from tests.conftest import _make_session_cookie, _TEST_CSRF_TOKEN
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +69,8 @@ def admin_client(db, admin_user):
     app.dependency_overrides[get_current_user] = override_user
     app.dependency_overrides[get_optional_user] = override_user
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        c.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
     app.dependency_overrides.clear()
 
@@ -84,6 +87,8 @@ def normal_client(db, normal_user):
     app.dependency_overrides[get_current_user] = override_user
     app.dependency_overrides[get_optional_user] = override_user
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        c.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
     app.dependency_overrides.clear()
 

@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi.templating import Jinja2Templates
+from jinja2 import select_autoescape
+from starlette.requests import Request
 
 from app.db import SessionLocal
 from app.models import User, Workflow
@@ -176,8 +178,19 @@ def pflegegrad_color(score: int | None) -> str:
     return "bg-red-100 text-red-800 border-red-200"
 
 
+def _get_csrf_token(request) -> str:
+    try:
+        return request.session.get("csrf_token", "")
+    except Exception:
+        return ""
+
+
 templates = Jinja2Templates(directory="app/templates")
+# Autoescape explizit auf HTML-Erweiterungen begrenzen — versionsstabil
+# und verhindert versehentliches Escapen kuenftiger Plain-Text-Templates.
+templates.env.autoescape = select_autoescape(["html", "htm", "xml", "jinja"])
 templates.env.globals["has_permission"] = has_permission
+templates.env.globals["csrf_token"] = _get_csrf_token
 templates.env.globals["field_source"] = field_source
 templates.env.globals["provenance_pill"] = provenance_pill
 templates.env.globals["pflegegrad_color"] = pflegegrad_color

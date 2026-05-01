@@ -52,6 +52,7 @@ PERMISSIONS: list[Permission] = [
     # Objekte (Steckbrief)
     Permission("objects:view", "Objekte ansehen", "Objekte"),
     Permission("objects:edit", "Objekte bearbeiten", "Objekte"),
+    # v2-TODO: Per-Object-IDOR (siehe deferred-work.md #4). Aktuell portfolio-weit als bewusste v1-Design-Entscheidung — alle Approver sehen alle Reviews.
     Permission("objects:approve_ki", "KI-Vorschläge freigeben", "Objekte"),
     Permission(
         "objects:view_confidential",

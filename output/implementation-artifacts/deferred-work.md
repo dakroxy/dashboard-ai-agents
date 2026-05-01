@@ -16,7 +16,7 @@ unique Eintrag.
 | 1  | `onsubmit` confirm JS-Escape-Pattern                              | low      | no           | post-prod     |
 | 2  | Audit-`details_json` Umlaute (Ops-Doku)                           | low      | no           | post-prod     |
 | 3  | **CSRF-Token projektweit fehlt** (siehe auch #80, #82, #119)      | high     | yes          | pre-prod      |
-| 4  | `objects:approve_ki` portfolio-weit (kein Objekt-IDOR)            | medium   | no           | post-prod     |
+| 4  | `objects:approve_ki` portfolio-weit (kein Objekt-IDOR)            | medium   | no           | post-prod [deferred-to-v2] |
 | 5  | `Cache-Control: no-store` auf Admin-Fragment-Routes               | medium   | no           | pre-prod      |
 | 6  | Single-Permission-Tier (kein view-only Reviewer)                  | low      | no           | post-prod     |
 | 7  | Phase-3 Aggregator ohne `return_exceptions=True`                  | medium   | no           | post-prod     |
@@ -93,7 +93,7 @@ unique Eintrag.
 | 78 | Pen-Icon ohne distinctes `aria-label`-Pattern                     | low      | no           | post-prod     |
 | 79 | Mobile IBAN-Input ohne `inputmode`/`pattern`-Hint                 | low      | no           | post-prod     |
 | 80 | CSRF-Schutz fehlt projektweit (Mention) → siehe #3                | high     | yes          | pre-prod      |
-| 81 | GET `/extraction/view` kein `documents:approve`-Check             | low      | no           | post-prod     |
+| 81 | GET `/extraction/view` kein `documents:approve`-Check             | low      | no           | post-prod [deferred-to-v2] |
 | 82 | CSRF-Schutz fehlt projektweit alle POSTs → siehe #3               | high     | yes          | pre-prod      |
 | 83 | **Race-Condition zwei Admins notes_owners JSONB**                 | high     | yes          | pre-prod      |
 | 84 | Unicode-Whitespace nicht aus Note-Text gestripped                 | low      | no           | post-prod     |

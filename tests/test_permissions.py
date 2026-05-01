@@ -20,7 +20,7 @@ from app.auth import get_current_user, get_optional_user
 from app.db import get_db
 from app.main import app
 from app.models import User, Workflow
-from tests.conftest import _TestSessionLocal  # type: ignore
+from tests.conftest import _TestSessionLocal, _make_session_cookie, _TEST_CSRF_TOKEN  # type: ignore
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +70,10 @@ def client_as():
         else:
             app.dependency_overrides[get_optional_user] = lambda: None
 
-        return TestClient(app, raise_server_exceptions=False, follow_redirects=False)
+        client = TestClient(app, raise_server_exceptions=False, follow_redirects=False)
+        client.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+        client.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
+        return client
 
     yield _client
     app.dependency_overrides.clear()

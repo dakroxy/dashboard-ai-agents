@@ -34,8 +34,8 @@ class InsurancePolicy(Base):
         nullable=True,
         index=True,
     )
-    police_number: Mapped[str | None] = mapped_column(String, nullable=True)
-    produkt_typ: Mapped[str | None] = mapped_column(String, nullable=True)
+    police_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    produkt_typ: Mapped[str | None] = mapped_column(String(100), nullable=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notice_period_months: Mapped[int | None] = mapped_column(Integer, nullable=True)

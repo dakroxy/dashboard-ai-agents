@@ -12,7 +12,7 @@ from app.db import get_db
 from app.main import app
 from app.models import AuditLog, User
 from app.services.audit import audit
-from tests.conftest import _TestSessionLocal
+from tests.conftest import _TestSessionLocal, _make_session_cookie, _TEST_CSRF_TOKEN
 
 
 def _make_sync_admin(db) -> User:
@@ -62,6 +62,8 @@ def sync_admin_client(db):
     app.dependency_overrides[get_optional_user] = override_user
 
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        c.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
 
     app.dependency_overrides.clear()
@@ -82,6 +84,8 @@ def regular_client(db):
     app.dependency_overrides[get_optional_user] = override_user
 
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        c.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+        c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
         yield c
 
     app.dependency_overrides.clear()
@@ -235,6 +239,8 @@ def test_sync_status_anonymous_access_redirects_to_login(db):
     # der Auth-Decorator so, wie er in Prod laeuft.
     try:
         with TestClient(app, raise_server_exceptions=False, follow_redirects=False) as c:
+            c.cookies.set("session", _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}))
+            c.headers["X-CSRF-Token"] = _TEST_CSRF_TOKEN
             resp = c.get("/admin/sync-status")
             assert resp.status_code == 302
             assert "/auth/google/login" in resp.headers.get("location", "")

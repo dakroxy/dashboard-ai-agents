@@ -845,6 +845,7 @@ async def extraction_field_edit_form(
     )
 
 
+# v2-TODO: documents:approve-Check ergaenzen (siehe deferred-work.md #81). Information-Disclosure-Risiko aktuell minimal — der Wert ist auf der Detail-Page ohnehin sichtbar.
 @router.get("/{document_id}/extraction/view", response_class=HTMLResponse)
 async def extraction_field_view_fragment(
     document_id: uuid.UUID,
