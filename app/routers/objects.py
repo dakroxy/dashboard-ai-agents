@@ -318,6 +318,8 @@ async def object_detail(
                 entity_type="object",
                 entity_id=detail.obj.id,
                 details={"error": str(exc)[:500]},
+                user=user,
+                request=request,
             )
             # pflegegrad_result ist trotzdem gueltig — Render laeuft weiter
     # Unbekannte weakest_field-Keys ausfiltern, sonst leeres <ul> ohne Empty-State.
@@ -1211,6 +1213,9 @@ def _parse_decimal(val: str | None) -> Decimal | None:
         parsed = Decimal(val.strip().replace(",", "."))
     except InvalidOperation:
         raise HTTPException(422, detail=f"Ungültige Zahl: {val!r}")
+    if not parsed.is_finite():
+        # NaN / Infinity aus User-Eingabe — abs() wuerde InvalidOperation werfen.
+        raise HTTPException(422, detail="Ungültige Zahl: keine endliche Zahl")
     if abs(parsed) >= Decimal("1e10"):
         raise HTTPException(422, detail="Wert zu groß (max 9.999.999.999,99)")
     return parsed

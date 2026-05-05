@@ -135,88 +135,113 @@ def _json_resp(data, status=200) -> httpx.Response:
     return httpx.Response(status, json=data)
 
 
-def test_facilioo_phase3_partial_failure_skips_unit_with_log(capsys):
-    """Phase-3: Exception in einem Unit-Attr-Call → Log-Print, restliche Units kommen durch."""
-    async def _run():
-        unit_ids = ["uid-ok", "uid-fail"]
-        error = httpx.HTTPStatusError(
-            "mock 500", request=MagicMock(), response=MagicMock(status_code=500)
-        )
-
-        async def ok_task():
-            return [{"attributeId": 1438, "value": "500"}]
-
-        async def fail_task():
-            raise error
-
-        attr_lists = await asyncio.gather(ok_task(), fail_task(), return_exceptions=True)
-        attr_by_unit: dict = {}
-        for uid, result in zip(unit_ids, attr_lists):
-            if isinstance(result, Exception):
-                print(f"[facilioo] phase3_unit_attr_failed unit_id={uid} error={result}")
-                attr_by_unit[uid] = []
-            else:
-                attr_by_unit[uid] = result
-        return attr_by_unit
-
-    attr_by_unit = asyncio.run(_run())
-    captured = capsys.readouterr()
-    assert "phase3_unit_attr_failed" in captured.out
-    assert "uid-fail" in captured.out
-    assert attr_by_unit["uid-ok"] == [{"attributeId": 1438, "value": "500"}]
-    assert attr_by_unit["uid-fail"] == []
+def _make_facilioo_api_get_mock(handlers: dict):
+    """Helper: liefert einen `_api_get`-Mock, der pro Pfad-Substring einen Handler hat."""
+    async def _fake(client, path, params=None, **kwargs):
+        for prefix, handler in handlers.items():
+            if prefix in path:
+                if callable(handler):
+                    return handler(path, params)
+                return handler
+        return {}
+    return _fake
 
 
-def test_facilioo_phase3_partial_failure_attr_by_unit_has_empty_for_failed():
-    """Phase-3 Exception: attr_by_unit[failing-uid] == []."""
-    async def _run():
-        unit_ids = ["uid-a", "uid-b", "uid-c"]
+def _phase3_router(units, attr_handler):
+    """Baut einen `_api_get`-Mock fuer fetch_conference_signature_payload(123).
 
-        async def ok():
-            return [{"v": 1}]
+    `units` = Liste von Unit-IDs fuer die Voting-Group 1.
+    `attr_handler(uid)` wird pro Unit-Attr-Call gerufen — Rueckgabewert wird
+    direkt zurueckgegeben, oder die Exception wird raised.
+    """
+    async def _fake(client, path, params=None, **kwargs):
+        # WICHTIG: spezifische Pfade ZUERST. `/conferences/123` ist Praefix
+        # vieler Subpfade — sonst greift es zu frueh.
+        if path == "/api/conferences/123":
+            return {"id": 123, "title": "Test"}
+        if path == "/api/conferences/123/property":
+            return {"id": 1, "name": "Prop"}
+        if "voting-groups/shares" in path:
+            return {"items": [{"votingGroupId": 1, "shares": "100"}], "totalPages": 1}
+        if "/mandates" in path:
+            return {"items": [], "totalPages": 1}
+        if path == "/api/voting-groups/1":
+            return {"id": 1, "units": [{"id": uid} for uid in units], "parties": []}
+        for uid in units:
+            if path == f"/api/units/{uid}/attribute-values":
+                return attr_handler(uid)
+        return {}
+    return _fake
 
-        async def fail():
-            raise ValueError("boom")
 
-        results = await asyncio.gather(ok(), fail(), ok(), return_exceptions=True)
-        attr_by_unit: dict = {}
-        for uid, r in zip(unit_ids, results):
-            attr_by_unit[uid] = [] if isinstance(r, Exception) else r
-        return attr_by_unit
+def test_facilioo_phase3_propagates_cancelled_error(monkeypatch):
+    """Phase-3: CancelledError aus einem Unit-Attr-Call darf NICHT als 'failed unit'
+    geschluckt werden — `BaseException`-Filter muss ihn re-raisen (analog Phase-1)."""
+    call_state = {"counter": 0}
 
-    attr_by_unit = asyncio.run(_run())
-    assert attr_by_unit["uid-a"] == [{"v": 1}]
-    assert attr_by_unit["uid-b"] == []
-    assert attr_by_unit["uid-c"] == [{"v": 1}]
+    def _attr(uid):
+        call_state["counter"] += 1
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(facilioo_module, "_api_get", _phase3_router([11], _attr))
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(facilioo_module.fetch_conference_signature_payload(123))
+    assert call_state["counter"] >= 1
 
 
-def test_facilioo_phase2_vg_non_dict_skipped_with_log(capsys):
-    """Phase-2: Non-Dict-VG wird mit Print-Log uebersprungen, kein AttributeError."""
-    # Simuliert den Phase-2-Loop aus facilioo.py
-    vg_details = ["unexpected_string", {"units": [{"id": "u1"}]}]
-    shares = [{"votingGroupId": "vg1"}, {"votingGroupId": "vg2"}]
+def test_facilioo_phase3_swallows_regular_exception(monkeypatch):
+    """Phase-3: regulaere Exception wird zu attr_by_unit[uid]=[], PDF laeuft weiter."""
+    def _attr(uid):
+        if uid == 11:
+            raise httpx.HTTPStatusError(
+                "mock 500", request=MagicMock(), response=MagicMock(status_code=500)
+            )
+        return {"items": [{"attributeId": 1438, "value": "500"}], "totalPages": 1}
 
-    voting_groups: list[dict] = []
-    vg_index = 0
-    for s in shares:
-        if s.get("votingGroupId") is None:
-            continue
-        vg = vg_details[vg_index]
-        if not isinstance(vg, dict):
-            print(f"[facilioo] phase2_vg_non_dict vg={vg!r}")
-            vg_index += 1
-            continue
-        voting_groups.append({"voting_group": vg, "shares": s.get("shares", "")})
-        vg_index += 1
+    monkeypatch.setattr(facilioo_module, "_api_get", _phase3_router([11, 22], _attr))
 
-    captured = capsys.readouterr()
-    assert "phase2_vg_non_dict" in captured.out
-    assert len(voting_groups) == 1
-    assert voting_groups[0]["voting_group"] == {"units": [{"id": "u1"}]}
+    payload = asyncio.run(facilioo_module.fetch_conference_signature_payload(123))
+    assert payload["conference"]["id"] == 123
+    assert len(payload["voting_groups"]) == 1
+
+
+def test_facilioo_phase2_vg_non_dict_skipped(monkeypatch, caplog):
+    """Phase-2: Non-Dict-VG wird mit _logger.warning uebersprungen, kein AttributeError."""
+    import logging
+    caplog.set_level(logging.WARNING, logger="app.services.facilioo")
+
+    async def _fake(client, path, params=None, **kwargs):
+        if path == "/api/conferences/123":
+            return {"id": 123, "title": "Test"}
+        if path == "/api/conferences/123/property":
+            return {"id": 1, "name": "Prop"}
+        if "voting-groups/shares" in path:
+            return {
+                "items": [
+                    {"votingGroupId": 1, "shares": "100"},
+                    {"votingGroupId": 2, "shares": "200"},
+                ],
+                "totalPages": 1,
+            }
+        if "/mandates" in path:
+            return {"items": [], "totalPages": 1}
+        if path == "/api/voting-groups/1":
+            return "unexpected_string"  # ← Schema-Drift, kein dict
+        if path == "/api/voting-groups/2":
+            return {"id": 2, "units": [], "parties": []}
+        return {}
+
+    monkeypatch.setattr(facilioo_module, "_api_get", _fake)
+
+    payload = asyncio.run(facilioo_module.fetch_conference_signature_payload(123))
+    assert "phase2_vg_non_dict" in caplog.text
+    assert len(payload["voting_groups"]) == 1
+    assert payload["voting_groups"][0]["voting_group"]["id"] == 2
 
 
 def test_facilioo_phase3_unit_ids_skips_non_dict_vgs():
-    """Phase-3: unit_ids enthaelt nur Units gueltiger Dict-VGs."""
+    """Phase-3: unit_ids enthaelt nur Units gueltiger Dict-VGs (Inline-Logik)."""
     voting_groups = [
         {"voting_group": "invalid_string"},
         {"voting_group": {"units": [{"id": "u1"}, {"id": "u2"}]}},
@@ -234,10 +259,7 @@ def test_facilioo_phase3_unit_ids_skips_non_dict_vgs():
                 unit_ids.append(u["id"])
                 seen_ids.add(u["id"])
 
-    assert "u1" in unit_ids
-    assert "u2" in unit_ids
-    assert "u3" in unit_ids
-    assert len(unit_ids) == 3  # Dedup: u2 nur einmal
+    assert unit_ids == ["u1", "u2", "u3"]  # Dedup: u2 nur einmal, Reihenfolge stabil
 
 
 def test_get_all_paged_total_pages_NaN_does_not_crash(monkeypatch):
@@ -330,14 +352,19 @@ def test_get_all_paged_bare_list_empty_stops_loop(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_object_detail_pflegegrad_service_crash_returns_200(db, obj, client, monkeypatch):
-    """get_or_update_pflegegrad_cache raises → Detail-Page liefert 200, kein 500."""
-    from app.services import pflegegrad as pg_module
+    """get_or_update_pflegegrad_cache raises → Detail-Page liefert 200, kein 500.
 
-    monkeypatch.setattr(
-        pg_module,
-        "get_or_update_pflegegrad_cache",
-        lambda obj, db: (_ for _ in ()).throw(RuntimeError("DB-Hiccup-Test")),
-    )
+    Wichtig: patcht im Router-Namespace (`app.routers.objects`), nicht in
+    `app.services.pflegegrad` — die Router-Datei hat den Symbol-Namen ueber
+    `from ... import` bereits in den eigenen Namespace gezogen, ein Patch
+    am Source-Modul wuerde die Call-Site nicht erreichen.
+    """
+    from app.routers import objects as objects_router
+
+    def _crash(obj, db, prov_map=None):
+        raise RuntimeError("DB-Hiccup-Test")
+
+    monkeypatch.setattr(objects_router, "get_or_update_pflegegrad_cache", _crash)
 
     resp = client.get(f"/objects/{obj.id}")
     assert resp.status_code == 200
@@ -345,37 +372,71 @@ def test_object_detail_pflegegrad_service_crash_returns_200(db, obj, client, mon
 
 def test_object_detail_pflegegrad_cache_commit_fail_creates_audit(db, obj, client, monkeypatch):
     """db.commit() im pflegegrad-Cache-Branch raised → audit_log enthaelt pflegegrad_cache_commit_fail."""
-    from app.services import pflegegrad as pg_module
+    from app.routers import objects as objects_router
     from app.services.pflegegrad import PflegegradResult
 
-    # get_or_update_pflegegrad_cache gibt cache_updated=True zurueck
     fake_result = PflegegradResult(score=80, weakest_fields=[], per_cluster={})
     monkeypatch.setattr(
-        pg_module,
+        objects_router,
         "get_or_update_pflegegrad_cache",
-        lambda o, d: (fake_result, True),
+        lambda o, d, prov_map=None: (fake_result, True),
     )
 
-    # db.commit() soll im Cache-Branch einen IntegrityError werfen
     from sqlalchemy.exc import IntegrityError
     commit_count = [0]
 
     def _fail_commit():
         commit_count[0] += 1
         if commit_count[0] == 1:
-            raise IntegrityError(None, None, Exception("test"))
-        # Weitere Commits (z. B. Audit-Session in _audit_in_new_session) laufen normal
+            raise IntegrityError("INSERT", {}, Exception("simulated"))
 
     with patch.object(db, "commit", side_effect=_fail_commit):
         resp = client.get(f"/objects/{obj.id}")
 
     assert resp.status_code == 200
-    # Audit-Eintrag pruefen (von _audit_in_new_session in neuer Session geschrieben)
-    logs = db.execute(
-        select(AuditLog).where(AuditLog.action == "pflegegrad_cache_commit_fail")
-    ).scalars().all()
+    # _audit_in_new_session schreibt in eigene SessionLocal — wir lesen aus
+    # einer neuen Session, weil der Test-`db`-Cache den Audit-Row sonst nicht sieht.
+    from app.db import SessionLocal
+    audit_db = SessionLocal()
+    try:
+        logs = audit_db.execute(
+            select(AuditLog).where(AuditLog.action == "pflegegrad_cache_commit_fail")
+        ).scalars().all()
+    finally:
+        audit_db.close()
     assert len(logs) >= 1
-    assert str(obj.id) in str(logs[0].entity_id)
+    assert str(logs[0].entity_id) == str(obj.id)
+
+
+def test_object_detail_pflegegrad_cache_commit_fail_warning_log_unchanged(
+    db, obj, client, monkeypatch, caplog
+):
+    """Cache-Commit-Fail: existing _logger.warning-Log bleibt erhalten (Sanity, AC2 Spec-Test)."""
+    import logging
+    from app.routers import objects as objects_router
+    from app.services.pflegegrad import PflegegradResult
+
+    fake_result = PflegegradResult(score=80, weakest_fields=[], per_cluster={})
+    monkeypatch.setattr(
+        objects_router,
+        "get_or_update_pflegegrad_cache",
+        lambda o, d, prov_map=None: (fake_result, True),
+    )
+
+    from sqlalchemy.exc import IntegrityError
+    commit_count = [0]
+
+    def _fail_commit():
+        commit_count[0] += 1
+        if commit_count[0] == 1:
+            raise IntegrityError("INSERT", {}, Exception("simulated"))
+
+    caplog.set_level(logging.WARNING, logger="app.routers.objects")
+    with patch.object(db, "commit", side_effect=_fail_commit):
+        resp = client.get(f"/objects/{obj.id}")
+
+    assert resp.status_code == 200
+    assert "pflegegrad cache commit failed" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -875,3 +936,224 @@ def test_deferred_work_marks_115_as_v2_key_ring_story():
         "output/implementation-artifacts/deferred-work.md", encoding="utf-8"
     ).read()
     assert "[deferred-to-v2-key-ring-story]" in content
+
+
+# ---------------------------------------------------------------------------
+# Code-Review-Patches (2026-05-05): Edge-Cases + fehlende Spec-Tests
+# ---------------------------------------------------------------------------
+
+# AC1 — Spec-Test fuer Bare-List MAX_PAGES-Cap
+
+def test_get_all_paged_bare_list_max_pages_cap_terminates(monkeypatch):
+    """Bare-List in voller _PAGE_SIZE-Groesse fuer mehr als _MAX_PAGES Pages → Cap greift."""
+    page_count = [0]
+
+    async def _fake_api_get(client, path, params=None, **kwargs):
+        page_count[0] += 1
+        return [{"id": page_count[0]}] * facilioo_module._PAGE_SIZE
+
+    monkeypatch.setattr(facilioo_module, "_api_get", _fake_api_get)
+
+    async def _run():
+        client = MagicMock()
+        return await facilioo_module._get_all_paged(client, "/api/test", rate_gate=False)
+
+    items = asyncio.run(_run())
+    # _MAX_PAGES greift — sonst waeren wir endlos im Loop
+    assert page_count[0] == facilioo_module._MAX_PAGES
+    assert len(items) == facilioo_module._MAX_PAGES * facilioo_module._PAGE_SIZE
+
+
+def test_get_all_paged_total_pages_infinity_does_not_crash(monkeypatch):
+    """totalPages='Infinity' (OverflowError) → Loop terminiert sauber, kein Crash."""
+    page_count = [0]
+
+    async def _fake_api_get(client, path, params=None, **kwargs):
+        page_count[0] += 1
+        if page_count[0] > 3:
+            return {"items": [], "totalPages": "Infinity"}
+        return {"items": [{"id": page_count[0]}], "totalPages": "Infinity"}
+
+    monkeypatch.setattr(facilioo_module, "_api_get", _fake_api_get)
+
+    async def _run():
+        client = MagicMock()
+        return await facilioo_module._get_all_paged(client, "/api/test", rate_gate=False)
+
+    items = asyncio.run(_run())
+    # Code muss OverflowError im int(float('inf'))-Cast fangen
+    assert len(items) == 3
+
+
+# AC4 — Spec-Test fuer facilioo._api_get CancelledError-Propagation
+
+@pytest.mark.asyncio
+async def test_facilioo_api_get_propagates_cancelled_error():
+    """`_api_get` faengt kein generisches `except Exception` um den await — CancelledError
+    propagiert wie erwartet, ohne in einen 500er kollabiert zu werden."""
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=asyncio.CancelledError())
+
+    with pytest.raises(asyncio.CancelledError):
+        await facilioo_module._api_get(client, "/api/test", rate_gate=False)
+
+
+# AC6 — Spec-Test: Wartung-Row-Template nutzt outerHTML-Swap fuer Per-Row-Refresh
+
+def test_wartung_row_template_uses_outer_html_swap():
+    """Wartung-DELETE-Button nutzt `hx-swap="outerHTML"` mit `closest article`-Target
+    — damit der orphan-DELETE-Branch (leerer HTMLResponse) das UI konsistent haelt
+    (das `<article>` wird durch den leeren Body ersetzt = entfernt)."""
+    with open("app/templates/_obj_versicherungen_row.html", encoding="utf-8") as fh:
+        text = fh.read()
+    # Block fuer Wartung-DELETE muss outerHTML-Swap auf closest article fahren
+    assert 'hx-delete="/objects/{{ obj.id }}/wartungspflichten/{{ w.id }}"' in text
+    # Innerhalb des Wartung-DELETE-Buttons stehen target+swap zusammen
+    wartung_delete_block = text[text.find('wartungspflichten/{{ w.id }}'):]
+    wartung_delete_block = wartung_delete_block[:500]
+    assert 'hx-target="closest article"' in wartung_delete_block
+    assert 'hx-swap="outerHTML"' in wartung_delete_block
+
+
+# Code-Review-Patches: _normalize_text Edge-Cases
+
+def test_normalize_text_zwsp_inside_word_removes_not_replaces_with_space():
+    """ZWSP zwischen zwei Buchstaben → entfernt (nicht durch Space ersetzt)."""
+    from app.services._text import _normalize_text
+
+    assert _normalize_text("Wart​ung") == "Wartung"
+
+
+def test_normalize_text_strips_word_joiner_lrm_rlm():
+    """Word-Joiner (U+2060), LRM (U+200E), RLM (U+200F) → entfernt."""
+    from app.services._text import _normalize_text
+
+    assert _normalize_text("⁠⁠⁠") == ""
+    assert _normalize_text("Test⁠Wert") == "TestWert"
+    assert _normalize_text("‎LRM-Bidi-Mark‎") == "LRM-Bidi-Mark"
+
+
+def test_normalize_text_nbsp_replaced_with_space():
+    """NBSP (U+00A0) wird zu regulaerem Space, dann gestripped."""
+    from app.services._text import _normalize_text
+
+    # NBSP zwischen Woertern → Space (kein Wort-Bruch wie bei ZWSP)
+    assert _normalize_text("Hallo Welt") == "Hallo Welt"
+
+
+def test_normalize_text_handles_non_string_input():
+    """Non-str Input (bytes, int) → '' statt TypeError."""
+    from app.services._text import _normalize_text
+
+    assert _normalize_text(b"bytes") == ""  # type: ignore[arg-type]
+    assert _normalize_text(123) == ""  # type: ignore[arg-type]
+
+
+# Code-Review-Patches: pflegegrad_color NaN-Guard
+
+def test_pflegegrad_color_nan_returns_slate():
+    """pflegegrad_color(NaN) → slate (nicht silent grün via NaN-Comparison-Quirk)."""
+    assert "slate" in pflegegrad_color(float("nan"))
+
+
+# Code-Review-Patches: _parse_decimal NaN/Infinity → 422
+
+def test_parse_decimal_rejects_nan():
+    """_parse_decimal('NaN') wirft 422 (statt InvalidOperation 500 in abs())."""
+    from app.routers.objects import _parse_decimal
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        _parse_decimal("NaN")
+    assert exc_info.value.status_code == 422
+
+
+def test_parse_decimal_rejects_infinity():
+    """_parse_decimal('Infinity') wirft 422."""
+    from app.routers.objects import _parse_decimal
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        _parse_decimal("Infinity")
+    assert exc_info.value.status_code == 422
+
+
+def test_parse_decimal_rejects_snan():
+    """_parse_decimal('sNaN') wirft 422."""
+    from app.routers.objects import _parse_decimal
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        _parse_decimal("sNaN")
+    assert exc_info.value.status_code == 422
+
+
+# Code-Review-Patches: _client_ip Edge-Cases (host:port + IPv6 zone-ID)
+
+def test_client_ip_strips_port_from_ipv4():
+    """`127.0.0.1:8080` (Proxy-XFF mit Source-Port) → '127.0.0.1', nicht None."""
+    from app.services.audit import _client_ip
+
+    request = MagicMock()
+    request.headers = {"x-forwarded-for": "127.0.0.1:8080"}
+    request.client = None
+    assert _client_ip(request) == "127.0.0.1"
+
+
+def test_client_ip_strips_zone_id_from_ipv6():
+    """`fe80::1%eth0` (IPv6 mit Zone-ID) → 'fe80::1', nicht None."""
+    from app.services.audit import _client_ip
+
+    request = MagicMock()
+    request.headers = {"x-forwarded-for": "fe80::1%eth0"}
+    request.client = None
+    result = _client_ip(request)
+    assert result is not None
+    assert result.startswith("fe80::")
+
+
+# Code-Review-Patches: _audit_in_new_session reicht user + request weiter
+
+def test_audit_in_new_session_persists_user_and_ip():
+    """`_audit_in_new_session` mit user + request → Audit-Row hat user_id und ip_address."""
+    from app.db import SessionLocal
+    from app.models import AuditLog
+    from app.services.audit import _audit_in_new_session
+
+    test_user = User(
+        id=uuid.uuid4(),
+        google_sub="audit-helper-test",
+        email="audit-helper@dbshome.de",
+        name="Audit Helper Test",
+    )
+    setup_db = SessionLocal()
+    try:
+        setup_db.add(test_user)
+        setup_db.commit()
+    finally:
+        setup_db.close()
+
+    request = MagicMock()
+    request.headers = {"x-forwarded-for": "10.0.0.5"}
+    request.client = None
+
+    _audit_in_new_session(
+        "pflegegrad_cache_commit_fail",
+        entity_type="object",
+        entity_id=uuid.uuid4(),
+        user=test_user,
+        request=request,
+    )
+
+    read_db = SessionLocal()
+    try:
+        rows = read_db.execute(
+            select(AuditLog)
+            .where(AuditLog.action == "pflegegrad_cache_commit_fail")
+            .where(AuditLog.user_id == test_user.id)
+        ).scalars().all()
+    finally:
+        read_db.close()
+    assert len(rows) >= 1
+    assert rows[0].ip_address == "10.0.0.5"
+    assert rows[0].user_email == test_user.email

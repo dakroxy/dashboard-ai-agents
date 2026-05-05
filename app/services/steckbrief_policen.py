@@ -130,8 +130,11 @@ def delete_police(
     user: User,
     request: Request | None,
 ) -> None:
-    # Selectin-Relations vorladen, damit ORM-Cascade sauber ablaufen kann.
-    _ = (policy.wartungspflichten, policy.schadensfaelle)
+    # `db.get(InsurancePolicy, id)` mit `lazy="selectin"` hat die Collections
+    # bereits geladen — Counts in Locals einfrieren, damit Audit-Autoflush
+    # sie nicht nachlaedt.
+    wartung_count = len(policy.wartungspflichten)
+    schadensfall_count = len(policy.schadensfaelle)
     audit(
         db,
         user,
@@ -149,8 +152,8 @@ def delete_police(
         entity_id=policy.id,
         details={
             "police_number": policy.police_number,
-            "wartung_count": len(policy.wartungspflichten),
-            "schadensfall_count": len(policy.schadensfaelle),
+            "wartung_count": wartung_count,
+            "schadensfall_count": schadensfall_count,
         },
         request=request,
     )

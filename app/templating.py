@@ -18,16 +18,16 @@ from markupsafe import Markup, escape
 from starlette.requests import Request
 
 from app.db import SessionLocal
-
-_SIDEBAR_WORKFLOWS_CACHE: dict[uuid.UUID, tuple[float, list[dict[str, Any]]]] = {}
-_SIDEBAR_WORKFLOWS_TTL_SECONDS = 30
-
-_logger = logging.getLogger(__name__)
 from app.models import User, Workflow
 from app.permissions import accessible_workflow_ids, has_permission
 from app.services.facilioo_tickets import facilioo_ticket_url
 from app.services.mietverwaltung import field_source
 from app.services.steckbrief import ProvenanceWithUser
+
+_logger = logging.getLogger(__name__)
+
+_SIDEBAR_WORKFLOWS_CACHE: dict[uuid.UUID, tuple[float, list[dict[str, Any]]]] = {}
+_SIDEBAR_WORKFLOWS_TTL_SECONDS = 30
 
 
 # Pro Workflow-Key: Sidebar-URL + Inline-SVG-Pfad. Halten wir hier zentral,
@@ -183,9 +183,16 @@ def provenance_pill(wrap: ProvenanceWithUser | None) -> dict[str, Any]:
     }
 
 
-def pflegegrad_color(score: int | None) -> str:
+def pflegegrad_color(score: int | float | None) -> str:
     """Tailwind-Badge-Klassen fuer Pflegegrad-Score (bg + text + border-color ohne border-Keyword)."""
     if score is None:
+        return "bg-slate-100 text-slate-500 border-slate-200"
+    # NaN-Guard: defekter Cache-Wert oder Float-NaN soll nicht silent als grün rendern
+    # (NaN-Vergleiche kollabieren in min()/max() unvorhersehbar).
+    try:
+        if score != score:  # NaN-Test
+            return "bg-slate-100 text-slate-500 border-slate-200"
+    except TypeError:
         return "bg-slate-100 text-slate-500 border-slate-200"
     score = max(0, min(100, score))
     if score >= 70:

@@ -204,7 +204,8 @@ async def _get_all_paged(
                 break
             try:
                 total_pages_int = int(total_pages) if total_pages is not None else None
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
+                # OverflowError schuetzt vor totalPages=Infinity
                 total_pages_int = None
             if total_pages_int is not None and page >= total_pages_int:
                 break
@@ -456,7 +457,7 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
                 continue
             vg = vg_details[vg_index]
             if not isinstance(vg, dict):
-                print(f"[facilioo] phase2_vg_non_dict vg={vg!r}")
+                _logger.warning("phase2_vg_non_dict vg=%r", vg)
                 vg_index += 1
                 continue
             voting_groups.append({
@@ -489,10 +490,15 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
         else:
             attr_lists = []
 
+    # CancelledError ist BaseException, nicht Exception — muss propagieren,
+    # darf nicht als "failed unit" geschluckt werden (analog Phase-1 :279).
+    for result in attr_lists:
+        if isinstance(result, asyncio.CancelledError):
+            raise result
     attr_by_unit: dict = {}
     for uid, result in zip(unit_ids, attr_lists):
-        if isinstance(result, Exception):
-            print(f"[facilioo] phase3_unit_attr_failed unit_id={uid} error={result}")
+        if isinstance(result, BaseException):
+            _logger.warning("phase3_unit_attr_failed unit_id=%s error=%r", uid, result)
             attr_by_unit[uid] = []
         else:
             attr_by_unit[uid] = result

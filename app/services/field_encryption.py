@@ -19,6 +19,10 @@ class DecryptionError(Exception):
     unbekannte key_id)."""
 
 
+# Key-Rotation aktuell NICHT supported. Format "v1:<token>" suggeriert Multi-Key-Lookup,
+# aber bei Master-Key-Wechsel werden alle vorhandenen "v1:"-Blobs unentschluesselbar.
+# Echte Loesung braucht KEY_RING-Settings + Migrations-Job.
+# Siehe deferred-work.md Eintrag #115 (deferred-to-v2-key-ring-story).
 def _derive_fernet(entity_type: str, field: str, master_key: str) -> Fernet:
     """Leitet aus dem Master-Key per HKDF einen Fernet-Schluessel ab."""
     kdf = HKDF(

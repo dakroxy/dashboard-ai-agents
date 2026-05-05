@@ -134,17 +134,31 @@ def _audit_in_new_session(
     entity_type: str | None = None,
     entity_id: uuid.UUID | None = None,
     details: dict[str, Any] | None = None,
+    user: User | None = None,
+    request: Request | None = None,
 ) -> None:
     """Legt einen Audit-Eintrag in einer NEUEN Session an.
 
     Benoetigt wenn die urspruengliche Session bereits gerollt-back wurde
     (z. B. Foto-Upload-Saga nach DB-Commit-Fehler). Best-effort: Fehler
     werden nur geloggt, nicht weiter propagiert.
+
+    `user` und `request` werden weitergereicht, damit Acting-User + IP-Address
+    auch im Side-Effect-Audit erhalten bleiben (Filter pro User in /admin/logs
+    sonst ohne Sicht auf diese Eintraege).
     """
     from app.db import SessionLocal
     db2 = SessionLocal()
     try:
-        audit(db2, None, action, entity_type=entity_type, entity_id=entity_id, details=details)
+        audit(
+            db2,
+            user,
+            action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            details=details,
+            request=request,
+        )
         db2.commit()
     except Exception:
         db2.rollback()
@@ -208,6 +222,17 @@ def _client_ip(request: Request) -> str | None:
     if not candidate:
         return None
 
+    # IPv4 mit Port (`127.0.0.1:8080`) — manche Reverse-Proxies setzen den
+    # Source-Port mit. Eine reine IPv4-Form mit genau einem Doppelpunkt ist
+    # kein valides IPv6 (IPv6 hat mind. zwei `:`); split off.
+    if candidate.count(":") == 1 and candidate.count(".") == 3:
+        candidate = candidate.split(":", 1)[0]
+
+    # IPv6 mit Zone-ID (`fe80::1%eth0`) — `ip_address` lehnt das ab; Zone fuer
+    # Logging unwichtig, nur die numerische Adresse zaehlt.
+    if "%" in candidate:
+        candidate = candidate.split("%", 1)[0]
+
     try:
         normalized = str(ipaddress.ip_address(candidate))
     except (ValueError, TypeError):
@@ -215,6 +240,6 @@ def _client_ip(request: Request) -> str | None:
         # einloggen statt Truncation-Garbage. audit_log.ip_address ist nullable.
         return None
 
-    # audit_log.ip_address ist String(45). Validierte IPv6 + Zone-ID kann
-    # 45 chars erreichen (`fe80::1234:5678:9abc:def0%eth0`); IPv4 max 15.
+    # audit_log.ip_address ist String(45). IPv6 max 39 chars, IPv4 max 15 —
+    # Truncation kann nach Validierung nicht zu malformed Werten fuehren.
     return normalized[:45]

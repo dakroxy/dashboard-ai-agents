@@ -190,8 +190,8 @@ class SharePointPhotoStore:
         return result["access_token"]
 
     async def _get_token_async(self) -> str:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._get_token)
+        # asyncio.to_thread vermeidet die in 3.12 deprecated get_event_loop()-API.
+        return await asyncio.to_thread(self._get_token)
 
     async def upload(
         self,

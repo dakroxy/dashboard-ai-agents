@@ -1,6 +1,6 @@
 # Story 5-3: Backend-Robustheit & Crash-Guards
 
-Status: review
+Status: done
 
 ## Story
 
@@ -299,7 +299,57 @@ damit Aggregator-Routen, Form-Submits und Mirror-Aufrufe gegen Schema-Drift und 
   - [x] 11.3 Manueller Smoke-Test: Wartungspflicht mit `intervall_monate=601` → 422; mit Bezeichnung aus reinen ZWSPs → 422
   - [x] 11.4 Manueller Smoke-Test: Detail-Page einer Object-Row laden, Browser DevTools öffnen, kuenstlich `pflegegrad`-Service ueber Datenbank-DDL korrumpieren (z. B. `field_provenance`-Row mit defekter `value`-JSON) — Detail-Page laedt mit 200, kein 500 (manueller Test, kein automatischer)
 
-## Tests
+### Review Findings
+
+Adversariales Code-Review mit drei Layern (Blind Hunter / Edge Case Hunter / Acceptance Auditor) gegen Commit `e256664`. 30 Befunde nach Triage: **3 Decision-Needed (alle: behalten + Edge-Cases gefixt), 19 Patches (alle applied), 8 Deferred** (in `deferred-work.md` DF12-DF19), ~14 dismissed (Noise). Komplette Suite gruen (1095 passed, 2 xfailed, 3 xpassed).
+
+#### Decision-Needed
+
+- [x] [Review][Decision] **`_client_ip` Rewrite gehört laut Spec zu Story 5-1** — `app/services/audit.py` wurde mit `ipaddress.ip_address`-Validierung + 45-Char-Truncation angefasst. Spec Vorbedingungen Zeile 22 weist Audit-IP-Truncation explizit Story 5-1 zu. Edge-Case-Befund: Validierung lehnt zusätzlich `host:port` (z. B. `127.0.0.1:8080` aus Proxy-XFF) und IPv6-Zone-IDs ab → loggt NULL statt brauchbarer IP. Optionen: revertieren und nach 5-1 verschieben, oder akzeptieren (Vorzug-Merge nach 5-3).
+- [x] [Review][Decision] **`templating.py` Autoescape + CSRF-Token-Handling gehört zu 5-1** — `select_autoescape(["html","htm","xml","svg","jinja","j2"])`-Erweiterung und Debug-Logger in `_get_csrf_token` sind ausserhalb 5-3-Scope (AC8 deckt nur `pflegegrad_color`). Kosmetisch: `_logger`-Init steht zwischen zwei `from app...`-Importen (PEP 8 Verstoss). Optionen analog zu Decision 1.
+- [x] [Review][Decision] **`except (ValueError, WriteGateError)` in `create_schadensfall_route` ohne AC** — `app/routers/objects.py` Schadensfall-Route bekam einen zusätzlichen Exception-Handler. Spec File-Touch-Liste nennt das nicht; kein AC deckt es. `WriteGateError`-Import ebenfalls neu. Optionen: behalten (defensiv, kein Schaden), revertieren (Scope-Disziplin).
+
+#### Patches
+
+**Hoch (echte Bugs):**
+
+- [x] [Review][Patch] **CancelledError leakt in Phase-3 attr_by_unit** [app/services/facilioo.py:494] — `isinstance(result, Exception)` fängt nicht `BaseException` (`CancelledError`); leckt als Daten in `attr_by_unit[uid] = CancelledError(...)`. Konsumer iteriert über Exception → TypeError oder Garbage. Phase-1 nutzt bereits `BaseException` (Zeile 279) — Phase-3 muss konsistent ziehen + `CancelledError` re-raisen.
+- [x] [Review][Patch] **`_parse_decimal` crasht bei `praemie="NaN"` / `"Infinity"`** [app/routers/objects.py:1207] — `abs(Decimal("NaN")) >= Decimal("1e10")` wirft `decimal.InvalidOperation` → 500. Verifiziert via Python-REPL. Fix: `if not parsed.is_finite(): raise HTTPException(422, ...)` vor Magnitude-Check (Pattern existiert bereits in `_parse_decimal`-Schadensfall-Variante).
+- [x] [Review][Patch] **`_normalize_text` ersetzt ZWSP/BOM mit Space mid-word** [app/services/_text.py] — `"Wart​ung"` wird zu `"Wart ung"` (Space mitten im Wort). Zero-Width-Chars sollten `""` (entfernen), nur NBSP-Klasse sollte zu Space. Tests prüfen nur Trim, keine Mid-String-Mutation.
+- [x] [Review][Patch] **`pflegegrad_color(NaN)` → grün** [app/templating.py:175] — `min(100, NaN) = 100`, `max(0, 100) = 100`, `100 >= 70` → bg-green. Defekter Cache-Score zeigt visuell als "best". Fix: NaN-Check vor Clamp (`if score is None or not isinstance(score, (int, float)) or score != score: return slate_class`).
+- [x] [Review][Patch] **`_get_all_paged` crasht bei `totalPages=Infinity`** [app/services/facilioo.py:206] — `int(float("inf"))` wirft `OverflowError`, neuer `try/except` fängt nur `(TypeError, ValueError)`. Fix: `(TypeError, ValueError, OverflowError)`.
+- [x] [Review][Patch] **`_get_token_async` nutzt deprecated `asyncio.get_event_loop()`** [app/services/photo_store.py:192] — Python 3.12 deprecated. Fix: `asyncio.get_running_loop()` oder `asyncio.to_thread(self._get_token)`.
+- [x] [Review][Patch] **`_normalize_text` strippt nicht Word-Joiner / LRM / RLM / MVS** [app/services/_text.py:18] — `_INVISIBLE_CHARS` deckt `U+200B/200C/200D/FEFF/0020`, lässt `U+2060`/`U+200E`/`U+200F`/`U+180E` durch. Bezeichnung aus `⁠`-only umgeht Empty-Check. Fix: Set erweitern oder Unicode-Cf-Kategorie via Regex.
+- [x] [Review][Patch] **`_normalize_text` wirft `TypeError` auf bytes / non-str** [app/services/_text.py:21] — Signature `str | None`, aber `unicodedata.normalize("NFKC", b"...")` crasht. Fix: `if not isinstance(s, str): return ""` vor NFKC.
+- [x] [Review][Patch] **`_audit_in_new_session` für Cache-Commit-Fail ohne IP/User** [app/routers/objects.py:316 + audit.py] — Helper akzeptiert kein `request`/`user`-Kwarg → `ip_address` und Acting-User immer NULL. Audit-Filter pro User verliert Sichtbarkeit für diesen Eintrag. Fix: Helper-Signature erweitern + Caller-Stelle nachziehen.
+
+**Mittel (Tests):**
+
+- [x] [Review][Patch] **`test_object_detail_pflegegrad_service_crash` Monkeypatch greift nicht** [tests/test_backend_robustness.py] — patcht `pg_module.get_or_update_pflegegrad_cache` nach Import in `app.routers.objects`-Namespace. Test passt nur, weil Crash gar nicht ausgelöst wird → Crash-Guard ist nicht real verifiziert. Fix: `patch("app.routers.objects.get_or_update_pflegegrad_cache", ...)`.
+- [x] [Review][Patch] **Tautologische Phase-3-Tests reimplementieren Production-Logik** [tests/test_backend_robustness.py:1220ff] — `test_facilioo_phase3_partial_failure_skips_unit_with_log`, `_attr_by_unit_has_empty_for_failed`, `_phase2_vg_non_dict_skipped`, `_phase3_unit_ids_skips_non_dict_vgs` bauen die `gather`+Filter-Logik im Test selbst nach und asserten gegen ihre eigene Re-Implementation. Würde grün bleiben, selbst wenn Production auf fail-loud zurückkippt. Fix: über `fetch_conference_signature_payload(...)` mit Mock-`_api_get` aufrufen.
+- [x] [Review][Patch] **Fehlender Test: `test_object_detail_pflegegrad_cache_commit_fail_warning_log_unchanged`** — Spec-Tests-Block listet ihn für AC2; nicht implementiert.
+- [x] [Review][Patch] **Fehlender Test: `test_facilioo_api_get_propagates_cancelled_error`** — Spec-Tests-Block listet ihn für AC4; nicht implementiert.
+- [x] [Review][Patch] **Fehlender Test: `test_get_all_paged_bare_list_max_pages_cap_terminates`** — Spec-Tests-Block listet ihn für AC1; statt dessen nur `_bare_list_empty_stops_loop` (deckt nicht den `_MAX_PAGES`-Cap).
+- [x] [Review][Patch] **Fehlender Test: `test_wartung_row_template_uses_outer_html_swap`** — Spec-Tests-Block listet ihn für AC6 (Sanity-Check); nicht implementiert.
+
+**Niedrig (Code-Qualität):**
+
+- [x] [Review][Patch] **`print(...)` statt `_logger.warning(...)`** [app/services/facilioo.py phase2_vg_non_dict + phase3_unit_attr_failed] — Production-Code nutzt `print()` für Warnings, umgeht Log-Levels und Elestio-Aggregation. Inkonsistent zum Rest des Moduls.
+- [x] [Review][Patch] **AC9: Rotation-Hinweis steht innerhalb des Docstrings** [app/services/field_encryption.py:23-29] — Spec verlangt Block-Kommentar **über** `_derive_fernet`, der Code packt vier `#`-Zeilen zwischen `"""..."""`. Funktional egal, Spec-Drift. Grep-Test grün, weil String matcht.
+- [x] [Review][Patch] **`delete_police`: `_ = (policy.wartungspflichten, policy.schadensfaelle)` ist No-Op** [app/services/steckbrief_policen.py:133] — `db.get(InsurancePolicy, id)` mit `lazy="selectin"` lädt die Relations bereits eager. Die Preload-Zeile ist tot, der Kommentar irreführend. Fix: Zeile entfernen, oder durch `db.flush()` ersetzen falls in selber TX modifiziert.
+
+#### Deferred (pre-existing oder out-of-immediate-scope)
+
+- [x] [Review][Defer] **Versicherer-FK-Existenzcheck als IDOR-Pattern** [app/routers/objects.py:1397] — Memory `feedback_form_body_idor_separate_class.md` weist auf separate Cross-Object-Checks für Form-Body-FKs hin. Versicherer ist globale Registry, daher kein Tenancy-Issue, aber Existenz-Bestätigung-Oracle für UUIDs. Defer: Threat-Model ist Intranet, Risiko niedrig.
+- [x] [Review][Defer] **`policy_deleted`-Audit feuert nicht bei Object-Cascade-Delete** [app/services/steckbrief_policen.py vs models/object.py] — `Object.policen` cascade `"all, delete-orphan"` umgeht `delete_police()`. Heute kein DELETE-/objects/-Endpoint, daher unkritisch; Pattern-Lücke wenn künftig Object-Lifecycle-Ops dazukommen.
+- [x] [Review][Defer] **`abs()` in `_parse_decimal` lässt negative Praemie durch 1e10-Cap** [app/routers/objects.py:1207] — Negative-Praemie-Validation sitzt in 5-2 separat (Police-Form). Konsistenz-Lücke, kein Crash.
+- [x] [Review][Defer] **NaN-Guard inkonsistent zwischen `_parse_decimal` (jetzt) und Schadensfall-Parser** [app/routers/objects.py] — Schadensfall hat `is_finite()`-Check, Police nach Patch dann auch — aber zwei Helper. Konsolidierung in 5-6 (Code-Qualität).
+- [x] [Review][Defer] **`delete_orphan_wartung` leerer HTMLResponse → HTMX-UI-Konsistenz** [app/routers/objects.py:1701] — Je nach `hx-swap`-Konfig zeigt UI Stale-Row bis Reload. Test prüft nur Status/Body, keine UI-Sicht. Defer als UI-Polish in 5-5.
+- [x] [Review][Defer] **`_get_all_paged` MAX_PAGES-Cap-Warning ist dict-only** [app/services/facilioo.py:206ff] — Bare-List-Loop hits Cap silent. Defer als Logging-Polish.
+- [x] [Review][Defer] **Row-Lock-Tests sind Statement-Introspection auf private SQLAlchemy-API** [tests/test_backend_robustness.py:1500] — `getattr(stmt, "_for_update_arg", None)` nutzt Private-Attribute → bricht bei SQLA-Upgrade ohne Test-Failure. Real-Concurrency erst unter Postgres testbar (Memory `project_testing_strategy.md`). Defer als Test-Hardening in 5-7.
+- [x] [Review][Defer] **`policy_deleted`-Audit vor `db.delete(policy)`** [app/services/steckbrief_policen.py:144] — Atomar in selber TX, daher kein echtes Problem; idiomatisch wäre Audit nach Mutation. Defer als Style.
+
+
 
 In `tests/test_backend_robustness.py`:
 
