@@ -457,8 +457,10 @@ def test_detail_sql_statement_count(
     # Story 3.3 Pflegegrad-Score: +5 (1x Provenance-Batch + 3x Relational-Count + 1x Cache-Commit).
     # Story 4.4 Facilioo-Vorgaenge: +2 (get_open_tickets + get_last_facilioo_sync).
     # Story 5-3 AC5: +1 Versicherer-FK-Existenzcheck bei police_create/update.
-    # Puffer fuer Framework-Setup -> max 24.
-    assert counter.count <= 24, (
+    # Story 5-2 Review-Fix: +1 db.refresh() nach Pflegegrad-Cache-Lock — schliesst
+    # den Lost-Write-Race, den der Lock allein offen liess.
+    # Puffer fuer Framework-Setup -> max 25.
+    assert counter.count <= 25, (
         f"Zu viele SQL-Statements auf Detailseite: {counter.count}"
     )
 

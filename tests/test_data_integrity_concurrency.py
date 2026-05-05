@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import uuid
 from decimal import Decimal
 from typing import Iterator
@@ -1064,8 +1065,9 @@ def test_schadensfall_create_rejects_negative_amount(db, obj, editor_client):
     assert resp.status_code == 422, f"Erwartet 422 fuer negativen Schadensbetrag, got {resp.status_code}"
 
 
-def test_registries_skips_negative_praemie_with_warning(db, obj, capsys):
+def test_registries_skips_negative_praemie_with_warning(db, obj, caplog):
     """registries.py-Aggregation ueberspringt negative Praemien mit Warning-Log."""
+    caplog.set_level(logging.WARNING, logger="app.services.registries")
     from app.services.registries import get_versicherer_detail
     from app.models import InsurancePolicy, Versicherer
     from app.services.steckbrief_write_gate import write_field_human
@@ -1103,14 +1105,14 @@ def test_registries_skips_negative_praemie_with_warning(db, obj, capsys):
 
     get_versicherer_detail(db, v.id)
 
-    captured = capsys.readouterr()
-    assert "negative_value_skipped" in captured.out, (
+    assert any("negative_value_skipped" in rec.message for rec in caplog.records), (
         "Warning-Log fuer negative Praemie erwartet"
     )
 
 
-def test_registries_skips_negative_schaden_with_warning(db, obj, capsys):
+def test_registries_skips_negative_schaden_with_warning(db, obj, caplog):
     """registries.py-Aggregation ueberspringt negative Schadensbetrage mit Warning-Log."""
+    caplog.set_level(logging.WARNING, logger="app.services.registries")
     from app.services.registries import get_versicherer_detail
     from app.models import InsurancePolicy, Schadensfall as SchadensfallModel, Versicherer
     from app.services.steckbrief_write_gate import write_field_human
@@ -1142,8 +1144,7 @@ def test_registries_skips_negative_schaden_with_warning(db, obj, capsys):
 
     get_versicherer_detail(db, v.id)
 
-    captured = capsys.readouterr()
-    assert "negative_value_skipped" in captured.out, (
+    assert any("negative_value_skipped" in rec.message for rec in caplog.records), (
         "Warning-Log fuer negativen Schadensbetrag erwartet"
     )
 

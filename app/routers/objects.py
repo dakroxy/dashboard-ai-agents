@@ -1777,6 +1777,9 @@ async def notiz_save(
     # Row-Lock VOR dem JSONB-Snapshot: serialisiert parallele notes_owners-Saves
     # (Race-Condition zwei Admins, Defer #83).
     db.execute(select(Object).where(Object.id == object_id).with_for_update())
+    # Nach Lock-Erwerb obj.notes_owners aus DB neu laden — Lock allein verhindert
+    # keinen Lost-Write, wenn obj noch den Pre-Lock-Snapshot der Session traegt.
+    db.refresh(obj, attribute_names=["notes_owners"])
 
     new_notes = dict(obj.notes_owners or {})
     note_clean = (note or "").strip()

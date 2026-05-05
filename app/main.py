@@ -256,10 +256,17 @@ def _seed_default_workflow_access() -> None:
     """Beide System-Rollen bekommen Default-Zugriff auf alle Default-Workflows.
     Per Admin-UI kann das spaeter angepasst werden.
 
-    resource_access hat KEINE UNIQUE-Constraint, deshalb SELECT-then-INSERT
-    statt ON CONFLICT DO NOTHING.
+    Multi-Worker-Boot-sicher: Postgres nutzt ON CONFLICT DO NOTHING gegen
+    den partiellen Unique-Index `uq_resource_access_role_resource`
+    (Migration 0020); SQLite-Fallback nutzt SELECT-then-INSERT (in der
+    Test-Suite einprozessig, daher unkritisch).
     """
     db = SessionLocal()
+    try:
+        is_postgres = db.bind.dialect.name == "postgresql"
+    except Exception:
+        is_postgres = False
+
     try:
         keys = [wf["key"] for wf in _DEFAULT_WORKFLOWS]
         workflows = (
@@ -270,24 +277,42 @@ def _seed_default_workflow_access() -> None:
                 role = db.query(Role).filter(Role.key == role_key).first()
                 if role is None:
                     continue
-                existing = db.execute(
-                    select(ResourceAccess).where(
-                        ResourceAccess.role_id == role.id,
-                        ResourceAccess.resource_type == RESOURCE_TYPE_WORKFLOW,
-                        ResourceAccess.resource_id == wf.id,
+                if is_postgres:
+                    from sqlalchemy.dialects.postgresql import insert as pg_insert
+                    stmt = (
+                        pg_insert(ResourceAccess)
+                        .values(
+                            id=uuid.uuid4(),
+                            role_id=role.id,
+                            resource_type=RESOURCE_TYPE_WORKFLOW,
+                            resource_id=wf.id,
+                            mode="allow",
+                        )
+                        .on_conflict_do_nothing(
+                            index_elements=["role_id", "resource_type", "resource_id"],
+                            index_where=ResourceAccess.role_id.isnot(None),
+                        )
                     )
-                ).scalar_one_or_none()
-                if existing is not None:
-                    continue
-                db.add(
-                    ResourceAccess(
-                        id=uuid.uuid4(),
-                        role_id=role.id,
-                        resource_type=RESOURCE_TYPE_WORKFLOW,
-                        resource_id=wf.id,
-                        mode="allow",
+                    db.execute(stmt)
+                else:
+                    existing = db.execute(
+                        select(ResourceAccess).where(
+                            ResourceAccess.role_id == role.id,
+                            ResourceAccess.resource_type == RESOURCE_TYPE_WORKFLOW,
+                            ResourceAccess.resource_id == wf.id,
+                        )
+                    ).scalar_one_or_none()
+                    if existing is not None:
+                        continue
+                    db.add(
+                        ResourceAccess(
+                            id=uuid.uuid4(),
+                            role_id=role.id,
+                            resource_type=RESOURCE_TYPE_WORKFLOW,
+                            resource_id=wf.id,
+                            mode="allow",
+                        )
                     )
-                )
         db.commit()
     finally:
         db.close()

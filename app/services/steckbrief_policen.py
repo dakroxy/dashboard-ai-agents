@@ -66,6 +66,8 @@ def create_police(
 ) -> InsurancePolicy:
     if praemie is not None and praemie < 0:
         raise ValueError("praemie must be >= 0")
+    if notice_period_months is not None and not (0 <= notice_period_months <= 360):
+        raise ValueError("notice_period_months must be in 0..360")
     policy = InsurancePolicy(object_id=obj.id)
     db.add(policy)
     db.flush()
@@ -103,6 +105,12 @@ def update_police(
 ) -> InsurancePolicy:
     if "praemie" in fields and fields["praemie"] is not None and fields["praemie"] < 0:
         raise ValueError("praemie must be >= 0")
+    if (
+        "notice_period_months" in fields
+        and fields["notice_period_months"] is not None
+        and not (0 <= fields["notice_period_months"] <= 360)
+    ):
+        raise ValueError("notice_period_months must be in 0..360")
     for field_name, value in fields.items():
         write_field_human(
             db,

@@ -223,6 +223,10 @@ def get_or_update_pflegegrad_cache(
     # Row-Lock VOR is_stale-Pruefung: serialisiert parallele Cache-Writes
     # (Last-Writer-Wins-Race, Defer #34).
     db.execute(select(Object).where(Object.id == obj.id).with_for_update())
+    # Nach Lock-Erwerb Cache-Felder neu laden — sonst entscheidet `is_stale`
+    # auf dem Pre-Lock-Snapshot und ein gleichzeitiger Worker-Schreiber wuerde
+    # ueberschrieben.
+    db.refresh(obj, attribute_names=["pflegegrad_score_cached", "pflegegrad_score_updated_at"])
     result = pflegegrad_score(obj, db)
 
     now = datetime.datetime.now(tz=timezone.utc)
