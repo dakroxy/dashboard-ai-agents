@@ -144,7 +144,12 @@ class CSRFMiddleware:
                             "body": body,
                             "more_body": False,
                         }
-                    return {"type": "http.disconnect"}
+                    # Nach dem Body-Delivery auf das Original-receive
+                    # durchreichen — sonst interpretiert
+                    # `StreamingResponse.listen_for_disconnect` ein synthetisches
+                    # http.disconnect als Client-Trennung und canceled die
+                    # Streaming-Task → 0-Byte-Body trotz Status 200.
+                    return await receive()
 
                 await self.app(scope, replay, send)
                 return
