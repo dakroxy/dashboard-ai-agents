@@ -126,6 +126,102 @@ class TestCsrf:
         if resp.status_code == 200:
             assert "X-CSRF-Token" in resp.text
 
+    def test_csrf_form_body_fallback_passes(self, db, test_user):
+        """Klassischer <form method=post>-Submit ohne X-CSRF-Token-Header,
+        aber mit `_csrf`-Form-Field passiert die Middleware (Form-Body-Fallback)."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app.auth import get_current_user, get_optional_user
+        from app.db import get_db
+        from tests.conftest import _make_session_cookie, _TEST_CSRF_TOKEN
+
+        def override_db():
+            yield db
+
+        def override_user():
+            return test_user
+
+        app.dependency_overrides[get_db] = override_db
+        app.dependency_overrides[get_current_user] = override_user
+        app.dependency_overrides[get_optional_user] = override_user
+
+        try:
+            with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+                c.cookies.set(
+                    "session",
+                    _make_session_cookie({
+                        "user_id": str(test_user.id),
+                        "csrf_token": _TEST_CSRF_TOKEN,
+                    }),
+                )
+                # Kein X-CSRF-Token-Header — nur _csrf-Form-Field.
+                resp = c.post(
+                    "/objects/00000000-0000-0000-0000-000000000001/policen",
+                    data={
+                        "_csrf": _TEST_CSRF_TOKEN,
+                        "versicherer_id": "",
+                        "police_number": "12345",
+                    },
+                )
+                # Wenn 403: muss von fehlender Permission kommen, NICHT von CSRF.
+                if resp.status_code == 403:
+                    detail = resp.json().get("detail", "")
+                    assert "CSRF" not in detail, (
+                        f"CSRF-Fehler trotz validem Form-Body-Token: {detail}"
+                    )
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_csrf_form_body_fallback_with_invalid_token_returns_403(self, db, test_user):
+        """Form-Body mit falschem `_csrf`-Field -> 403 von der Middleware."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app.auth import get_current_user, get_optional_user
+        from app.db import get_db
+        from tests.conftest import _make_session_cookie, _TEST_CSRF_TOKEN
+
+        def override_db():
+            yield db
+
+        def override_user():
+            return test_user
+
+        app.dependency_overrides[get_db] = override_db
+        app.dependency_overrides[get_current_user] = override_user
+        app.dependency_overrides[get_optional_user] = override_user
+
+        try:
+            with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+                c.cookies.set(
+                    "session",
+                    _make_session_cookie({
+                        "user_id": str(test_user.id),
+                        "csrf_token": _TEST_CSRF_TOKEN,
+                    }),
+                )
+                resp = c.post(
+                    "/objects/00000000-0000-0000-0000-000000000001/policen",
+                    data={
+                        "_csrf": "wrong-token",
+                        "versicherer_id": "",
+                        "police_number": "12345",
+                    },
+                )
+                assert resp.status_code == 403
+                assert "CSRF" in resp.json().get("detail", "")
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_csrf_input_helper_emits_hidden_field(self, auth_client):
+        """`csrf_input(request)`-Jinja-Global rendert das Hidden-Input mit Token."""
+        # Render die ETV-Auswahlseite — sie nutzt csrf_input direkt.
+        resp = auth_client.get("/workflows/etv-signature-list/")
+        # 200 oder 502/503 (Facilioo nicht erreichbar im Test) — wichtig: nicht 403.
+        assert resp.status_code != 403
+        if resp.status_code == 200:
+            assert 'name="_csrf"' in resp.text
+            assert 'type="hidden"' in resp.text
+
 
 # ---------------------------------------------------------------------------
 # AC2: Cache-Control

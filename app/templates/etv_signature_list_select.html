@@ -15,6 +15,7 @@
 
 <form method="post" action="/workflows/etv-signature-list/generate"
       class="rounded-lg bg-white border border-slate-200 p-6 max-w-2xl">
+    {{ csrf_input(request) }}
     <label for="conference_id" class="block text-sm font-medium text-slate-700 mb-2">
         Eigentümerversammlung
     </label>

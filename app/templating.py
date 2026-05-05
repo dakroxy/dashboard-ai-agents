@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi.templating import Jinja2Templates
 from jinja2 import select_autoescape
+from markupsafe import Markup, escape
 from starlette.requests import Request
 
 from app.db import SessionLocal
@@ -185,12 +186,27 @@ def _get_csrf_token(request) -> str:
         return ""
 
 
+def _csrf_input(request) -> Markup:
+    """Hidden Input fuer klassische <form method="post">-Submits.
+
+    HTMX-Submits bekommen den Token via `hx-headers` in base.html; klassische
+    Browser-Forms haben keinen Header-Mechanismus. Die CSRF-Middleware
+    (`app/middleware/csrf.py`) akzeptiert deshalb `_csrf` aus dem Form-Body
+    als Fallback. Templates rufen einfach `{{ csrf_input(request) }}` auf.
+    """
+    token = _get_csrf_token(request)
+    return Markup(
+        f'<input type="hidden" name="_csrf" value="{escape(token)}">'
+    )
+
+
 templates = Jinja2Templates(directory="app/templates")
 # Autoescape explizit auf HTML-Erweiterungen begrenzen — versionsstabil
 # und verhindert versehentliches Escapen kuenftiger Plain-Text-Templates.
 templates.env.autoescape = select_autoescape(["html", "htm", "xml", "jinja"])
 templates.env.globals["has_permission"] = has_permission
 templates.env.globals["csrf_token"] = _get_csrf_token
+templates.env.globals["csrf_input"] = _csrf_input
 templates.env.globals["field_source"] = field_source
 templates.env.globals["provenance_pill"] = provenance_pill
 templates.env.globals["pflegegrad_color"] = pflegegrad_color
