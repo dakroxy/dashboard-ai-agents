@@ -122,6 +122,8 @@ def delete_police(
     user: User,
     request: Request | None,
 ) -> None:
+    # Selectin-Relations vorladen, damit ORM-Cascade sauber ablaufen kann.
+    _ = (policy.wartungspflichten, policy.schadensfaelle)
     audit(
         db,
         user,
@@ -129,6 +131,19 @@ def delete_police(
         entity_type="police",
         entity_id=policy.id,
         details={"action": "delete", "police_number": policy.police_number},
+        request=request,
+    )
+    audit(
+        db,
+        user,
+        "policy_deleted",
+        entity_type="police",
+        entity_id=policy.id,
+        details={
+            "police_number": policy.police_number,
+            "wartung_count": len(policy.wartungspflichten),
+            "schadensfall_count": len(policy.schadensfaelle),
+        },
         request=request,
     )
     db.delete(policy)

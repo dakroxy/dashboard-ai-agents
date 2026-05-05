@@ -187,6 +187,8 @@ async def _get_all_paged(
 
         if isinstance(data, list):
             all_items.extend(data)
+            if not data:
+                break
             if len(data) < _PAGE_SIZE:
                 break
         elif isinstance(data, dict):
@@ -196,7 +198,11 @@ async def _get_all_paged(
             last_flag = data.get("last")
             if last_flag is True:
                 break
-            if total_pages is not None and page >= int(total_pages):
+            try:
+                total_pages_int = int(total_pages) if total_pages is not None else None
+            except (TypeError, ValueError):
+                total_pages_int = None
+            if total_pages_int is not None and page >= total_pages_int:
                 break
             if not content:
                 break
@@ -438,19 +444,28 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
         for s in shares:
             if s.get("votingGroupId") is None:
                 continue
+            vg = vg_details[vg_index]
+            if not isinstance(vg, dict):
+                print(f"[facilioo] phase2_vg_non_dict vg={vg!r}")
+                vg_index += 1
+                continue
             voting_groups.append({
-                "voting_group": vg_details[vg_index],
+                "voting_group": vg,
                 "shares": s.get("shares", ""),
             })
             vg_index += 1
 
         # Phase 3: MEA pro Unit (parallel, einmal pro unique Unit-ID).
-        unit_ids = list({
-            u.get("id")
-            for vg in voting_groups
-            for u in (vg["voting_group"].get("units") or [])
-            if u.get("id") is not None
-        })
+        unit_ids: list = []
+        seen_ids: set = set()
+        for vg in voting_groups:
+            vg_inner = vg["voting_group"]
+            if not isinstance(vg_inner, dict):
+                continue
+            for u in (vg_inner.get("units") or []):
+                if u.get("id") is not None and u["id"] not in seen_ids:
+                    unit_ids.append(u["id"])
+                    seen_ids.add(u["id"])
         if unit_ids:
             attr_tasks = [
                 _get_all_paged(
@@ -460,11 +475,17 @@ async def fetch_conference_signature_payload(conf_id: int | str) -> dict:
                 )
                 for uid in unit_ids
             ]
-            attr_lists = await asyncio.gather(*attr_tasks)
+            attr_lists = await asyncio.gather(*attr_tasks, return_exceptions=True)
         else:
             attr_lists = []
 
-    attr_by_unit: dict = dict(zip(unit_ids, attr_lists))
+    attr_by_unit: dict = {}
+    for uid, result in zip(unit_ids, attr_lists):
+        if isinstance(result, Exception):
+            print(f"[facilioo] phase3_unit_attr_failed unit_id={uid} error={result}")
+            attr_by_unit[uid] = []
+        else:
+            attr_by_unit[uid] = result
     for entry in voting_groups:
         total = Decimal("0")
         seen = False

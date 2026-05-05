@@ -417,7 +417,11 @@ def approve_review_entry(
     wiederverwendet — so landen Feld, Provenance und Audit in einer
     atomaren Transaktion.
     """
-    entry = db.get(ReviewQueueEntry, entry_id)
+    entry = db.execute(
+        select(ReviewQueueEntry)
+        .where(ReviewQueueEntry.id == entry_id)
+        .with_for_update()
+    ).scalar_one_or_none()
     if entry is None:
         raise WriteGateError(f"ReviewQueueEntry {entry_id} nicht gefunden")
     if entry.status != "pending":
@@ -495,7 +499,11 @@ def reject_review_entry(
     request: Request | None = None,
 ) -> None:
     """Lehnt einen KI-Vorschlag ab. Kein Field-Write, keine Provenance-Row."""
-    entry = db.get(ReviewQueueEntry, entry_id)
+    entry = db.execute(
+        select(ReviewQueueEntry)
+        .where(ReviewQueueEntry.id == entry_id)
+        .with_for_update()
+    ).scalar_one_or_none()
     if entry is None:
         raise WriteGateError(f"ReviewQueueEntry {entry_id} nicht gefunden")
     if entry.status != "pending":

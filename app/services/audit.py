@@ -12,6 +12,7 @@ wie der fachliche Vorgang landet.
 """
 from __future__ import annotations
 
+import ipaddress
 import uuid
 from typing import Any
 
@@ -89,6 +90,8 @@ KNOWN_AUDIT_ACTIONS: list[str] = sorted(
         "policy_violation",
         "encryption_key_missing",
         "photo_upload_orphan",
+        "policy_deleted",
+        "pflegegrad_cache_commit_fail",
     ]
 )
 
@@ -179,14 +182,39 @@ def _update_stub_status_in_new_session(
 
 
 def _client_ip(request: Request) -> str | None:
-    # X-Forwarded-For vorrangig (hinter Reverse-Proxy wie Elestio-Router).
+    """Liefert die Client-IP fuer den Audit-Eintrag.
+
+    X-Forwarded-For wird vorrangig genutzt (hinter Reverse-Proxy wie
+    Elestio-Router); Fallback auf `request.client.host`.
+
+    Validierung via `ipaddress.ip_address` schuetzt vor:
+      - Garbage in XFF (gespoofte Strings, die DB-Constraint-Errors
+        oder unparseable Audit-Eintraege erzeugen wuerden);
+      - IPv6-Truncation-Korruption (str-Slice auf 45 chars wuerde
+        Adressen mid-segment abschneiden);
+      - Encoding-Surprises (Surrogate-Pairs, Multi-Byte-Codepoints).
+
+    Liefert die normalisierte IP-Repraesentation oder `None` bei
+    ungueltigen Inputs (Audit-Log darf nie an einer schlechten IP scheitern).
+    """
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
-        ip = fwd.split(",")[0].strip()
+        candidate = fwd.split(",")[0].strip()
     elif request.client:
-        ip = request.client.host
+        candidate = request.client.host or ""
     else:
         return None
-    # audit_log.ip_address ist String(45) — Truncation verhindert DB-Constraint-Error
-    # bei gespoofen X-Forwarded-For-Chains (kein ALTER COLUMN noetig, Spalte korrekt seit 0007).
-    return ip[:45] if ip else None
+
+    if not candidate:
+        return None
+
+    try:
+        normalized = str(ipaddress.ip_address(candidate))
+    except (ValueError, TypeError):
+        # Garbage in XFF (z. B. "X" * 50 oder mit Sonderzeichen) -> nichts
+        # einloggen statt Truncation-Garbage. audit_log.ip_address ist nullable.
+        return None
+
+    # audit_log.ip_address ist String(45). Validierte IPv6 + Zone-ID kann
+    # 45 chars erreichen (`fe80::1234:5678:9abc:def0%eth0`); IPv4 max 15.
+    return normalized[:45]

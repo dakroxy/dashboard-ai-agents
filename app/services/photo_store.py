@@ -15,6 +15,7 @@ enthalten — temporaere Graph-API-Download-URLs werden in v1.1 nachgezogen
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import pathlib
 from typing import Literal, Protocol, runtime_checkable
@@ -188,6 +189,10 @@ class SharePointPhotoStore:
             raise PhotoStoreError(f"SharePoint-Auth fehlgeschlagen: {err}")
         return result["access_token"]
 
+    async def _get_token_async(self) -> str:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._get_token)
+
     async def upload(
         self,
         *,
@@ -197,7 +202,7 @@ class SharePointPhotoStore:
         content: bytes,
         content_type: str,
     ) -> PhotoRef:
-        token = self._get_token()
+        token = await self._get_token_async()
         encoded = quote(filename, safe="")
         url = (
             f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}/root:"
@@ -229,7 +234,7 @@ class SharePointPhotoStore:
     async def delete(self, ref: PhotoRef) -> None:
         if not ref.drive_item_id:
             return
-        token = self._get_token()
+        token = await self._get_token_async()
         url = (
             f"https://graph.microsoft.com/v1.0/drives/{self.drive_id}"
             f"/items/{ref.drive_item_id}"

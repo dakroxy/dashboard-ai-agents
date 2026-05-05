@@ -15,8 +15,9 @@ from app.services.pflegegrad import (
     pflegegrad_score,
 )
 
-# Stabiles Basis-Datum (Monatsmitte, kein Flackern bei Monatsrand)
-_BASE = _dt.datetime.now(_dt.timezone.utc).replace(
+# Stabiles Basis-Datum: immer die 15. des Vormonats (stabil, immer in der Vergangenheit).
+# -20 Tage stellt sicher, dass wir auch am 1.–14. des aktuellen Monats immer im Vormonat landen.
+_BASE = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=20)).replace(
     day=15, hour=12, minute=0, second=0, microsecond=0
 )
 

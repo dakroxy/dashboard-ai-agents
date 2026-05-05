@@ -227,6 +227,7 @@ _Kritische Regeln und Muster, die AI-Agenten beim Implementieren in diesem Proje
 **LLM-Output-Haertung**
 - **IBAN/BIC aus LLM-Ausgaben immer** durch Unicode-NFKC-Normalize + `isalnum()`-Filter + `schwifty`-Validierung. Sonst schleichen sich Zero-Width-Spaces (U+200B) durch, die `replace(" ", "")` nicht faengt. Memory: `feedback_llm_iban_unicode_normalize`.
 - **Haiku nicht fuer Chat/Praezision** — verliert einzelne Ziffern in freier JSON-Ausgabe (IBAN 22→21). Chat-Flows setzen Sonnet 4.6 als Default. Memory: `feedback_haiku_unreliable_for_long_digits`.
+- **Freie Text-Inputs: durch `_normalize_text(...)` aus `app/services/_text.py`** (NFKC + ZWSP/NBSP-Strip + str.strip()) normalisieren, bevor Leer-Check oder DB-Persistierung. Schuetzt vor Zero-Width-Spaces, NBSPs und BOMs aus Copy-Paste/LLM-Ausgaben.
 - Scan-**Dateinamen sind KEINE Info-Quelle**. Nur der PDF-Inhalt zaehlt. Ist im Extract-Prompt verankert; in neuen Prompts nicht weglassen.
 
 **JSONB-Fallen**

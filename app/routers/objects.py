@@ -36,10 +36,11 @@ from app.config import settings
 from app.db import get_db
 from app.models import Eigentuemer, InsurancePolicy, Object, Schadensfall, Unit, User, Wartungspflicht
 from app.models.object import SteckbriefPhoto
-from app.models.registry import Dienstleister
+from app.models.registry import Dienstleister, Versicherer
+from app.services._text import _normalize_text
 from app.permissions import accessible_object_ids, has_permission, require_permission
 from app.services.impower import get_bank_balance
-from app.services.audit import audit
+from app.services.audit import audit, _audit_in_new_session
 from app.services.field_encryption import DecryptionError, decrypt_field
 from app.services.photo_store import (
     LARGE_UPLOAD_THRESHOLD,
@@ -95,7 +96,7 @@ from app.services.facilioo_tickets import (
     get_open_tickets_for_object,
 )
 from app.services.pflegegrad import WEAKEST_FIELD_LABELS, get_or_update_pflegegrad_cache
-from app.services.steckbrief_write_gate import write_field_human
+from app.services.steckbrief_write_gate import WriteGateError, write_field_human
 from app.templating import templates
 
 
@@ -283,7 +284,11 @@ async def object_detail(
     sparkline_svg = build_sparkline_svg(sparkline_points)
 
     # --- Pflegegrad (Story 3.3) ---
-    pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(detail.obj, db)
+    try:
+        pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(detail.obj, db)
+    except Exception as exc:
+        _logger.warning("pflegegrad_score_failed object=%s: %s", detail.obj.id, exc)
+        pflegegrad_result, cache_updated = None, False
     if cache_updated:
         try:
             db.commit()
@@ -292,6 +297,12 @@ async def object_detail(
             _logger.warning(
                 "pflegegrad cache commit failed for object=%s: %s",
                 detail.obj.id, exc,
+            )
+            _audit_in_new_session(
+                "pflegegrad_cache_commit_fail",
+                entity_type="object",
+                entity_id=detail.obj.id,
+                details={"error": str(exc)[:500]},
             )
             # pflegegrad_result ist trotzdem gueltig — Render laeuft weiter
     # Unbekannte weakest_field-Keys ausfiltern, sonst leeres <ul> ohne Empty-State.
@@ -1187,9 +1198,12 @@ def _parse_decimal(val: str | None) -> Decimal | None:
     if not val or not val.strip():
         return None
     try:
-        return Decimal(val.strip().replace(",", "."))
+        parsed = Decimal(val.strip().replace(",", "."))
     except InvalidOperation:
         raise HTTPException(422, detail=f"Ungültige Zahl: {val!r}")
+    if abs(parsed) >= Decimal("1e10"):
+        raise HTTPException(422, detail="Wert zu groß (max 9.999.999.999,99)")
+    return parsed
 
 
 def _render_versicherungen(
@@ -1346,6 +1360,13 @@ async def create_schadensfall_route(
     except IntegrityError:
         db.rollback()
         return _render_with_error("Speichern fehlgeschlagen — bitte erneut versuchen.")
+    except (ValueError, WriteGateError) as exc:
+        # Service-Guards (description-Cap, Double-Encrypt-Guard, ...) muessen
+        # User-sichtbar als 422 landen, nicht als 500. WriteGateError beim
+        # Double-Encrypt-Schutz ist heuristisch und kann auch fuer legitime
+        # User-Inputs auf v1: feuern (siehe deferred-work.md D3).
+        db.rollback()
+        return _render_with_error(f"Eingabe ungültig: {exc}")
 
     return _render_versicherungen(request, obj, db, user)
 
@@ -1373,6 +1394,8 @@ async def police_create(
             parsed_versicherer_id = uuid.UUID(versicherer_id.strip())
         except ValueError:
             raise HTTPException(422, detail="Ungültige Versicherer-ID")
+        if db.get(Versicherer, parsed_versicherer_id) is None:
+            raise HTTPException(422, detail="Versicherer nicht gefunden")
 
     parsed_start = _parse_date(start_date)
     parsed_end = _parse_date(end_date)
@@ -1471,6 +1494,8 @@ async def police_update(
             parsed_versicherer_id = uuid.UUID(versicherer_id.strip())
         except ValueError:
             raise HTTPException(422, detail="Ungültige Versicherer-ID")
+        if db.get(Versicherer, parsed_versicherer_id) is None:
+            raise HTTPException(422, detail="Versicherer nicht gefunden")
 
     parsed_start = _parse_date(start_date)
     parsed_end = _parse_date(end_date)
@@ -1565,7 +1590,8 @@ async def wartungspflicht_create(
     if policy is None or policy.object_id != obj.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
 
-    if not bezeichnung.strip():
+    bezeichnung = _normalize_text(bezeichnung)
+    if not bezeichnung:
         return HTMLResponse(
             content="<p class='text-red-600 text-sm p-2'>Bezeichnung ist Pflichtfeld.</p>",
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1594,6 +1620,11 @@ async def wartungspflicht_create(
                 content="<p class='text-red-600 text-sm p-2'>Intervall muss mindestens 1 Monat sein.</p>",
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
+        if parsed_intervall is not None and parsed_intervall > 600:
+            return HTMLResponse(
+                content="<p class='text-red-600 text-sm p-2'>Intervall zu groß (max 600 Monate / 50 Jahre).</p>",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
     parsed_letzte = _parse_date(letzte_wartung)
     parsed_next = _parse_date(next_due_date)
@@ -1610,7 +1641,7 @@ async def wartungspflicht_create(
         policy,
         user,
         request,
-        bezeichnung=bezeichnung.strip(),
+        bezeichnung=bezeichnung,
         dienstleister_id=parsed_dienstleister_id,
         intervall_monate=parsed_intervall,
         letzte_wartung=parsed_letzte,
@@ -1658,7 +1689,7 @@ async def wartungspflicht_delete(
     db.commit()
 
     if policy is None:
-        return _render_versicherungen(request, obj, db, user)
+        return HTMLResponse(content="", status_code=200)
 
     db.refresh(policy)
     dienstleister_list = get_all_dienstleister(db)

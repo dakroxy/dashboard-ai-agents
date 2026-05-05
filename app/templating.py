@@ -7,6 +7,7 @@ Helper-Funktion eines anderen Router erwartet.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi.templating import Jinja2Templates
@@ -15,6 +16,8 @@ from markupsafe import Markup, escape
 from starlette.requests import Request
 
 from app.db import SessionLocal
+
+_logger = logging.getLogger(__name__)
 from app.models import User, Workflow
 from app.permissions import accessible_workflow_ids, has_permission
 from app.services.facilioo_tickets import facilioo_ticket_url
@@ -172,6 +175,7 @@ def pflegegrad_color(score: int | None) -> str:
     """Tailwind-Badge-Klassen fuer Pflegegrad-Score (bg + text + border-color ohne border-Keyword)."""
     if score is None:
         return "bg-slate-100 text-slate-500 border-slate-200"
+    score = max(0, min(100, score))
     if score >= 70:
         return "bg-green-100 text-green-800 border-green-200"
     if score >= 40:
@@ -180,9 +184,18 @@ def pflegegrad_color(score: int | None) -> str:
 
 
 def _get_csrf_token(request) -> str:
+    """Liest den CSRF-Token aus der Session.
+
+    Faellt auf "" zurueck, wenn (a) `request` ist `None`/Undefined (z. B.
+    PDF-Render via `templates.get_template().render(...)` ohne Request),
+    oder (b) SessionMiddleware nicht aktiv ist. Beides loggen wir auf
+    DEBUG-Level — der Reject-Pfad in CSRFMiddleware ist unsere echte
+    Defense, hier ist es ausschliesslich Beobachtbarkeit.
+    """
     try:
-        return request.session.get("csrf_token", "")
-    except Exception:
+        return request.session.get("csrf_token", "") or ""
+    except Exception as exc:
+        _logger.debug("csrf_token global: empty fallback (%s)", exc)
         return ""
 
 
@@ -201,9 +214,12 @@ def _csrf_input(request) -> Markup:
 
 
 templates = Jinja2Templates(directory="app/templates")
-# Autoescape explizit auf HTML-Erweiterungen begrenzen — versionsstabil
-# und verhindert versehentliches Escapen kuenftiger Plain-Text-Templates.
-templates.env.autoescape = select_autoescape(["html", "htm", "xml", "jinja"])
+# Autoescape explizit aktiviert — versionsstabil. Liste deckt:
+#  - html/htm: Standard-Templates fuer Browser
+#  - xml: Strukturdaten
+#  - svg: SVG kann via <foreignObject>/<script> XSS-Vektor sein
+#  - jinja/j2: gaengige Jinja-Datei-Endungen (`*.html.jinja`, `*.html.j2`)
+templates.env.autoescape = select_autoescape(["html", "htm", "xml", "svg", "jinja", "j2"])
 templates.env.globals["has_permission"] = has_permission
 templates.env.globals["csrf_token"] = _get_csrf_token
 templates.env.globals["csrf_input"] = _csrf_input

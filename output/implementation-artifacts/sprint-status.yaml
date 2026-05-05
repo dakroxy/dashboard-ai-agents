@@ -1,5 +1,5 @@
 # generated: 2026-04-21
-# last_updated: 2026-05-01 (Story 5-4 ready-for-dev)
+# last_updated: 2026-05-05 (Story 5-1 done nach 2nd-Pass-Code-Review)
 # project: Dashboard KI-Agenten
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-21
-last_updated: 2026-05-05 (Story 5-2 review)
+last_updated: 2026-05-05 (Story 5-3 review; AC1-AC9 done, 43 Tests gruen, 1048 Suite-Tests gruen)
 project: Dashboard KI-Agenten
 project_key: NOKEY
 tracking_system: file-system
@@ -94,13 +94,13 @@ development_status:
   # --- Pre-Prod (Pflicht vor Rollout) ---
   # Deferred: #3/#80/#82/#119 CSRF, #5 Cache-Control, #87/#89/#142 Length-Caps,
   #           #116 Double-Encrypt, #121 Jinja2-Autoescape, #4 IDOR approve_ki, #81 extraction/view
-  5-1-security-hardening: review
+  5-1-security-hardening: done
   # Deferred: #34 Cache-Race, #77 Concurrent-Save, #83 notes_owners-Race,
   #           #91 Multi-Worker-Boot, #128 Orphan-File, #129 OOM, #63/#69 neg. Praemie, #140 Range
   5-2-data-integrity-concurrency: review
   # --- Post-Prod (technische Schulden) ---
   # Deferred: #7 #8 #9 #23 #35 #43 #96 #111 #115 #127 #138 #139 #141 #143 #145 #147 #148 #150 #151
-  5-3-backend-robustheit-crash-guards: ready-for-dev
+  5-3-backend-robustheit-crash-guards: review
   # Deferred: #11 #26 #31 #33 #37 #55 #57 #99 #104 #106 #112 #120 #125 #133
   5-4-performance-query-optimierung: ready-for-dev
   # Deferred: #1 #10 #12 #13 #14 #15 #16 #17 #18 #19 #27 #50 #51 #52 #53 #54

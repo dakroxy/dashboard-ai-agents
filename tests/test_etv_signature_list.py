@@ -546,8 +546,9 @@ async def test_aggregator_marks_mea_none_when_no_attribute_present(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_aggregator_propagates_facilioo_error_on_attribute_5xx(monkeypatch):
-    """Persistente 5xx auf attribute-values bricht den Aggregator als
-    FaciliooError ab — Router faengt das im Banner-Pfad."""
+    """Persistente 5xx auf attribute-values: Aggregator degradiert gracefully
+    (Story 5-3 AC1: return_exceptions=True). Unit bekommt leere Attributliste,
+    Payload wird trotzdem zurueckgegeben."""
     handler = _aggregator_handler_factory(
         total_vgs=1, attribute_5xx_for_unit_id=2_000_000
     )
@@ -555,8 +556,11 @@ async def test_aggregator_propagates_facilioo_error_on_attribute_5xx(monkeypatch
         "app.services.facilioo.httpx.AsyncClient",
         _patched_facilioo(handler),
     )
-    with pytest.raises(facilioo.FaciliooError):
-        await facilioo.fetch_conference_signature_payload(123)
+    payload = await facilioo.fetch_conference_signature_payload(123)
+    # Partial-degrade: kein Raise, aber die fehlschlagende Unit bekommt mea_decimal=None.
+    assert "voting_groups" in payload
+    assert len(payload["voting_groups"]) == 1
+    assert payload["voting_groups"][0]["mea_decimal"] is None
 
 
 @pytest.mark.asyncio
