@@ -212,6 +212,43 @@ class TestCsrf:
         finally:
             app.dependency_overrides.clear()
 
+    def test_csrf_lazy_init_for_legacy_session_without_token(self, db, test_user):
+        """Bestandssession ohne `csrf_token`-Key bekommt beim ersten GET ein
+        Token nachgesetzt — sonst wuerden Logins von vor Story 5-1 alle
+        POSTs bis zum Re-Login mit 403 blockieren."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app.auth import get_current_user, get_optional_user
+        from app.db import get_db
+        from tests.conftest import _make_session_cookie
+
+        def override_db():
+            yield db
+
+        def override_user():
+            return test_user
+
+        app.dependency_overrides[get_db] = override_db
+        app.dependency_overrides[get_current_user] = override_user
+        app.dependency_overrides[get_optional_user] = override_user
+
+        try:
+            with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+                # Session-Cookie OHNE csrf_token — simuliert Bestandssession.
+                c.cookies.set(
+                    "session",
+                    _make_session_cookie({"user_id": str(test_user.id)}),
+                )
+                # GET → Lazy-Init schreibt das Token in die Session.
+                resp = c.get("/")
+                assert resp.status_code in (200, 302)
+                # Set-Cookie muss den neu signierten Session-Cookie enthalten.
+                assert "session" in resp.cookies or "session" in (
+                    resp.headers.get("set-cookie", "")
+                )
+        finally:
+            app.dependency_overrides.clear()
+
     def test_csrf_input_helper_emits_hidden_field(self, auth_client):
         """`csrf_input(request)`-Jinja-Global rendert das Hidden-Input mit Token."""
         # Render die ETV-Auswahlseite — sie nutzt csrf_input direkt.

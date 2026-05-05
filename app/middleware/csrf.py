@@ -44,13 +44,21 @@ class CSRFMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Lazy-Init des Session-Tokens — muss VOR dem Safe-Method-Bypass
+        # laufen, damit der GET, der die Form rendert, das Token bereits
+        # in der Session hat. Bestandssessions vor Story 5-1 haben keinen
+        # `csrf_token`-Key (Token wird sonst nur im OAuth-Callback gesetzt).
+        # Mutation auf scope["session"] propagiert via SessionMiddleware
+        # automatisch in den Response-Cookie.
+        session = scope.get("session")
+        if session is not None and not session.get("csrf_token"):
+            session["csrf_token"] = secrets.token_urlsafe(32)
+        session_token: str = (session or {}).get("csrf_token", "")
+
         method = scope.get("method", "GET").encode()
         if method in _SAFE_METHODS:
             await self.app(scope, receive, send)
             return
-
-        session: dict[str, Any] = scope.get("session", {})
-        session_token: str = session.get("csrf_token", "")
 
         header_token = ""
         content_type = b""
