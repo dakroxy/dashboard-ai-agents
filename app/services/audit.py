@@ -88,6 +88,7 @@ KNOWN_AUDIT_ACTIONS: list[str] = sorted(
         "sync_failed",
         "policy_violation",
         "encryption_key_missing",
+        "photo_upload_orphan",
     ]
 )
 
@@ -122,6 +123,59 @@ def audit(
     )
     db.add(entry)
     return entry
+
+
+def _audit_in_new_session(
+    action: str,
+    *,
+    entity_type: str | None = None,
+    entity_id: uuid.UUID | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Legt einen Audit-Eintrag in einer NEUEN Session an.
+
+    Benoetigt wenn die urspruengliche Session bereits gerollt-back wurde
+    (z. B. Foto-Upload-Saga nach DB-Commit-Fehler). Best-effort: Fehler
+    werden nur geloggt, nicht weiter propagiert.
+    """
+    from app.db import SessionLocal
+    db2 = SessionLocal()
+    try:
+        audit(db2, None, action, entity_type=entity_type, entity_id=entity_id, details=details)
+        db2.commit()
+    except Exception:
+        db2.rollback()
+    finally:
+        db2.close()
+
+
+def _update_stub_status_in_new_session(
+    photo_id: uuid.UUID,
+    status: str,
+    *,
+    error: str | None = None,
+) -> None:
+    """Aktualisiert den Status einer Stub-Photo-Row in einer NEUEN Session.
+
+    Wird im Foto-Upload-Saga-Pfad benoetigt, wenn die Haupt-Session
+    nach einem Upload-Commit-Fehler rollbacked ist. Best-effort.
+    """
+    from app.db import SessionLocal
+    from app.models.object import SteckbriefPhoto
+    db2 = SessionLocal()
+    try:
+        photo = db2.get(SteckbriefPhoto, photo_id)
+        if photo is not None:
+            meta: dict = dict(photo.photo_metadata or {})
+            meta["status"] = status
+            if error:
+                meta["error"] = error[:500]
+            photo.photo_metadata = meta
+            db2.commit()
+    except Exception:
+        db2.rollback()
+    finally:
+        db2.close()
 
 
 def _client_ip(request: Request) -> str | None:

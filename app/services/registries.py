@@ -229,7 +229,10 @@ def get_versicherer_detail(
             sev = WartungSeverity.WARNING
         else:
             sev = WartungSeverity.NORMAL
-        gesamtpraemie += Decimal(str(r.praemie)) if r.praemie is not None else Decimal("0")
+        if r.praemie is not None and r.praemie >= 0:
+            gesamtpraemie += Decimal(str(r.praemie))
+        elif r.praemie is not None:
+            print(f"[registries] negative_value_skipped policy={r.id} field=praemie value={r.praemie}")
         policen.append(PolicyDetailRow(
             policy_id=r.id,
             police_number=r.police_number,
@@ -274,7 +277,10 @@ def get_versicherer_detail(
     schadensfaelle: list[SchadensfallDetailRow] = []
     gesamtschaden = Decimal("0")
     for r in schaden_raw:
-        gesamtschaden += Decimal(str(r.amount)) if r.amount is not None else Decimal("0")
+        if r.amount is not None and r.amount >= 0:
+            gesamtschaden += Decimal(str(r.amount))
+        elif r.amount is not None:
+            print(f"[registries] negative_value_skipped schadensfall={r.id} field=amount value={r.amount}")
         schadensfaelle.append(SchadensfallDetailRow(
             schadensfall_id=r.id,
             occurred_at=r.occurred_at,

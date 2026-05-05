@@ -19,6 +19,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -905,6 +906,10 @@ async def extraction_field_save(
     """
     doc = _load_doc_for_user(db, user, document_id)
     _check_field_edit_permission(user, field)
+
+    # Row-Lock serialisiert parallele Field-Saves auf demselben Dokument
+    # (Concurrent-Save-Race, Defer #77). Lock haelt bis db.commit().
+    db.execute(select(Document).where(Document.id == document_id).with_for_update())
 
     try:
         new_extraction = update_extraction_field(db, doc, field, value, user, request)

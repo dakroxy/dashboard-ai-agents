@@ -43,6 +43,7 @@ from app.services.audit import audit
 from app.services.field_encryption import DecryptionError, decrypt_field
 from app.services.photo_store import (
     LARGE_UPLOAD_THRESHOLD,
+    MAX_SIZE_BYTES,
     PhotoRef,
     PhotoValidationError,
     validate_photo,
@@ -851,6 +852,17 @@ async def photo_upload(
     if detail is None:
         raise HTTPException(404, "Objekt nicht gefunden")
 
+    # OOM-Pre-Check via Content-Length-Header (Defer #129) — vor file.read().
+    # 5 % Overhead-Toleranz fuer Multipart-Framing.
+    cl_header = request.headers.get("content-length")
+    if cl_header:
+        try:
+            cl_int = int(cl_header)
+            if cl_int > int(MAX_SIZE_BYTES * 1.05):
+                raise HTTPException(413, "Foto > 10 MB (Pre-Check via Content-Length-Header)")
+        except (ValueError, OverflowError):
+            pass  # fehlerhafter Header — validate_photo prueft spaeter die echte Groesse
+
     content = await file.read()
     try:
         validate_photo(content, file.content_type or "")
@@ -881,29 +893,52 @@ async def _photo_upload_sync_path(
     db, request, detail, component_ref, file, content, photo_store,
     short_code, object_id, user,
 ):
-    ref = await photo_store.upload(
-        object_short_code=short_code, category="technik",
-        filename=file.filename or "foto.jpg", content=content,
-        content_type=file.content_type or "image/jpeg",
-    )
-    photo = SteckbriefPhoto(
-        object_id=object_id,
-        backend=ref.backend,
-        drive_item_id=ref.drive_item_id,
-        local_path=ref.local_path,
-        filename=ref.filename,
-        component_ref=component_ref,
-        uploaded_by_user_id=user.id,
-    )
-    db.add(photo)
-    audit(
-        db, user, "object_photo_uploaded",
-        entity_type="object", entity_id=object_id,
-        details={"component_ref": component_ref, "filename": ref.filename,
-                 "backend": ref.backend},
-        request=request,
-    )
-    db.commit()
+    ref = None
+    try:
+        ref = await photo_store.upload(
+            object_short_code=short_code, category="technik",
+            filename=file.filename or "foto.jpg", content=content,
+            content_type=file.content_type or "image/jpeg",
+        )
+        photo = SteckbriefPhoto(
+            object_id=object_id,
+            backend=ref.backend,
+            drive_item_id=ref.drive_item_id,
+            local_path=ref.local_path,
+            filename=ref.filename,
+            component_ref=component_ref,
+            uploaded_by_user_id=user.id,
+        )
+        db.add(photo)
+        audit(
+            db, user, "object_photo_uploaded",
+            entity_type="object", entity_id=object_id,
+            details={"component_ref": component_ref, "filename": ref.filename,
+                     "backend": ref.backend},
+            request=request,
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        if ref is not None:
+            # Upload war erfolgreich, DB-Commit fehlgeschlagen — Saga: Datei loeschen
+            try:
+                await photo_store.delete(ref)
+            except Exception as del_exc:
+                from app.services.audit import _audit_in_new_session
+                print(f"[photo-upload-orphan] delete fehlgeschlagen object_id={object_id}: {del_exc}")
+                _audit_in_new_session(
+                    "photo_upload_orphan",
+                    entity_type="object",
+                    entity_id=object_id,
+                    details={
+                        "ref": {"backend": ref.backend, "filename": ref.filename,
+                                "local_path": ref.local_path},
+                        "error": str(exc),
+                        "delete_error": str(del_exc),
+                    },
+                )
+        raise  # Original-Exception re-raisen → User sieht 500
     db.refresh(photo)
     return templates.TemplateResponse(
         request,
@@ -955,16 +990,29 @@ def _run_photo_upload_bg(
     die zuvor angelegte SteckbriefPhoto-Row. ``asyncio.run()`` ist hier OK
     (sync BackgroundTask), AuditLog direkt via ``db.add(...)`` weil kein
     Request fuer den ``audit()``-Helper verfuegbar ist.
+
+    Saga-Schutz: wenn DB-Commit nach erfolgreichem Upload fehlschlaegt,
+    wird die Datei im Store geloescht und der Stub-Status auf
+    ``"upload_failed"`` gesetzt.
     """
     import asyncio
     from app.db import SessionLocal as _SL
     from app.models import AuditLog
+    from app.services.audit import _audit_in_new_session, _update_stub_status_in_new_session
     db = _SL()
     try:
-        ref = asyncio.run(photo_store.upload(
-            object_short_code=short_code, category=category,
-            filename=filename, content=content, content_type=content_type,
-        ))
+        # Phase 1: Upload
+        try:
+            ref = asyncio.run(photo_store.upload(
+                object_short_code=short_code, category=category,
+                filename=filename, content=content, content_type=content_type,
+            ))
+        except Exception as exc:
+            _logger.exception("_run_photo_upload_bg: Upload fehlgeschlagen: %s", exc)
+            _update_stub_status_in_new_session(photo_id, "error", error=str(exc))
+            return
+
+        # Phase 2: DB-Update (Saga-kritisch: Datei ist bereits im Store)
         photo = db.get(SteckbriefPhoto, photo_id)
         if photo is not None:
             photo.backend = ref.backend
@@ -980,17 +1028,28 @@ def _run_photo_upload_bg(
                 details_json={"component_ref": photo.component_ref,
                               "filename": ref.filename, "backend": ref.backend},
             ))
-            db.commit()
-    except Exception as exc:
-        _logger.exception("_run_photo_upload_bg: Upload fehlgeschlagen: %s", exc)
-        _db2 = _SL()
-        try:
-            p = _db2.get(SteckbriefPhoto, photo_id)
-            if p:
-                p.photo_metadata = {"status": "error"}
-                _db2.commit()
-        finally:
-            _db2.close()
+            try:
+                db.commit()
+            except Exception as commit_exc:
+                db.rollback()
+                # Saga: Datei aus Store loeschen (Upload war erfolgreich, Commit nicht)
+                try:
+                    asyncio.run(photo_store.delete(ref))
+                except Exception as del_exc:
+                    print(f"[photo-upload-orphan] delete fehlgeschlagen photo_id={photo_id}: {del_exc}")
+                    _audit_in_new_session(
+                        "photo_upload_orphan",
+                        entity_type="object",
+                        entity_id=object_id,
+                        details={
+                            "ref": {"backend": ref.backend, "filename": ref.filename,
+                                    "local_path": ref.local_path},
+                            "error": str(commit_exc),
+                            "delete_error": str(del_exc),
+                        },
+                    )
+                _update_stub_status_in_new_session(photo_id, "upload_failed", error=str(commit_exc))
+                _logger.exception("_run_photo_upload_bg: DB-Commit fehlgeschlagen (Saga): %s", commit_exc)
     finally:
         db.close()
 
@@ -1324,7 +1383,11 @@ async def police_create(
             parsed_months = int(notice_period_months.strip())
         except ValueError:
             raise HTTPException(422, detail="Ungültige Monatsangabe")
+        if parsed_months < 0 or parsed_months > 360:
+            raise HTTPException(422, detail="Kündigungsfrist muss zwischen 0 und 360 Monaten liegen")
     parsed_praemie = _parse_decimal(praemie)
+    if parsed_praemie is not None and parsed_praemie < 0:
+        raise HTTPException(422, detail="Prämie darf nicht negativ sein")
 
     err = validate_police_dates(parsed_start, parsed_end, parsed_due)
     if err:
@@ -1418,7 +1481,11 @@ async def police_update(
             parsed_months = int(notice_period_months.strip())
         except ValueError:
             raise HTTPException(422, detail="Ungültige Monatsangabe")
+        if parsed_months < 0 or parsed_months > 360:
+            raise HTTPException(422, detail="Kündigungsfrist muss zwischen 0 und 360 Monaten liegen")
     parsed_praemie = _parse_decimal(praemie)
+    if parsed_praemie is not None and parsed_praemie < 0:
+        raise HTTPException(422, detail="Prämie darf nicht negativ sein")
 
     err = validate_police_dates(parsed_start, parsed_end, parsed_due)
     if err:
@@ -1675,6 +1742,10 @@ async def notiz_save(
     eig = db.get(Eigentuemer, eigentuemer_id)
     if not eig or eig.object_id != obj.id:
         raise HTTPException(404, detail="Eigentümer nicht gefunden")
+
+    # Row-Lock VOR dem JSONB-Snapshot: serialisiert parallele notes_owners-Saves
+    # (Race-Condition zwei Admins, Defer #83).
+    db.execute(select(Object).where(Object.id == object_id).with_for_update())
 
     new_notes = dict(obj.notes_owners or {})
     note_clean = (note or "").strip()

@@ -13,6 +13,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.auth import get_optional_user
 from app.config import settings
 from app.db import SessionLocal
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
 from app.models import ResourceAccess, Role, User, Workflow
 from app.permissions import (
     DEFAULT_ROLE_PERMISSIONS,
@@ -112,17 +115,35 @@ _DEFAULT_WORKFLOWS: tuple[dict[str, str], ...] = (
 )
 
 
-def _seed_default_workflow() -> None:
-    """Legt die Default-Workflows an, falls sie noch nicht existieren. Ueberschreibt
-    bestehende Workflows NICHT — User-Aenderungen bleiben erhalten."""
-    db = SessionLocal()
+def _seed_workflow_idempotent(db, wf_data: dict) -> None:
+    """INSERT fuer einen Workflow — ON CONFLICT DO NOTHING (Postgres) oder
+    SELECT-then-INSERT (SQLite). Verhindert IntegrityError bei Multi-Worker-Boot."""
     try:
-        for wf_data in _DEFAULT_WORKFLOWS:
-            exists = (
-                db.query(Workflow).filter(Workflow.key == wf_data["key"]).first()
+        is_postgres = db.bind.dialect.name == "postgresql"
+    except Exception:
+        is_postgres = False
+
+    if is_postgres:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        stmt = (
+            pg_insert(Workflow)
+            .values(
+                id=uuid.uuid4(),
+                key=wf_data["key"],
+                name=wf_data["name"],
+                description=wf_data["description"],
+                model=DEFAULT_MODEL,
+                chat_model=DEFAULT_CHAT_MODEL,
+                system_prompt=wf_data["system_prompt"],
+                learning_notes="",
+                active=True,
             )
-            if exists:
-                continue
+            .on_conflict_do_nothing(index_elements=["key"])
+        )
+        db.execute(stmt)
+    else:
+        existing = db.query(Workflow).filter(Workflow.key == wf_data["key"]).first()
+        if existing is None:
             db.add(
                 Workflow(
                     id=uuid.uuid4(),
@@ -136,6 +157,55 @@ def _seed_default_workflow() -> None:
                     active=True,
                 )
             )
+
+
+def _seed_role_idempotent(
+    db, key: str, name: str, description: str, permissions: list
+) -> None:
+    """INSERT fuer eine Rolle — ON CONFLICT DO NOTHING (Postgres) oder
+    SELECT-then-INSERT (SQLite). Verhindert IntegrityError bei Multi-Worker-Boot."""
+    try:
+        is_postgres = db.bind.dialect.name == "postgresql"
+    except Exception:
+        is_postgres = False
+
+    if is_postgres:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        stmt = (
+            pg_insert(Role)
+            .values(
+                id=uuid.uuid4(),
+                key=key,
+                name=name,
+                description=description,
+                permissions=permissions,
+                is_system_role=True,
+            )
+            .on_conflict_do_nothing(index_elements=["key"])
+        )
+        db.execute(stmt)
+    else:
+        existing = db.query(Role).filter(Role.key == key).first()
+        if existing is None:
+            db.add(
+                Role(
+                    id=uuid.uuid4(),
+                    key=key,
+                    name=name,
+                    description=description,
+                    permissions=permissions,
+                    is_system_role=True,
+                )
+            )
+
+
+def _seed_default_workflow() -> None:
+    """Legt die Default-Workflows an, falls sie noch nicht existieren. Ueberschreibt
+    bestehende Workflows NICHT — User-Aenderungen bleiben erhalten."""
+    db = SessionLocal()
+    try:
+        for wf_data in _DEFAULT_WORKFLOWS:
+            _seed_workflow_idempotent(db, wf_data)
         db.commit()
     finally:
         db.close()
@@ -170,15 +240,12 @@ def _seed_default_roles() -> None:
                 )
                 continue
             meta = _ROLE_META.get(key, {"name": key.title(), "description": ""})
-            db.add(
-                Role(
-                    id=uuid.uuid4(),
-                    key=key,
-                    name=meta["name"],
-                    description=meta["description"],
-                    permissions=perms,
-                    is_system_role=True,
-                )
+            _seed_role_idempotent(
+                db,
+                key=key,
+                name=meta["name"],
+                description=meta["description"],
+                permissions=perms,
             )
         db.commit()
     finally:
@@ -187,7 +254,11 @@ def _seed_default_roles() -> None:
 
 def _seed_default_workflow_access() -> None:
     """Beide System-Rollen bekommen Default-Zugriff auf alle Default-Workflows.
-    Per Admin-UI kann das spaeter angepasst werden."""
+    Per Admin-UI kann das spaeter angepasst werden.
+
+    resource_access hat KEINE UNIQUE-Constraint, deshalb SELECT-then-INSERT
+    statt ON CONFLICT DO NOTHING.
+    """
     db = SessionLocal()
     try:
         keys = [wf["key"] for wf in _DEFAULT_WORKFLOWS]
@@ -199,16 +270,14 @@ def _seed_default_workflow_access() -> None:
                 role = db.query(Role).filter(Role.key == role_key).first()
                 if role is None:
                     continue
-                already = (
-                    db.query(ResourceAccess)
-                    .filter(
+                existing = db.execute(
+                    select(ResourceAccess).where(
                         ResourceAccess.role_id == role.id,
                         ResourceAccess.resource_type == RESOURCE_TYPE_WORKFLOW,
                         ResourceAccess.resource_id == wf.id,
                     )
-                    .first()
-                )
-                if already is not None:
+                ).scalar_one_or_none()
+                if existing is not None:
                     continue
                 db.add(
                     ResourceAccess(

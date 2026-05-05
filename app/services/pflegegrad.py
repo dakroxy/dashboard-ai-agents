@@ -214,7 +214,15 @@ def get_or_update_pflegegrad_cache(
     obj: Object, db: Session
 ) -> tuple[PflegegradResult, bool]:
     """Berechnet Score + aktualisiert Cache wenn stale.
-    Returns: (result, cache_was_updated)"""
+    Returns: (result, cache_was_updated)
+
+    Muss innerhalb einer Transaktion gerufen werden — Row-Lock haelt bis zum
+    naechsten commit/rollback. Caller (object_detail in objects.py:285) committet
+    im Anschluss.
+    """
+    # Row-Lock VOR is_stale-Pruefung: serialisiert parallele Cache-Writes
+    # (Last-Writer-Wins-Race, Defer #34).
+    db.execute(select(Object).where(Object.id == obj.id).with_for_update())
     result = pflegegrad_score(obj, db)
 
     now = datetime.datetime.now(tz=timezone.utc)

@@ -42,6 +42,8 @@ def create_schadensfall(
     description: str | None,
     unit_id: uuid.UUID | None,
 ) -> Schadensfall:
+    if amount < 0:
+        raise ValueError("amount must be >= 0")
     if description and len(description) > 5000:
         raise ValueError("description exceeds 5000 chars")
     schaden = Schadensfall(policy_id=policy.id)
