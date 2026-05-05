@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -117,11 +117,12 @@ def test_review_queue_paginates_50_per_page_default(review_queue_admin_client):
     _seed_pending_entries(db, 200)
     resp = client.get("/admin/review-queue")
     assert resp.status_code == 200
-    # Default page_size=50: genau 50 Eintraege sichtbar, Pagination-Nav vorhanden
-    rows_in_html = resp.text.count('<td class="p-0')
-    # Jede Row hat 7 <td class="p-0"-Zellen; 50 rows * 7 = 350 oder nutze unique marker
-    # Einfacher: Pagination-Nav enthaelt total_pages > 1
-    assert "laquo" in resp.text or "raquo" in resp.text
+    # Genau 50 Eintraege sichtbar — pro Zeile genau ein Approve-Button mit
+    # `hx-post="/admin/review-queue/{id}/approve"` als verlaesslichem Marker.
+    approve_buttons = resp.text.count('hx-post="/admin/review-queue/')
+    assert approve_buttons == 50, f"Erwartet 50 Eintraege, fand {approve_buttons}"
+    # Pagination-Nav muss da sein, weil 200 > 50
+    assert "raquo" in resp.text
 
 
 def test_review_queue_page_size_param(review_queue_admin_client):
@@ -146,10 +147,15 @@ def test_review_queue_page_param(review_queue_admin_client):
 
 
 def test_review_queue_filter_resets_page(review_queue_admin_client):
+    """page > total_pages → Server-Clamp auf gueltige Page (kein Leer-Crash)."""
     client, db, _user = review_queue_admin_client
-    resp = client.get("/admin/review-queue?page=3&page_size=50&min_age_days=36499")
-    # min_age_days so hoch, dass keine Entries zurueckkommen — kein Crash
+    _seed_pending_entries(db, 5)
+    # 5 Entries, page_size=50 → total_pages=1; Anfrage auf page=3 muss serverseitig
+    # auf page=1 geclampt werden und genau die 5 Entries zeigen.
+    resp = client.get("/admin/review-queue?page=3&page_size=50")
     assert resp.status_code == 200
+    approve_buttons = resp.text.count('hx-post="/admin/review-queue/')
+    assert approve_buttons == 5, f"Erwartet 5 Entries auf geclampter Page, fand {approve_buttons}"
 
 
 def test_review_queue_total_count_correct(review_queue_admin_client):
@@ -201,9 +207,18 @@ def test_objects_list_page_size_param(objects_client, db):
 
 def test_objects_rows_fragment_paginates(objects_client, db):
     _seed_objects(db, 60)
-    resp = objects_client.get("/objects/rows", headers={"HX-Request": "true"})
+    resp = objects_client.get(
+        "/objects/rows?page=1&page_size=20",
+        headers={"HX-Request": "true"},
+    )
     assert resp.status_code == 200
     assert 'id="obj-rows"' in resp.text
+    # 60 Objekte, page_size=20 → 20 <tr> Tabellenzeilen im Body sichtbar.
+    # Im Fragment kommt das tbody mit 20 <tr> + ein paar <tr> im OOB head; wir
+    # zaehlen die Body-Rows ueber die `border-t border-slate-100`-Klasse, die
+    # nur an Daten-Rows haengt.
+    data_rows = resp.text.count('class="border-t border-slate-100')
+    assert data_rows == 20, f"Erwartet 20 Daten-Rows, fand {data_rows}"
 
 
 def test_objects_list_pagination_with_sort(objects_client, db):
@@ -380,6 +395,8 @@ def test_accessible_object_ids_cached_per_request(db):
 
 
 def test_accessible_object_ids_isolated_between_requests(db):
+    """Beweist via DB-Hit-Counter, dass req2 keinen Cache von req1 erbt — zwei
+    DB-Roundtrips fuer zwei separate Requests."""
     from app.permissions import accessible_object_ids_for_request
 
     user = User(
@@ -398,13 +415,45 @@ def test_accessible_object_ids_isolated_between_requests(db):
     req2 = MagicMock()
     req2.state = type("State", (), {"_accessible_object_ids": None})()
 
-    result1 = accessible_object_ids_for_request(req1, db, user)
-    result2 = accessible_object_ids_for_request(req2, db, user)
+    counter = _StmtCounter()
+    sa.event.listen(_TEST_ENGINE, "before_cursor_execute", counter)
+    try:
+        accessible_object_ids_for_request(req1, db, user)
+        count_after_req1 = counter.count
+        accessible_object_ids_for_request(req2, db, user)
+        count_after_req2 = counter.count
+    finally:
+        sa.event.remove(_TEST_ENGINE, "before_cursor_execute", counter)
 
-    # Jeder Request hat sein eigenes State-Objekt
+    # State-Objekte muessen wirklich isoliert sein
     assert req1.state._accessible_object_ids is not None
     assert req2.state._accessible_object_ids is not None
-    assert req1.state._accessible_object_ids == req2.state._accessible_object_ids
+    assert req1.state is not req2.state
+    # Zweiter Request hat seinen eigenen DB-Hit gemacht — kein Cross-Request-Leak
+    assert count_after_req2 > count_after_req1, (
+        f"Cross-Request-Leak: req2 erbte cached value von req1 "
+        f"(req1={count_after_req1}, req2={count_after_req2})"
+    )
+
+
+def test_accessible_object_ids_for_request_handles_none_request(db):
+    """Background-Tasks ohne Request-Objekt sollen ohne Crash funktionieren."""
+    from app.permissions import accessible_object_ids_for_request
+
+    user = User(
+        id=uuid.uuid4(),
+        google_sub="bgtask-sub",
+        email="bgtask@dbshome.de",
+        name="Background Task",
+        permissions_extra=["objects:view"],
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # request=None darf NICHT crashen (Docstring versprochen)
+    result = accessible_object_ids_for_request(None, db, user)
+    assert isinstance(result, set)
 
 
 # ===========================================================================
@@ -475,19 +524,25 @@ def test_get_provenance_map_bulk_returns_latest_per_field(db):
 
 
 def test_get_provenance_map_bulk_postgres_distinct_on():
-    """Mock-Postgres-Dialect: verifiziert, dass der DISTINCT-Pfad gewaehlt wird."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
+    """Mock-Postgres-Dialect: verifiziert via Statement-Introspection, dass das
+    kompilierte SQL tatsaechlich `DISTINCT ON` enthaelt — sonst koennten wir
+    silent in den SQLite-Pfad fallen ohne dass es jemand merkt (Postgres-spezifischer
+    Index-only-Scan-Pfad waere dann tot)."""
+    from sqlalchemy.dialects import postgresql
 
     mock_session = MagicMock()
     mock_bind = MagicMock()
     mock_bind.dialect.name = "postgresql"
     mock_session.bind = mock_bind
+    mock_session.get_bind.return_value = mock_bind
 
     executed_stmts = []
 
     def fake_execute(stmt):
-        executed_stmts.append(str(stmt.compile(compile_kwargs={"literal_binds": False})))
+        # Postgres-Dialect explizit kompilieren — `str(stmt)` ohne dialect waere
+        # generic SQL und liesse den DISTINCT ON nicht durchscheinen.
+        compiled = stmt.compile(dialect=postgresql.dialect())
+        executed_stmts.append(str(compiled))
         result = MagicMock()
         result.all.return_value = []
         return result
@@ -496,8 +551,11 @@ def test_get_provenance_map_bulk_postgres_distinct_on():
 
     result = get_provenance_map_bulk(mock_session, "object", uuid.uuid4())
     assert result == {}
-    # Mindestens eine Statement wurde generiert
     assert len(executed_stmts) >= 1
+    # Harte Verifikation: das compilierte Statement muss "DISTINCT ON" enthalten,
+    # sonst lief der falsche Pfad.
+    sql = executed_stmts[0]
+    assert "DISTINCT ON" in sql, f"Erwartet 'DISTINCT ON' im SQL, fand:\n{sql}"
 
 
 # ===========================================================================
@@ -516,6 +574,10 @@ def test_pflegegrad_score_works_without_prov_map_argument(db):
 
 
 def test_pflegegrad_score_uses_prov_map_when_provided(db):
+    """Vollstaendiger prov_map (alle _ALL_SCALAR-Keys explicit gesetzt) → kein
+    FieldProvenance-SELECT, nur die 3 relationalen COUNTs."""
+    from app.services.pflegegrad import _ALL_SCALAR
+
     obj = Object(
         id=uuid.uuid4(),
         short_code="PFG2",
@@ -526,22 +588,84 @@ def test_pflegegrad_score_uses_prov_map_when_provided(db):
     db.commit()
     db.refresh(obj)
 
-    # Leak-Check: mit prov_map darf KEINE SELECT FieldProvenance laufen
-    prov_map: dict[str, ProvenanceWithUser | None] = {}  # leer — kein Provenance-Decay
+    # Vollstaendiger prov_map (alle Keys present, value=None = "nichts in DB")
+    prov_map: dict[str, ProvenanceWithUser | None] = {f: None for f in _ALL_SCALAR}
 
     counter = _StmtCounter()
-    sa.event.listen(_TEST_ENGINE, "before_cursor_execute", counter)
+    fp_query_count = [0]
+
+    def _stmt_listener(conn, cursor, statement, parameters, context, executemany):
+        counter.count += 1
+        if "field_provenance" in statement.lower():
+            fp_query_count[0] += 1
+
+    sa.event.listen(_TEST_ENGINE, "before_cursor_execute", _stmt_listener)
     try:
         result = pflegegrad_score(obj, db, prov_map=prov_map)
     finally:
-        sa.event.remove(_TEST_ENGINE, "before_cursor_execute", counter)
+        sa.event.remove(_TEST_ENGINE, "before_cursor_execute", _stmt_listener)
 
-    # Mit prov_map: kein FieldProvenance-SELECT (nur die 3 COUNT-Queries)
+    # Harte Garantie: KEIN FieldProvenance-SELECT bei vollstaendigem prov_map
+    assert fp_query_count[0] == 0, (
+        f"prov_map sollte FieldProvenance-Queries verhindern, "
+        f"aber {fp_query_count[0]} liefen trotzdem"
+    )
+    # Total-Cap (3 COUNT-Queries für Eigentuemer/Insurance/Wartung)
     assert counter.count <= 3, f"Unerwartet viele Queries mit prov_map: {counter.count}"
     assert result.score >= 0
 
 
+def test_pflegegrad_score_partial_prov_map_falls_back_per_missing_field(db):
+    """Wenn prov_map einen Schluessel NICHT enthaelt, faellt der Helper auf eine
+    SQL-Bulk-Query fuer alle fehlenden Felder zurueck — verhindert silent
+    decay-defeat bei partial prov_maps."""
+    obj = Object(
+        id=uuid.uuid4(),
+        short_code="PFGPART",
+        name="Pflegegrad Partial",
+        full_address="Partialstr. 1",
+    )
+    db.add(obj)
+    # Alte Provenance fuer full_address — sollte Decay ausloesen, sofern wir sie finden
+    db.add(FieldProvenance(
+        id=uuid.uuid4(),
+        entity_type="object",
+        entity_id=obj.id,
+        field_name="full_address",
+        source="impower_mirror",
+        value_snapshot={},
+        # > 1095 Tage alt → decay 0.1
+        created_at=datetime.now(tz=timezone.utc) - timedelta(days=1500),
+    ))
+    db.commit()
+    db.refresh(obj)
+
+    # Partial prov_map ohne full_address → Fallback muss greifen, sonst 1.0
+    partial_map: dict[str, ProvenanceWithUser | None] = {}
+
+    fp_query_count = [0]
+
+    def _listener(conn, cursor, statement, parameters, context, executemany):
+        if "field_provenance" in statement.lower():
+            fp_query_count[0] += 1
+
+    sa.event.listen(_TEST_ENGINE, "before_cursor_execute", _listener)
+    try:
+        result = pflegegrad_score(obj, db, prov_map=partial_map)
+    finally:
+        sa.event.remove(_TEST_ENGINE, "before_cursor_execute", _listener)
+
+    # Mindestens 1 FieldProvenance-Query (Fallback fuer missing keys)
+    assert fp_query_count[0] >= 1, "Fallback nicht ausgeloest — partial prov_map waere stiller decay-defeat"
+    # Score muss decay zeigen (full_address ist in C1 mit Gewicht > 0)
+    assert "full_address" in result.weakest_fields, (
+        f"full_address fehlt in weakest_fields={result.weakest_fields} — Fallback hat das Decay nicht erkannt"
+    )
+
+
 def test_pflegegrad_score_falls_back_when_prov_map_missing_field(db):
+    """Konsistenz: leerer prov_map (bewirkt Fallback) und prov_map=None liefern
+    semantisch denselben Score — beides faellt auf SQL zurueck."""
     obj = Object(
         id=uuid.uuid4(),
         short_code="PFG3",
@@ -549,7 +673,7 @@ def test_pflegegrad_score_falls_back_when_prov_map_missing_field(db):
         full_address="Fallbackstr. 1",
     )
     db.add(obj)
-    # FieldProvenance fuer full_address anlegen
+    # Frische FieldProvenance — kein Decay
     db.add(FieldProvenance(
         id=uuid.uuid4(),
         entity_type="object",
@@ -562,14 +686,15 @@ def test_pflegegrad_score_falls_back_when_prov_map_missing_field(db):
     db.commit()
     db.refresh(obj)
 
-    # prov_map ohne full_address → Feld hat kein Decay (age=None → 1.0)
+    # Leerer prov_map → Fallback auf SQL fuer alle missing keys → findet Provenance
     prov_map: dict[str, ProvenanceWithUser | None] = {}
     result_with_empty_prov_map = pflegegrad_score(obj, db, prov_map=prov_map)
 
     # prov_map=None → volle DB-Query → findet FieldProvenance → age=0 → 1.0 ebenfalls
     result_without_prov_map = pflegegrad_score(obj, db)
 
-    # Beide Pfade geben denselben Score (frische Provenance = kein Decay)
+    # Beide Pfade muessen denselben Score liefern — der Fallback macht den Unterschied
+    # zwischen "silent decay-defeat" und korrekter Berechnung.
     assert result_with_empty_prov_map.score == result_without_prov_map.score
 
 
@@ -732,9 +857,20 @@ def test_htmx_request_expired_session_returns_401_with_hx_redirect_header():
 
     with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
         resp = c.get("/objects", headers={"HX-Request": "true"})
-    # Keine Session → 401 + HX-Redirect
+    # Keine Session → 401 + HX-Redirect mit konkretem Login-Pfad
     assert resp.status_code == 401
-    assert "HX-Redirect" in resp.headers
+    assert resp.headers.get("HX-Redirect") == "/auth/google/login"
+
+
+def test_htmx_request_expired_session_case_insensitive_header():
+    """HX-Request="True" (Case-Variante) muss genauso 401 ergeben wie "true"."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app, raise_server_exceptions=True, follow_redirects=False) as c:
+        resp = c.get("/objects", headers={"HX-Request": "True"})
+    assert resp.status_code == 401
+    assert resp.headers.get("HX-Redirect") == "/auth/google/login"
 
 
 def test_non_htmx_request_expired_session_redirects_302():

@@ -36,18 +36,41 @@ def _is_same_origin(request: Request) -> bool:
     - Kein Referer (User tippt URL direkt) → erlaubt; Browser senden bei
       address-bar-Navigation regelmaessig keinen Referer, das ist legitim.
 
-    Damit ist die Hauptangriffsklasse (`<img src>`, `<link rel>` aus einem
-    Phishing-Tab mit Referrer-Policy default) zuverlaessig blockiert.
+    Reverse-Proxy: hinter Elestio/Nginx ist `request.url.hostname` oft der
+    interne Container-Host. Wir matchen primaer gegen `X-Forwarded-Host` (vom
+    Proxy gesetzt) und akzeptieren auch `settings.base_url`-Host als Whitelist,
+    damit der Production-Logout funktioniert. Fallback ist weiterhin
+    `request.url.hostname`.
     """
     referer = request.headers.get("referer")
     if not referer:
         return True
     try:
-        ref_host = urlparse(referer).hostname or ""
+        ref_host = (urlparse(referer).hostname or "").lower()
     except (ValueError, AttributeError):
         return False
-    expected_host = request.url.hostname or ""
-    return ref_host.lower() == expected_host.lower()
+    if not ref_host:
+        return False
+    candidates: set[str] = set()
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if forwarded_host:
+        # X-Forwarded-Host darf eine Komma-separierte Liste sein — den ersten
+        # Eintrag nehmen (der naechste Hop nach aussen).
+        first = forwarded_host.split(",")[0].strip()
+        # Port abschneiden, sofern enthalten (Host:Port).
+        if first:
+            candidates.add(first.split(":")[0].lower())
+    if request.url.hostname:
+        candidates.add(request.url.hostname.lower())
+    base_url = getattr(settings, "base_url", None)
+    if base_url:
+        try:
+            base_host = (urlparse(base_url).hostname or "").lower()
+            if base_host:
+                candidates.add(base_host)
+        except (ValueError, AttributeError):
+            pass
+    return ref_host in candidates
 
 
 @router.get("/google/login")

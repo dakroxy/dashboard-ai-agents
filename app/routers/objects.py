@@ -134,9 +134,18 @@ async def list_objects(
     db: Session = Depends(get_db),
 ):
     accessible = accessible_object_ids_for_request(request, db, user)
-    all_rows = list_objects_with_unit_counts(db, accessible_ids=accessible)
-    total_count = len(all_rows)
-    rows = all_rows[(page - 1) * page_size : page * page_size]
+    rows, total_count = list_objects_with_unit_counts(
+        db, accessible_ids=accessible, page=page, page_size=page_size,
+    )
+    # Page-Clamp: wenn z. B. Filter-Aenderung die Treffermenge schrumpfen laesst
+    # und der User auf einer hoeheren Page steht, fuehrt das sonst zu leerer Liste
+    # ohne Hinweis. Wir clampen serverseitig und mappen die effektive Page zurueck.
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    effective_page = min(page, total_pages)
+    if effective_page != page and total_count > 0:
+        rows, _ = list_objects_with_unit_counts(
+            db, accessible_ids=accessible, page=effective_page, page_size=page_size,
+        )
     return templates.TemplateResponse(
         request,
         "objects_list.html",
@@ -148,7 +157,7 @@ async def list_objects(
             "order": "asc",
             "filter_reserve": "false",
             "total_count": total_count,
-            "current_page": page,
+            "current_page": effective_page,
             "page_size": page_size,
         },
     )
@@ -173,15 +182,27 @@ async def list_objects_rows(
     accessible = accessible_object_ids_for_request(request, db, user)
     safe_sort, safe_order = normalize_sort_order(sort, order)
     filter_bool = filter_reserve.strip().lower() in _FILTER_TRUE_VALUES
-    all_rows = list_objects_with_unit_counts(
+    rows, total_count = list_objects_with_unit_counts(
         db,
         accessible_ids=accessible,
         sort=safe_sort,
         order=safe_order,
         filter_reserve_below_target=filter_bool,
+        page=page,
+        page_size=page_size,
     )
-    total_count = len(all_rows)
-    rows = all_rows[(page - 1) * page_size : page * page_size]
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    effective_page = min(page, total_pages)
+    if effective_page != page and total_count > 0:
+        rows, _ = list_objects_with_unit_counts(
+            db,
+            accessible_ids=accessible,
+            sort=safe_sort,
+            order=safe_order,
+            filter_reserve_below_target=filter_bool,
+            page=effective_page,
+            page_size=page_size,
+        )
     # Fragment liefert tbody (primary swap) + thead und filter-bar via OOB,
     # damit ↑/↓-Indikator, hx-get-URLs und "Filter aktiv"-Pille nach jedem
     # Sort/Filter aktuell sind (Review-Patch D1).
@@ -196,7 +217,7 @@ async def list_objects_rows(
             "filter_reserve": "true" if filter_bool else "false",
             "oob_swap": True,
             "total_count": total_count,
-            "current_page": page,
+            "current_page": effective_page,
             "page_size": page_size,
         },
     )
@@ -299,8 +320,19 @@ async def object_detail(
     sparkline_svg = build_sparkline_svg(sparkline_points)
 
     # --- Pflegegrad (Story 3.3) — prov_map als Cache-Reuse (AC6) ---
+    # Bulk-Map enthaelt nur Felder mit existierender Provenance. pflegegrad_score
+    # nutzt seit Review-Patch einen Bulk-Fallback fuer Keys, die im prov_map gar
+    # nicht vorkommen. Damit der Bulk-Fall hier nicht doch noch eine Extra-Query
+    # ausloest, fuellen wir die noch fehlenden Scalar-Keys explizit mit None auf
+    # ("haben wir geprueft, da ist nichts").
+    from app.services.pflegegrad import _ALL_SCALAR as _PFG_SCALAR
+    pflegegrad_prov_map = dict(prov_map)
+    for _f in _PFG_SCALAR:
+        pflegegrad_prov_map.setdefault(_f, None)
     try:
-        pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(detail.obj, db, prov_map=prov_map)
+        pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(
+            detail.obj, db, prov_map=pflegegrad_prov_map,
+        )
     except Exception as exc:
         _logger.warning("pflegegrad_score_failed object=%s: %s", detail.obj.id, exc)
         pflegegrad_result, cache_updated = None, False

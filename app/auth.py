@@ -46,7 +46,8 @@ def get_current_user(
         request.session.clear()
         # HTMX-Requests bekommen 401 + HX-Redirect statt 302 — sonst injiziert
         # HTMX das Login-Form-Fragment in den aktuellen Page-Slot (AC9).
-        if request.headers.get("HX-Request") == "true":
+        # Case-insensitive: HTMX sendet "true", aber wir tolerieren "True"/"1"/etc.
+        if (request.headers.get("HX-Request") or "").lower() == "true":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 headers={"HX-Redirect": "/auth/google/login"},

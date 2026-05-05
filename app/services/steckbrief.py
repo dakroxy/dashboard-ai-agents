@@ -104,7 +104,9 @@ def list_objects_with_unit_counts(
     sort: str = "short_code",
     order: str = "asc",
     filter_reserve_below_target: bool = False,
-) -> list[ObjectListRow]:
+    page: int | None = None,
+    page_size: int | None = None,
+) -> list[ObjectListRow] | tuple[list[ObjectListRow], int]:
     """Liste aller sichtbaren Objekte mit erweiterten Feldern fuer Sort/Filter.
 
     `accessible_ids=None` bedeutet "keine Einschraenkung" (v1-Default, jeder
@@ -113,9 +115,33 @@ def list_objects_with_unit_counts(
 
     Sortierung laeuft in Python (SQLite-Kompatibilitaet, kein nullslast()).
     NULLs landen immer am Ende — unabhaengig von `order` — via Zwei-Listen-Methode.
+
+    Pagination: wird `page`/`page_size` gesetzt, wird `(rows, total_count)`
+    zurueckgegeben — `total_count` zaehlt **nach** dem Filter (ohne LIMIT).
+    Filter `reserve_below_target` laeuft in SQL (Object.reserve_current <
+    Object.reserve_target * RESERVE_TARGET_MONTHS), damit die Count-Abfrage
+    nicht alle Rows materialisieren muss. Sort-Pfad bleibt Python-seitig
+    (Slice nach Sort), weil case-insensitive + NULLs-last cross-dialect schwer
+    portabel ist; auf typischer Portfoliogroesse < 1000 ist das vernachlaessigbar
+    und vermeidet Reseed-Risiko.
     """
+    paginated = page is not None and page_size is not None
     if accessible_ids is not None and len(accessible_ids) == 0:
+        if paginated:
+            return ([], 0)
         return []
+
+    base_filter_clauses = []
+    if accessible_ids is not None:
+        base_filter_clauses.append(Object.id.in_(accessible_ids))
+    if filter_reserve_below_target:
+        # Spiegel von `is_reserve_below_target()` in SQL — beide Felder muessen
+        # NOT NULL sein, sonst landet der Eintrag eh nicht im Filter.
+        base_filter_clauses.append(Object.reserve_current.is_not(None))
+        base_filter_clauses.append(Object.reserve_target.is_not(None))
+        base_filter_clauses.append(
+            Object.reserve_current < Object.reserve_target * RESERVE_TARGET_MONTHS
+        )
 
     stmt = (
         select(
@@ -133,8 +159,8 @@ def list_objects_with_unit_counts(
         .outerjoin(Unit, Unit.object_id == Object.id)
         .group_by(Object.id)
     )
-    if accessible_ids is not None:
-        stmt = stmt.where(Object.id.in_(accessible_ids))
+    for clause in base_filter_clauses:
+        stmt = stmt.where(clause)
 
     rows: list[ObjectListRow] = [
         ObjectListRow(
@@ -155,9 +181,6 @@ def list_objects_with_unit_counts(
         for r in db.execute(stmt).all()
     ]
 
-    if filter_reserve_below_target:
-        rows = [r for r in rows if r.reserve_below_target]
-
     safe_sort, safe_order = normalize_sort_order(sort, order)
     is_desc = safe_order == "desc"
 
@@ -170,30 +193,34 @@ def list_objects_with_unit_counts(
     if safe_sort in ("short_code", "name"):
         rows.sort(key=lambda r: r.short_code.casefold())
         rows.sort(key=lambda r: getattr(r, safe_sort).casefold(), reverse=is_desc)
-        return rows
-
-    if safe_sort == "mandat_status":
+    elif safe_sort == "mandat_status":
         rows.sort(key=lambda r: r.short_code.casefold())
         rows.sort(
             key=lambda r: 1 if r.mandat_status == "vorhanden" else 0,
             reverse=is_desc,
         )
-        return rows
+    else:
+        # Numerische Felder (saldo, reserve_current, pflegegrad): NULLs immer
+        # ans Ende. Sentinel-Tuple kippt bei reverse=True — Zwei-Listen-Methode
+        # haelt NULLs in beiden Richtungen sicher am Ende. NULL-Liste explizit
+        # nach short_code sortieren, sonst Reihenfolge non-deterministisch
+        # (Review-Patch P1).
+        non_null = [r for r in rows if getattr(r, safe_sort) is not None]
+        null_rows = [r for r in rows if getattr(r, safe_sort) is None]
+        non_null.sort(key=lambda r: r.short_code.casefold())
+        non_null.sort(
+            key=lambda r: float(getattr(r, safe_sort)),
+            reverse=is_desc,
+        )
+        null_rows.sort(key=lambda r: r.short_code.casefold())
+        rows = non_null + null_rows
 
-    # Numerische Felder (saldo, reserve_current, pflegegrad): NULLs immer
-    # ans Ende. Sentinel-Tuple kippt bei reverse=True — Zwei-Listen-Methode
-    # haelt NULLs in beiden Richtungen sicher am Ende. NULL-Liste explizit
-    # nach short_code sortieren, sonst Reihenfolge non-deterministisch
-    # (Review-Patch P1).
-    non_null = [r for r in rows if getattr(r, safe_sort) is not None]
-    null_rows = [r for r in rows if getattr(r, safe_sort) is None]
-    non_null.sort(key=lambda r: r.short_code.casefold())
-    non_null.sort(
-        key=lambda r: float(getattr(r, safe_sort)),
-        reverse=is_desc,
-    )
-    null_rows.sort(key=lambda r: r.short_code.casefold())
-    return non_null + null_rows
+    if paginated:
+        total = len(rows)
+        start = (page - 1) * page_size  # type: ignore[operator]
+        end = start + page_size  # type: ignore[operator]
+        return (rows[start:end], total)
+    return rows
 
 
 def get_object_detail(
@@ -279,7 +306,13 @@ def get_provenance_map_bulk(
     liefern None via .get(). Callsites koennen ihre Sub-Maps via Dict-Comprehension
     aufbauen: `{f: bulk_map.get(f) for f in field_list}`.
     """
-    dialect_name = db.bind.dialect.name if db.bind is not None else "sqlite"  # type: ignore[union-attr]
+    # `db.get_bind()` liefert das gebundene Engine zuverlaessig auch bei
+    # Sessions mit mehreren Binds; `db.bind` kann in dem Fall None sein und
+    # wuerde uns dann silent in den SQLite-Fallback zwingen (Perf-Cliff in Prod).
+    try:
+        dialect_name = db.get_bind().dialect.name
+    except Exception:  # pragma: no cover — Tests/Sessions ohne Bind
+        dialect_name = "sqlite"
     if dialect_name == "postgresql":
         stmt = (
             select(FieldProvenance, User.email)

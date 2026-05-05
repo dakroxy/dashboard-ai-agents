@@ -277,8 +277,10 @@ async def list_conferences_with_properties() -> list[dict]:
         else:
             c["_property_number"] = None
             c["_property_name"] = None
-            if isinstance(prop, BaseException):
-                failed += 1
+            # Failed-Counter zaehlt sowohl Exceptions als auch unerwartete
+            # Response-Shapes (z. B. Liste statt Objekt bei Schema-Drift) —
+            # sonst verschwindet der Schema-Drift im Logging stillschweigend.
+            failed += 1
     if failed:
         # Aggregiertes Warning (kein Per-Item-Log) — bei ~30 Conferences sonst
         # zu laut. User sieht im Dropdown "ohne WEG-Kuerzel"; Ops sieht hier

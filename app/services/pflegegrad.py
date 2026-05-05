@@ -116,13 +116,38 @@ def pflegegrad_score(
     """
     now = datetime.datetime.now(tz=timezone.utc)
 
+    latest_prov: dict[str, FieldProvenance] = {}
     if prov_map is not None:
-        # Reuse aus Bulk-Map: ProvenanceWithUser → FieldProvenance extrahieren
-        latest_prov: dict[str, FieldProvenance] = {
-            field_name: wrap.prov
-            for field_name, wrap in prov_map.items()
-            if wrap is not None
-        }
+        # Reuse aus Bulk-Map: ProvenanceWithUser → FieldProvenance extrahieren.
+        # Achtung: Ein Schluessel im prov_map mit Wert None wird als "kein
+        # Provenance-Eintrag in DB" verstanden — eine zusaetzliche DB-Query
+        # waere redundant. Fields, die im prov_map gar nicht vorkommen
+        # (partial map vom Caller), werden weiter unten per Bulk-Query nachgeladen,
+        # damit ein partieller prov_map nicht silent den Decay deaktiviert.
+        for field_name, wrap in prov_map.items():
+            if wrap is not None:
+                latest_prov[field_name] = wrap.prov
+        missing = [f for f in _ALL_SCALAR if f not in prov_map]
+        if missing:
+            # Ein einziger Bulk-Lookup fuer alle nicht im prov_map enthaltenen
+            # Felder — vermeidet N Einzel-Queries und stellt Korrektheit her,
+            # falls der Caller nur eine Sub-Map (z. B. Sektions-Slice) uebergibt.
+            provs = (
+                db.execute(
+                    select(FieldProvenance)
+                    .where(
+                        FieldProvenance.entity_type == "object",
+                        FieldProvenance.entity_id == obj.id,
+                        FieldProvenance.field_name.in_(missing),
+                    )
+                    .order_by(FieldProvenance.created_at.desc())
+                )
+                .scalars()
+                .all()
+            )
+            for prov in provs:
+                if prov.field_name not in latest_prov:
+                    latest_prov[prov.field_name] = prov
     else:
         # -- Provenance: eine Query fuer alle Scalar-Felder --
         provs = (
@@ -138,7 +163,6 @@ def pflegegrad_score(
             .scalars()
             .all()
         )
-        latest_prov = {}
         for prov in provs:
             if prov.field_name not in latest_prov:
                 latest_prov[prov.field_name] = prov

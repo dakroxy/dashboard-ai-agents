@@ -28,6 +28,9 @@ _logger = logging.getLogger(__name__)
 
 _SIDEBAR_WORKFLOWS_CACHE: dict[uuid.UUID, tuple[float, list[dict[str, Any]]]] = {}
 _SIDEBAR_WORKFLOWS_TTL_SECONDS = 30
+# Hard-Cap: schuetzt vor Memory-Wachstum bei vielen kurzlebigen Sessions
+# (User schliesst Browser ohne Logout — Cache-Eintrag bleibt bis Server-Restart).
+_SIDEBAR_WORKFLOWS_CACHE_MAX = 1000
 
 
 # Pro Workflow-Key: Sidebar-URL + Inline-SVG-Pfad. Halten wir hier zentral,
@@ -85,6 +88,19 @@ def sidebar_workflows(user: User | None) -> list[dict[str, Any]]:
                 items.append({"key": wf.key, "name": wf.name, "url": meta["url"], "icon": meta["icon"]})
     finally:
         db.close()
+    # Bei Cache-Miss: zuerst abgelaufene Eintraege aufraeumen, sonst waechst
+    # der Dict monoton bei vielen verschiedenen Usern (kein LRU noetig — TTL
+    # ist die Wahrheit). Hard-Cap als zusaetzliche Sicherheit.
+    if len(_SIDEBAR_WORKFLOWS_CACHE) >= _SIDEBAR_WORKFLOWS_CACHE_MAX:
+        ttl = _SIDEBAR_WORKFLOWS_TTL_SECONDS
+        stale = [k for k, (ts, _) in _SIDEBAR_WORKFLOWS_CACHE.items() if (now - ts) >= ttl]
+        for k in stale:
+            _SIDEBAR_WORKFLOWS_CACHE.pop(k, None)
+        # Falls trotzdem noch ueber dem Cap (kein TTL-Eintrag stale): aeltesten
+        # Eintrag entfernen, um den neuen Schluessel reinzukriegen.
+        if len(_SIDEBAR_WORKFLOWS_CACHE) >= _SIDEBAR_WORKFLOWS_CACHE_MAX:
+            oldest_key = min(_SIDEBAR_WORKFLOWS_CACHE, key=lambda k: _SIDEBAR_WORKFLOWS_CACHE[k][0])
+            _SIDEBAR_WORKFLOWS_CACHE.pop(oldest_key, None)
     _SIDEBAR_WORKFLOWS_CACHE[user.id] = (now, items)
     return items
 

@@ -272,7 +272,7 @@ def accessible_object_ids(db: Session, user: User) -> set[uuid.UUID]:
 
 
 def accessible_object_ids_for_request(
-    request: Request, db: Session, user: User
+    request: Request | None, db: Session, user: User
 ) -> set[uuid.UUID]:
     """Request-scoped Cache fuer `accessible_object_ids`.
 
@@ -282,6 +282,8 @@ def accessible_object_ids_for_request(
     Fallback fuer Background-Tasks oder Tests ohne Request: ruft direkt
     `accessible_object_ids` auf (dann kein State-Caching).
     """
+    if request is None:
+        return accessible_object_ids(db, user)
     cached = getattr(request.state, "_accessible_object_ids", None)
     if cached is not None:
         return cached

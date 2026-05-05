@@ -1117,7 +1117,9 @@ async def list_review_queue(
 ):
     q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
     total_count = db.execute(select(func.count()).select_from(q.subquery())).scalar_one()
-    paginated_q = q.offset((page - 1) * page_size).limit(page_size)
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    effective_page = min(page, total_pages)
+    paginated_q = q.offset((effective_page - 1) * page_size).limit(page_size)
     entries = _prepare_entries(db.execute(paginated_q).scalars().all())
     users_for_filter = db.execute(select(User).order_by(User.email)).scalars().all()
     return templates.TemplateResponse(
@@ -1130,7 +1132,7 @@ async def list_review_queue(
             "filter_field_name": field_name or "",
             "filter_assigned_to_user_id": assigned_to_user_id or "",
             "total_count": total_count,
-            "current_page": page,
+            "current_page": effective_page,
             "page_size": page_size,
             "user": user,
         },
@@ -1180,7 +1182,9 @@ async def list_review_queue_rows(
 ):
     q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
     total_count = db.execute(select(func.count()).select_from(q.subquery())).scalar_one()
-    paginated_q = q.offset((page - 1) * page_size).limit(page_size)
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    effective_page = min(page, total_pages)
+    paginated_q = q.offset((effective_page - 1) * page_size).limit(page_size)
     entries = _prepare_entries(db.execute(paginated_q).scalars().all())
     response = templates.TemplateResponse(
         request,
@@ -1188,7 +1192,7 @@ async def list_review_queue_rows(
         {
             "entries": entries,
             "total_count": total_count,
-            "current_page": page,
+            "current_page": effective_page,
             "page_size": page_size,
             "user": user,
         },

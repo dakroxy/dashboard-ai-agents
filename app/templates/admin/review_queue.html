@@ -73,21 +73,21 @@
 {% set total_pages = ((total_count - 1) // page_size) + 1 %}
 <nav class="flex items-center gap-1 mt-4 text-sm">
     {% if current_page > 1 %}
-    <a href="/admin/review-queue?page={{ current_page - 1 }}&page_size={{ page_size }}{% if filter_min_age_days %}&min_age_days={{ filter_min_age_days }}{% endif %}{% if filter_field_name %}&field_name={{ filter_field_name }}{% endif %}{% if filter_assigned_to_user_id %}&assigned_to_user_id={{ filter_assigned_to_user_id }}{% endif %}"
+    <a href="/admin/review-queue?page={{ current_page - 1 }}&page_size={{ page_size }}{% if filter_min_age_days %}&min_age_days={{ filter_min_age_days | urlencode }}{% endif %}{% if filter_field_name %}&field_name={{ filter_field_name | urlencode }}{% endif %}{% if filter_assigned_to_user_id %}&assigned_to_user_id={{ filter_assigned_to_user_id | urlencode }}{% endif %}"
        class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">&laquo;</a>
     {% endif %}
     {% for p in range(1, total_pages + 1) %}
         {% if p == current_page %}
         <span class="px-2 py-1 rounded border border-slate-800 bg-slate-800 text-white font-semibold">{{ p }}</span>
         {% elif p == 1 or p == total_pages or (p >= current_page - 2 and p <= current_page + 2) %}
-        <a href="/admin/review-queue?page={{ p }}&page_size={{ page_size }}{% if filter_min_age_days %}&min_age_days={{ filter_min_age_days }}{% endif %}{% if filter_field_name %}&field_name={{ filter_field_name }}{% endif %}{% if filter_assigned_to_user_id %}&assigned_to_user_id={{ filter_assigned_to_user_id }}{% endif %}"
+        <a href="/admin/review-queue?page={{ p }}&page_size={{ page_size }}{% if filter_min_age_days %}&min_age_days={{ filter_min_age_days | urlencode }}{% endif %}{% if filter_field_name %}&field_name={{ filter_field_name | urlencode }}{% endif %}{% if filter_assigned_to_user_id %}&assigned_to_user_id={{ filter_assigned_to_user_id | urlencode }}{% endif %}"
            class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">{{ p }}</a>
         {% elif p == current_page - 3 or p == current_page + 3 %}
         <span class="px-1 text-slate-400">…</span>
         {% endif %}
     {% endfor %}
     {% if current_page < total_pages %}
-    <a href="/admin/review-queue?page={{ current_page + 1 }}&page_size={{ page_size }}{% if filter_min_age_days %}&min_age_days={{ filter_min_age_days }}{% endif %}{% if filter_field_name %}&field_name={{ filter_field_name }}{% endif %}{% if filter_assigned_to_user_id %}&assigned_to_user_id={{ filter_assigned_to_user_id }}{% endif %}"
+    <a href="/admin/review-queue?page={{ current_page + 1 }}&page_size={{ page_size }}{% if filter_min_age_days %}&min_age_days={{ filter_min_age_days | urlencode }}{% endif %}{% if filter_field_name %}&field_name={{ filter_field_name | urlencode }}{% endif %}{% if filter_assigned_to_user_id %}&assigned_to_user_id={{ filter_assigned_to_user_id | urlencode }}{% endif %}"
        class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">&raquo;</a>
     {% endif %}
 </nav>

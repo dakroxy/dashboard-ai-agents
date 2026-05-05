@@ -1,6 +1,6 @@
 # Story 5-4: Performance & Query-Optimierung
 
-Status: review
+Status: done
 
 ## Story
 
@@ -510,3 +510,28 @@ Zusammen 13 unique Items (#57 + #106 als Duplikat einmal gezaehlt), 8 Cluster, 1
 | fix | test_policen_routes_smoke.py | 5 Stellen | Monkeypatch accessible_object_ids_for_request |
 | fix | test_schadensfaelle_routes_smoke.py | 2 Stellen | Monkeypatch accessible_object_ids_for_request |
 | fix | test_wartungspflichten_routes_smoke.py | 2 Stellen | Monkeypatch accessible_object_ids_for_request |
+
+### Review Findings
+
+Code-Review-Lauf nach 0cda1d0 (3-Layer parallel: Blind Hunter, Edge Case Hunter, Acceptance Auditor). Findings unten direkt im Folge-Commit gefixt.
+
+- [x] [Review][Patch] AC2 Pagination `/objects` machte Python-Slice statt SQL — Filter `reserve_below_target` jetzt SQL-seitig, count nach Filter, Page-Slice nach Sort (Sort bleibt Python wegen NULLs-last). [`app/services/steckbrief.py:100-225`, `app/routers/objects.py:128-225`]
+- [x] [Review][Patch] Logout-CSRF same-origin-Check brach hinter Reverse-Proxy (Elestio) — `X-Forwarded-Host` + `settings.base_url` als zusaetzliche Whitelist. [`app/routers/auth.py:26-78`]
+- [x] [Review][Patch] `pflegegrad_score(prov_map=partial)` setzte Decay still auf 1.0 fuer fehlende Felder — Bulk-Fallback fuer missing keys ergaenzt; Bulk-Caller fuellt prov_map mit None fuer alle `_ALL_SCALAR`-Keys, damit der Fallback im Hot-Pfad nicht extra-queried. [`app/services/pflegegrad.py:106-160`, `app/routers/objects.py:322-340`]
+- [x] [Review][Patch] `db.bind.dialect.name` konnte `None` sein → silent SQLite-Fallback in Prod → `db.get_bind()`. [`app/services/steckbrief.py:268-322`]
+- [x] [Review][Patch] `accessible_object_ids_for_request(request=None, ...)` crashte mit AttributeError trotz Docstring-Versprechen — None-Guard ergaenzt. [`app/permissions.py:274-293`]
+- [x] [Review][Patch] Page > total_pages → leere Liste ohne Hinweis → server-side `effective_page = min(page, total_pages)` Clamp in `/admin/review-queue` und `/objects`. [`app/routers/admin.py:1118-1138`, `:1181-1207`, `app/routers/objects.py:128-205`]
+- [x] [Review][Patch] Pagination-URLs in `review_queue.html` escapten Filter-Werte nicht (Param-Splitting bei `&` im Filter-Value) → `| urlencode`. [`app/templates/admin/review_queue.html`]
+- [x] [Review][Patch] `HX-Request`-Check Case-sensitive — `.lower() == "true"`. [`app/auth.py:46-54`]
+- [x] [Review][Patch] `failed`-Counter in `list_conferences_with_properties` zaehlte nur Exceptions, nicht Schema-Drift (Liste statt Dict) → unbedingt `failed += 1`. [`app/services/facilioo.py:268-285`]
+- [x] [Review][Patch] Sidebar-Cache wuchs unbeschraenkt — Hard-Cap 1000 mit TTL-Sweep + LRU-Fallback. [`app/templating.py:29-99`]
+- [x] [Review][Patch] AC5 `test_get_provenance_map_bulk_postgres_distinct_on` verifizierte nicht, dass DISTINCT ON im SQL steht — jetzt mit Postgres-Dialect-Compile + Substring-Assert. [`tests/test_performance_query_optimization.py:493-525`]
+- [x] [Review][Patch] AC4 `test_accessible_object_ids_isolated_between_requests` testete keine Isolation, nur Inhalt — DB-Hit-Counter ergaenzt. Plus neuer Test `_handles_none_request`. [`tests/test_performance_query_optimization.py:382-440`]
+- [x] [Review][Patch] AC1/AC2 Pagination-Tests assertierten nur Pagination-Markup, nicht Row-Counts — Approve-Button-/Detail-Link-Counter ergaenzt. [`tests/test_performance_query_optimization.py:115-220`]
+- [x] [Review][Patch] AC9 401-Test pinnt jetzt `HX-Redirect: /auth/google/login` + neuer Case-Insensitive-Test. [`tests/test_performance_query_optimization.py:739-770`]
+- [x] [Review][Patch] AC6 `test_pflegegrad_score_uses_prov_map_when_provided` verifiziert jetzt explizit `field_provenance`-Query-Count via Statement-Filter; neuer Test `_partial_prov_map_falls_back_per_missing_field` deckt den decay-defeat-Fix ab. [`tests/test_performance_query_optimization.py:530-620`]
+- [x] [Review][Defer] Sidebar-Cache wird bei Role-/Workflow-Aenderung nicht invalidiert — bewusst akzeptiert (AC3 expliziter Trade-off, max 30s stale).
+- [x] [Review][Defer] `last_known_balance` race-window bei zwei concurrent Page-Loads mit identischem live_balance — Audit-Noise, kein Datenverlust; UNIQUE-Constraint eigene Story.
+- [x] [Review][Defer] Migration `0020_perf_indexes.py` ohne `CREATE INDEX CONCURRENTLY` — heute < 1000 Rows; bei produktivem Wachstum nachziehen (eigene Ops-Story).
+- [x] [Review][Defer] CSRF-Token-Rotation invalidiert bei Re-Login Multi-Tab-Forms — bewusster Trade-off zugunsten Session-Fixation-Schutz.
+- [x] [Review][Defer] Logout-CSRF empty-Referer-Allowed — Trade-off (Address-Bar-Logout vs. `referrerpolicy=no-referrer`-Trick); empty-referer bleibt erlaubt, dokumentiert.
