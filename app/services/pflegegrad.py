@@ -9,11 +9,15 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass
 from datetime import timedelta, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Eigentuemer, FieldProvenance, InsurancePolicy, Object, Wartungspflicht
+
+if TYPE_CHECKING:
+    from app.services.steckbrief import ProvenanceWithUser
 
 
 # ---------------------------------------------------------------------------
@@ -99,27 +103,45 @@ def _decay(age_days: int | None) -> float:
 # Score-Berechnung
 # ---------------------------------------------------------------------------
 
-def pflegegrad_score(obj: Object, db: Session) -> PflegegradResult:
+def pflegegrad_score(
+    obj: Object,
+    db: Session,
+    prov_map: "dict[str, ProvenanceWithUser | None] | None" = None,
+) -> PflegegradResult:
+    """Berechnet den Pflegegrad-Score.
+
+    Optionaler `prov_map`-Parameter: wenn vorhanden (z. B. vom Bulk-Aufruf in
+    `object_detail`), werden die Provenance-Daten daraus gelesen ohne DB-Hit.
+    Ohne `prov_map` laufen die Queries wie bisher (fuer List-View, Background-Jobs).
+    """
     now = datetime.datetime.now(tz=timezone.utc)
 
-    # -- Provenance: eine Query fuer alle Scalar-Felder --
-    provs = (
-        db.execute(
-            select(FieldProvenance)
-            .where(
-                FieldProvenance.entity_type == "object",
-                FieldProvenance.entity_id == obj.id,
-                FieldProvenance.field_name.in_(_ALL_SCALAR),
+    if prov_map is not None:
+        # Reuse aus Bulk-Map: ProvenanceWithUser → FieldProvenance extrahieren
+        latest_prov: dict[str, FieldProvenance] = {
+            field_name: wrap.prov
+            for field_name, wrap in prov_map.items()
+            if wrap is not None
+        }
+    else:
+        # -- Provenance: eine Query fuer alle Scalar-Felder --
+        provs = (
+            db.execute(
+                select(FieldProvenance)
+                .where(
+                    FieldProvenance.entity_type == "object",
+                    FieldProvenance.entity_id == obj.id,
+                    FieldProvenance.field_name.in_(_ALL_SCALAR),
+                )
+                .order_by(FieldProvenance.created_at.desc())
             )
-            .order_by(FieldProvenance.created_at.desc())
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
-    latest_prov: dict[str, FieldProvenance] = {}
-    for prov in provs:
-        if prov.field_name not in latest_prov:
-            latest_prov[prov.field_name] = prov
+        latest_prov = {}
+        for prov in provs:
+            if prov.field_name not in latest_prov:
+                latest_prov[prov.field_name] = prov
 
     # -- Relationale Counts --
     eigentuemer_count = db.execute(
@@ -211,11 +233,15 @@ def pflegegrad_score(obj: Object, db: Session) -> PflegegradResult:
 # ---------------------------------------------------------------------------
 
 def get_or_update_pflegegrad_cache(
-    obj: Object, db: Session
+    obj: Object,
+    db: Session,
+    prov_map: "dict[str, ProvenanceWithUser | None] | None" = None,
 ) -> tuple[PflegegradResult, bool]:
     """Berechnet Score + aktualisiert Cache wenn stale.
     Returns: (result, cache_was_updated)
 
+    Optionaler `prov_map`-Parameter wird an `pflegegrad_score` durchgereicht
+    (AC6): wenn vorhanden, entfallen alle Provenance-DB-Queries.
     Muss innerhalb einer Transaktion gerufen werden — Row-Lock haelt bis zum
     naechsten commit/rollback. Caller (object_detail in objects.py:285) committet
     im Anschluss.
@@ -227,7 +253,7 @@ def get_or_update_pflegegrad_cache(
     # auf dem Pre-Lock-Snapshot und ein gleichzeitiger Worker-Schreiber wuerde
     # ueberschrieben.
     db.refresh(obj, attribute_names=["pflegegrad_score_cached", "pflegegrad_score_updated_at"])
-    result = pflegegrad_score(obj, db)
+    result = pflegegrad_score(obj, db, prov_map=prov_map)
 
     now = datetime.datetime.now(tz=timezone.utc)
     is_stale = (

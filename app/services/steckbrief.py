@@ -265,6 +265,60 @@ def get_provenance_map(
     return result
 
 
+def get_provenance_map_bulk(
+    db: Session,
+    entity_type: str,
+    entity_id: uuid.UUID,
+) -> dict[str, "ProvenanceWithUser | None"]:
+    """Laedt alle FieldProvenance-Rows fuer eine Entitaet in einem einzigen SQL-Roundtrip.
+
+    Auf Postgres: DISTINCT ON (field_name) — nutzt den Composite-Index
+    `ix_field_provenance_entity_field_created` optimal (reiner Index-Scan).
+    SQLite-Fallback: alle Rows laden + Python-Group-by (gleiche Semantik).
+    Returntyp: dict[field_name -> ProvenanceWithUser | None]; fehlende Felder
+    liefern None via .get(). Callsites koennen ihre Sub-Maps via Dict-Comprehension
+    aufbauen: `{f: bulk_map.get(f) for f in field_list}`.
+    """
+    dialect_name = db.bind.dialect.name if db.bind is not None else "sqlite"  # type: ignore[union-attr]
+    if dialect_name == "postgresql":
+        stmt = (
+            select(FieldProvenance, User.email)
+            .outerjoin(User, User.id == FieldProvenance.user_id)
+            .where(
+                FieldProvenance.entity_type == entity_type,
+                FieldProvenance.entity_id == entity_id,
+            )
+            .distinct(FieldProvenance.field_name)
+            .order_by(
+                FieldProvenance.field_name,
+                FieldProvenance.created_at.desc(),
+                FieldProvenance.id.desc(),
+            )
+        )
+        result: dict[str, ProvenanceWithUser | None] = {}
+        for prov, email in db.execute(stmt).all():
+            result[prov.field_name] = ProvenanceWithUser(prov=prov, user_email=email)
+        return result
+    else:
+        # SQLite-Fallback: alle Rows laden, Python-seitiges Group-by (portabel)
+        stmt = (
+            select(FieldProvenance, User.email)
+            .outerjoin(User, User.id == FieldProvenance.user_id)
+            .where(
+                FieldProvenance.entity_type == entity_type,
+                FieldProvenance.entity_id == entity_id,
+            )
+            .order_by(
+                FieldProvenance.created_at.desc(), FieldProvenance.id.desc()
+            )
+        )
+        result = {}
+        for prov, email in db.execute(stmt).all():
+            if prov.field_name not in result:
+                result[prov.field_name] = ProvenanceWithUser(prov=prov, user_email=email)
+        return result
+
+
 def has_any_impower_provenance(
     db: Session, entity_type: str, entity_id: uuid.UUID
 ) -> bool:

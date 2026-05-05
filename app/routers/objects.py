@@ -38,7 +38,7 @@ from app.models import Eigentuemer, InsurancePolicy, Object, Schadensfall, Unit,
 from app.models.object import SteckbriefPhoto
 from app.models.registry import Dienstleister, Versicherer
 from app.services._text import _normalize_text
-from app.permissions import accessible_object_ids, has_permission, require_permission
+from app.permissions import accessible_object_ids, accessible_object_ids_for_request, has_permission, require_permission
 from app.services.impower import get_bank_balance
 from app.services.audit import audit, _audit_in_new_session
 from app.services.field_encryption import DecryptionError, decrypt_field
@@ -63,6 +63,7 @@ from app.services.steckbrief import (
     build_sparkline_svg,
     get_object_detail,
     get_provenance_map,
+    get_provenance_map_bulk,
     has_any_impower_provenance,
     list_objects_with_unit_counts,
     normalize_sort_order,
@@ -127,11 +128,15 @@ FINANZEN_FIELDS: tuple[str, ...] = (
 @router.get("", response_class=HTMLResponse)
 async def list_objects(
     request: Request,
+    page: int = Query(1, ge=1, le=10000),
+    page_size: int = Query(50, ge=1, le=200),
     user: User = Depends(require_permission("objects:view")),
     db: Session = Depends(get_db),
 ):
-    accessible = accessible_object_ids(db, user)
-    rows = list_objects_with_unit_counts(db, accessible_ids=accessible)
+    accessible = accessible_object_ids_for_request(request, db, user)
+    all_rows = list_objects_with_unit_counts(db, accessible_ids=accessible)
+    total_count = len(all_rows)
+    rows = all_rows[(page - 1) * page_size : page * page_size]
     return templates.TemplateResponse(
         request,
         "objects_list.html",
@@ -142,6 +147,9 @@ async def list_objects(
             "sort": "short_code",
             "order": "asc",
             "filter_reserve": "false",
+            "total_count": total_count,
+            "current_page": page,
+            "page_size": page_size,
         },
     )
 
@@ -155,21 +163,25 @@ async def list_objects_rows(
     sort: str = Query("short_code"),
     order: str = Query("asc"),
     filter_reserve: str = Query("false"),
+    page: int = Query(1, ge=1, le=10000),
+    page_size: int = Query(50, ge=1, le=200),
     user: User = Depends(require_permission("objects:view")),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     if not request.headers.get("HX-Request"):
         return RedirectResponse("/objects", status_code=303)
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     safe_sort, safe_order = normalize_sort_order(sort, order)
     filter_bool = filter_reserve.strip().lower() in _FILTER_TRUE_VALUES
-    rows = list_objects_with_unit_counts(
+    all_rows = list_objects_with_unit_counts(
         db,
         accessible_ids=accessible,
         sort=safe_sort,
         order=safe_order,
         filter_reserve_below_target=filter_bool,
     )
+    total_count = len(all_rows)
+    rows = all_rows[(page - 1) * page_size : page * page_size]
     # Fragment liefert tbody (primary swap) + thead und filter-bar via OOB,
     # damit ↑/↓-Indikator, hx-get-URLs und "Filter aktiv"-Pille nach jedem
     # Sort/Filter aktuell sind (Review-Patch D1).
@@ -183,6 +195,9 @@ async def list_objects_rows(
             "order": safe_order,
             "filter_reserve": "true" if filter_bool else "false",
             "oob_swap": True,
+            "total_count": total_count,
+            "current_page": page,
+            "page_size": page_size,
         },
     )
 
@@ -194,7 +209,7 @@ async def object_detail(
     user: User = Depends(require_permission("objects:view")),
     db: Session = Depends(get_db),
 ):
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(
@@ -202,9 +217,8 @@ async def object_detail(
             detail="Objekt nicht gefunden",
         )
 
-    prov_map = get_provenance_map(
-        db, "object", detail.obj.id, STAMMDATEN_FIELDS
-    )
+    # Einziger Provenance-Bulk-Roundtrip fuer alle Sektionen (AC5).
+    prov_map = get_provenance_map_bulk(db, "object", detail.obj.id)
     has_impower_prov = has_any_impower_provenance(db, "object", detail.obj.id)
 
     stammdaten = [
@@ -213,32 +227,28 @@ async def object_detail(
     ]
 
     # ---- Finanzen-Sektion (Story 1.5) ----
-    fin_prov_map = get_provenance_map(
-        db, "object", detail.obj.id, FINANZEN_FIELDS
-    )
-
-    # Mirror-Felder vorberechnet ans Template (gleiches Muster wie stammdaten).
+    # Mirror-Felder vorberechnet ans Template (gleiche Slices aus prov_map).
     fin_mirror_fields = [
         {
             "key": "reserve_current",
             "label": "Ruecklage aktuell",
             "value": detail.obj.reserve_current,
             "format": "money",
-            "prov": fin_prov_map.get("reserve_current"),
+            "prov": prov_map.get("reserve_current"),
         },
         {
             "key": "reserve_target",
             "label": "Ruecklage-Ziel",
             "value": detail.obj.reserve_target,
             "format": "money",
-            "prov": fin_prov_map.get("reserve_target"),
+            "prov": prov_map.get("reserve_target"),
         },
         {
             "key": "wirtschaftsplan_status",
             "label": "Wirtschaftsplan",
             "value": detail.obj.wirtschaftsplan_status,
             "format": "text",
-            "prov": fin_prov_map.get("wirtschaftsplan_status"),
+            "prov": prov_map.get("wirtschaftsplan_status"),
         },
     ]
 
@@ -254,38 +264,43 @@ async def object_detail(
                 .astimezone(ZoneInfo("Europe/Berlin"))
                 .strftime("%d.%m.%Y %H:%M")
             )
-            # Persistieren via Write-Gate (Mirror-Source). AC2 verlangt KEIN 500
-            # bei DB-/Commit-Fehler — wir fangen den Commit-Fehler hier ab,
-            # der Render selbst geht trotzdem durch (Saldo bleibt sichtbar,
-            # `balance_error=True` triggert den Fallback-Hinweis).
-            try:
-                write_field_human(
-                    db,
-                    entity=detail.obj,
-                    field="last_known_balance",
-                    value=live_balance,
-                    source="impower_mirror",
-                    source_ref=detail.obj.impower_property_id,
-                    user=None,
-                )
-                db.commit()
-            except Exception as exc:
-                db.rollback()
-                balance_error = True
-                _logger.warning(
-                    "last_known_balance commit failed for object=%s: %s",
-                    detail.obj.id,
-                    exc,
-                )
+            # Skip-on-equal-value: identischer Saldo → kein redundanter Provenance-Write
+            # (AC8). Nur schreiben wenn Wert sich aendert oder noch nicht gesetzt.
+            if detail.obj.last_known_balance is not None and detail.obj.last_known_balance == live_balance:
+                pass  # kein Write, kein Commit
+            else:
+                # Persistieren via Write-Gate (Mirror-Source). AC2 verlangt KEIN 500
+                # bei DB-/Commit-Fehler — wir fangen den Commit-Fehler hier ab,
+                # der Render selbst geht trotzdem durch (Saldo bleibt sichtbar,
+                # `balance_error=True` triggert den Fallback-Hinweis).
+                try:
+                    write_field_human(
+                        db,
+                        entity=detail.obj,
+                        field="last_known_balance",
+                        value=live_balance,
+                        source="impower_mirror",
+                        source_ref=detail.obj.impower_property_id,
+                        user=None,
+                    )
+                    db.commit()
+                except Exception as exc:
+                    db.rollback()
+                    balance_error = True
+                    _logger.warning(
+                        "last_known_balance commit failed for object=%s: %s",
+                        detail.obj.id,
+                        exc,
+                    )
         else:
             balance_error = True
 
     sparkline_points = reserve_history_for_sparkline(db, detail.obj.id)
     sparkline_svg = build_sparkline_svg(sparkline_points)
 
-    # --- Pflegegrad (Story 3.3) ---
+    # --- Pflegegrad (Story 3.3) — prov_map als Cache-Reuse (AC6) ---
     try:
-        pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(detail.obj, db)
+        pflegegrad_result, cache_updated = get_or_update_pflegegrad_cache(detail.obj, db, prov_map=prov_map)
     except Exception as exc:
         _logger.warning("pflegegrad_score_failed object=%s: %s", detail.obj.id, exc)
         pflegegrad_result, cache_updated = None, False
@@ -315,11 +330,8 @@ async def object_detail(
             ],
         )
 
-    # ---- Technik-Sektion (Story 1.6) ----
-    tech_prov_map = get_provenance_map(
-        db, "object", detail.obj.id,
-        tuple(f.key for f in TECHNIK_FIELDS),
-    )
+    # ---- Technik-Sektion (Story 1.6) — Slice aus prov_map ----
+    tech_prov_map = {f.key: prov_map.get(f.key) for f in TECHNIK_FIELDS}
 
     def _build_section(fields: tuple[TechnikField, ...]) -> list[dict]:
         return [
@@ -340,10 +352,7 @@ async def object_detail(
     # --- Zugangscodes (Fernet-decrypted, nur fuer view_confidential, Story 2.0) ---
     tech_zugangscodes: list[dict] = []
     if has_permission(user, "objects:view_confidential"):
-        zug_prov_map = get_provenance_map(
-            db, "object", detail.obj.id,
-            tuple(f.key for f in ZUGANGSCODE_FIELDS),
-        )
+        zug_prov_map = {f.key: prov_map.get(f.key) for f in ZUGANGSCODE_FIELDS}
         _zug_decrypt_failed = False
         for _zf in ZUGANGSCODE_FIELDS:
             _raw = getattr(detail.obj, _zf.key)
@@ -441,7 +450,7 @@ async def object_detail(
             "stammdaten": stammdaten,
             "has_impower_prov": has_impower_prov,
             "fin_mirror_fields": fin_mirror_fields,
-            "sepa_mandate_refs_prov": fin_prov_map.get("sepa_mandate_refs"),
+            "sepa_mandate_refs_prov": prov_map.get("sepa_mandate_refs"),
             "live_balance": live_balance,
             "live_balance_at_local": live_balance_at_local,
             "balance_error": balance_error,
@@ -504,7 +513,7 @@ async def technik_field_edit(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unbekanntes Technik-Feld",
         )
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(
@@ -538,7 +547,7 @@ async def technik_field_view(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unbekanntes Technik-Feld",
         )
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(
@@ -570,7 +579,7 @@ async def technik_field_save(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unbekanntes Technik-Feld",
         )
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(
@@ -688,7 +697,7 @@ async def zugangscode_field_view(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unbekanntes Zugangscode-Feld",
         )
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(
@@ -730,7 +739,7 @@ async def zugangscode_field_edit(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unbekanntes Zugangscode-Feld",
         )
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(
@@ -774,7 +783,7 @@ async def zugangscode_field_save(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unbekanntes Zugangscode-Feld",
         )
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(
@@ -858,7 +867,7 @@ async def photo_upload(
     Card-Fragment, Pending-Card oder Fehlermeldung."""
     if component_ref not in PHOTO_COMPONENT_REFS:
         raise HTTPException(400, f"Unbekannte Komponente: {component_ref!r}")
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(404, "Objekt nicht gefunden")
@@ -1075,7 +1084,7 @@ async def photo_status(
 ):
     """Polling-Endpoint waehrend BG-Upload laeuft. Liefert je nach Status
     Pending- oder Card-Fragment zurueck."""
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     if object_id not in accessible:
         raise HTTPException(404)
     photo = db.get(SteckbriefPhoto, photo_id)
@@ -1107,7 +1116,7 @@ async def photo_delete(
     (Datei-Leichen sind ein kleineres Problem als ein nicht loeschbarer
     DB-Eintrag im UI). Audit + DB-Commit erfolgen immer.
     """
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     if object_id not in accessible:
         raise HTTPException(404)
     photo = db.get(SteckbriefPhoto, photo_id)
@@ -1140,6 +1149,7 @@ async def photo_delete(
 
 @router.get("/{object_id}/photos/{photo_id}/file")
 async def photo_file_serve(
+    request: Request,
     object_id: uuid.UUID,
     photo_id: uuid.UUID,
     user: User = Depends(require_permission("objects:view")),
@@ -1150,7 +1160,7 @@ async def photo_file_serve(
     + ``is_relative_to``-Check ist Defense-in-Depth gegen kompromittierte
     DB-Werte.
     """
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     if object_id not in accessible:
         raise HTTPException(404)
     photo = db.get(SteckbriefPhoto, photo_id)
@@ -1172,10 +1182,10 @@ async def photo_file_serve(
 # ---------------------------------------------------------------------------
 
 def _load_accessible_object(
-    db: Session, object_id: uuid.UUID, user: User
+    request: Request, db: Session, object_id: uuid.UUID, user: User
 ) -> Object:
-    """Laedt Object oder wirft 404 — prueft accessible_object_ids."""
-    accessible = accessible_object_ids(db, user)
+    """Laedt Object oder wirft 404 — prueft accessible_object_ids (request-cached)."""
+    accessible = accessible_object_ids_for_request(request, db, user)
     detail = get_object_detail(db, object_id, accessible_ids=accessible)
     if detail is None:
         raise HTTPException(
@@ -1239,7 +1249,7 @@ async def versicherungen_section(
     user: User = Depends(require_permission("objects:view")),
     db: Session = Depends(get_db),
 ):
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     return _render_versicherungen(request, obj, db, user)
 
 
@@ -1256,7 +1266,7 @@ async def create_schadensfall_route(
     user: User = Depends(require_permission("objects:edit")),
 ):
     # AC5: accessible_object_ids-Gate als ERSTER Aufruf
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
 
     form_data = {
         "policy_id": policy_id or "",
@@ -1386,7 +1396,7 @@ async def police_create(
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
 
     parsed_versicherer_id: uuid.UUID | None = None
     if versicherer_id and versicherer_id.strip():
@@ -1455,7 +1465,7 @@ async def police_edit_form(
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     policy = db.get(InsurancePolicy, policy_id)
     if policy is None or policy.object_id != obj.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
@@ -1483,7 +1493,7 @@ async def police_update(
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     policy = db.get(InsurancePolicy, policy_id)
     if policy is None or policy.object_id != obj.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
@@ -1555,7 +1565,7 @@ async def police_delete(
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     policy = db.get(InsurancePolicy, policy_id)
     if policy is None or policy.object_id != obj.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
@@ -1585,7 +1595,7 @@ async def wartungspflicht_create(
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     policy = db.get(InsurancePolicy, policy_id)
     if policy is None or policy.object_id != obj.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Police nicht gefunden")
@@ -1675,7 +1685,7 @@ async def wartungspflicht_delete(
     user: User = Depends(require_permission("objects:edit")),
     db: Session = Depends(get_db),
 ):
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     wart = db.get(Wartungspflicht, wart_id)
     if wart is None or wart.object_id != obj.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wartungspflicht nicht gefunden")
@@ -1720,7 +1730,7 @@ async def notiz_view(
     user: User = Depends(require_permission("objects:view_confidential")),
     db: Session = Depends(get_db),
 ):
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     eig = db.get(Eigentuemer, eigentuemer_id)
     if not eig or eig.object_id != obj.id:
         raise HTTPException(404, detail="Eigentümer nicht gefunden")
@@ -1744,7 +1754,7 @@ async def notiz_edit(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für vertrauliche Felder",
         )
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     eig = db.get(Eigentuemer, eigentuemer_id)
     if not eig or eig.object_id != obj.id:
         raise HTTPException(404, detail="Eigentümer nicht gefunden")
@@ -1769,7 +1779,7 @@ async def notiz_save(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für vertrauliche Felder",
         )
-    obj = _load_accessible_object(db, object_id, user)
+    obj = _load_accessible_object(request, db, object_id, user)
     eig = db.get(Eigentuemer, eigentuemer_id)
     if not eig or eig.object_id != obj.id:
         raise HTTPException(404, detail="Eigentümer nicht gefunden")

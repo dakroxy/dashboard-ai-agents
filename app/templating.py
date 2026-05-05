@@ -8,6 +8,8 @@ Helper-Funktion eines anderen Router erwartet.
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 from typing import Any
 
 from fastapi.templating import Jinja2Templates
@@ -16,6 +18,9 @@ from markupsafe import Markup, escape
 from starlette.requests import Request
 
 from app.db import SessionLocal
+
+_SIDEBAR_WORKFLOWS_CACHE: dict[uuid.UUID, tuple[float, list[dict[str, Any]]]] = {}
+_SIDEBAR_WORKFLOWS_TTL_SECONDS = 30
 
 _logger = logging.getLogger(__name__)
 from app.models import User, Workflow
@@ -52,28 +57,35 @@ _WORKFLOW_SIDEBAR_META: dict[str, dict[str, str]] = {
 def sidebar_workflows(user: User | None) -> list[dict[str, Any]]:
     """Liefert die Workflow-Eintraege fuer die linke Sidebar.
 
-    Eigene DB-Session, damit der Helper aus jedem Template heraus aufrufbar ist
-    ohne dass die Route die Liste manuell durchreichen muss.
+    TTL-Cache (30 s) verhindert DB-Hit pro Page-Render. Logout invalidiert
+    den Cache-Eintrag (via `_SIDEBAR_WORKFLOWS_CACHE.pop(user.id, None)`
+    im Logout-Handler in `app/routers/auth.py`).
     """
     if user is None:
         return []
+    now = time.monotonic()
+    cached = _SIDEBAR_WORKFLOWS_CACHE.get(user.id)
+    if cached is not None and (now - cached[0]) < _SIDEBAR_WORKFLOWS_TTL_SECONDS:
+        return cached[1]
     db = SessionLocal()
     try:
         ids = accessible_workflow_ids(db, user)
         if not ids:
-            return []
-        workflows = (
-            db.query(Workflow)
-            .filter(Workflow.active.is_(True), Workflow.id.in_(ids))
-            .order_by(Workflow.name.asc())
-            .all()
-        )
+            items: list[dict[str, Any]] = []
+        else:
+            workflows = (
+                db.query(Workflow)
+                .filter(Workflow.active.is_(True), Workflow.id.in_(ids))
+                .order_by(Workflow.name.asc())
+                .all()
+            )
+            items = []
+            for wf in workflows:
+                meta = _WORKFLOW_SIDEBAR_META.get(wf.key, {"url": f"/workflows/{wf.key}", "icon": ""})
+                items.append({"key": wf.key, "name": wf.name, "url": meta["url"], "icon": meta["icon"]})
     finally:
         db.close()
-    items: list[dict[str, Any]] = []
-    for wf in workflows:
-        meta = _WORKFLOW_SIDEBAR_META.get(wf.key, {"url": f"/workflows/{wf.key}", "icon": ""})
-        items.append({"key": wf.key, "name": wf.name, "url": meta["url"], "icon": meta["icon"]})
+    _SIDEBAR_WORKFLOWS_CACHE[user.id] = (now, items)
     return items
 
 

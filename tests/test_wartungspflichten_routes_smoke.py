@@ -517,7 +517,7 @@ def test_wartungspflicht_post_404_when_object_not_accessible(
     policy = _make_policy(db, obj.id)
 
     from app.routers import objects as router_mod
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
     resp = steckbrief_admin_client.post(
         f"/objects/{obj.id}/policen/{policy.id}/wartungspflichten",
         data={"bezeichnung": "Blocked"},
@@ -533,7 +533,7 @@ def test_wartungspflicht_delete_404_when_object_not_accessible(
     wart = _make_wartung(db, policy)
 
     from app.routers import objects as router_mod
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
     resp = steckbrief_admin_client.delete(
         f"/objects/{obj.id}/wartungspflichten/{wart.id}"
     )

@@ -5,3 +5,26 @@
 {% include "_obj_table_body.html" %}
 {% include "_obj_table_head.html" %}
 {% include "_obj_filter_bar.html" %}
+{# Pagination-Nav per OOB-Swap aktuell halten nach Sort/Filter. #}
+{% if total_count > page_size %}
+{% set total_pages = ((total_count - 1) // page_size) + 1 %}
+<nav id="obj-pagination" hx-swap-oob="true" class="flex items-center gap-1 mt-4 text-sm">
+  {% if current_page > 1 %}
+  <a href="/objects?page={{ current_page - 1 }}&page_size={{ page_size }}&sort={{ sort }}&order={{ order }}&filter_reserve={{ filter_reserve }}" class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">&laquo;</a>
+  {% endif %}
+  {% for p in range(1, total_pages + 1) %}
+    {% if p == current_page %}
+    <span class="px-2 py-1 rounded border border-slate-800 bg-slate-800 text-white font-semibold">{{ p }}</span>
+    {% elif p == 1 or p == total_pages or (p >= current_page - 2 and p <= current_page + 2) %}
+    <a href="/objects?page={{ p }}&page_size={{ page_size }}&sort={{ sort }}&order={{ order }}&filter_reserve={{ filter_reserve }}" class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">{{ p }}</a>
+    {% elif p == current_page - 3 or p == current_page + 3 %}
+    <span class="px-1 text-slate-400">…</span>
+    {% endif %}
+  {% endfor %}
+  {% if current_page < total_pages %}
+  <a href="/objects?page={{ current_page + 1 }}&page_size={{ page_size }}&sort={{ sort }}&order={{ order }}&filter_reserve={{ filter_reserve }}" class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">&raquo;</a>
+  {% endif %}
+</nav>
+{% else %}
+<nav id="obj-pagination" hx-swap-oob="true"></nav>
+{% endif %}

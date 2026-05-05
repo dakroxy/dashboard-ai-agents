@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import secrets
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from authlib.integrations.base_client.errors import OAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -14,8 +16,38 @@ from app.config import settings
 from app.db import get_db
 from app.models import Role, User
 from app.services.audit import audit
+from app.templating import _SIDEBAR_WORKFLOWS_CACHE
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _is_same_origin(request: Request) -> bool:
+    """Logout-CSRF-Schutz: GET /auth/logout darf nur von Same-Origin-Referrer kommen.
+
+    Hintergrund: ein <img src="https://dashboard.dbshome.de/auth/logout"> auf
+    einer Drittseite wuerde sonst den eingeloggten User unbemerkt ausloggen
+    (klassischer Logout-CSRF-DoS).
+
+    Policy:
+    - Same-Origin-Referer (host matcht) → erlaubt.
+    - Cross-Origin-Referer → blockiert.
+    - Kein Referer (User tippt URL direkt) → erlaubt; Browser senden bei
+      address-bar-Navigation regelmaessig keinen Referer, das ist legitim.
+
+    Damit ist die Hauptangriffsklasse (`<img src>`, `<link rel>` aus einem
+    Phishing-Tab mit Referrer-Policy default) zuverlaessig blockiert.
+    """
+    referer = request.headers.get("referer")
+    if not referer:
+        return True
+    try:
+        ref_host = urlparse(referer).hostname or ""
+    except (ValueError, AttributeError):
+        return False
+    expected_host = request.url.hostname or ""
+    return ref_host.lower() == expected_host.lower()
 
 
 @router.get("/google/login")
@@ -125,14 +157,24 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     db.refresh(user)
 
     request.session["user_id"] = str(user.id)
-    # CSRF-Token einmal pro Session setzen (stabil bis Logout).
-    if not request.session.get("csrf_token"):
-        request.session["csrf_token"] = secrets.token_urlsafe(32)
+    # Token bei jedem Login rotieren — schliesst Session-Fixation gegen CSRF
+    # (Pre-Auth-Token wird verworfen, damit ein evtl. von extern injizierter
+    # Anonym-Token nach Auth nicht mehr gilt).
+    request.session["csrf_token"] = secrets.token_urlsafe(32)
     return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/logout")
 async def logout(request: Request, db: Session = Depends(get_db)):
+    if not _is_same_origin(request):
+        # Cross-Origin-Trigger (z. B. <img src> aus Phishing-Tab) → ignorieren.
+        # Kein Audit-Eintrag, kein Logout. User bleibt eingeloggt, redirect zu /.
+        logger.warning(
+            "logout-csrf-blocked: cross-origin referer=%r",
+            request.headers.get("referer"),
+        )
+        return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+
     user_id = request.session.get("user_id")
     if user_id:
         try:
@@ -148,6 +190,7 @@ async def logout(request: Request, db: Session = Depends(get_db)):
                     request=request,
                 )
                 db.commit()
+                _SIDEBAR_WORKFLOWS_CACHE.pop(user.id, None)
         except (ValueError, TypeError):
             pass
     request.session.clear()

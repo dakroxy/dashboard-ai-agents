@@ -365,7 +365,7 @@ def test_detail_404_when_object_not_in_accessible_ids(
 
     from app.routers import objects as router_mod
     monkeypatch.setattr(
-        router_mod, "accessible_object_ids", lambda db, user: set()
+        router_mod, "accessible_object_ids_for_request", lambda request, db, user: set()
     )
     response = steckbrief_admin_client.get(f"/objects/{obj.id}")
     # Ununterscheidbar von "existiert nicht" (NFR-S7)
@@ -459,8 +459,10 @@ def test_detail_sql_statement_count(
     # Story 5-3 AC5: +1 Versicherer-FK-Existenzcheck bei police_create/update.
     # Story 5-2 Review-Fix: +1 db.refresh() nach Pflegegrad-Cache-Lock — schliesst
     # den Lost-Write-Race, den der Lock allein offen liess.
-    # Puffer fuer Framework-Setup -> max 25.
-    assert counter.count <= 25, (
+    # Story 5-4 AC5: -3 (4 get_provenance_map → 1 get_provenance_map_bulk).
+    # Story 5-4 AC6: -1 (Pflegegrad prov_map-Reuse, keine Extra-Query).
+    # Puffer fuer Framework-Setup -> max 21.
+    assert counter.count <= 21, (
         f"Zu viele SQL-Statements auf Detailseite: {counter.count}"
     )
 

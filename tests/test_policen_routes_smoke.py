@@ -470,7 +470,7 @@ def test_policen_post_404_when_object_not_accessible(
 ):
     obj = make_object("AC6-P")
     from app.routers import objects as router_mod
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
     resp = steckbrief_admin_client.post(
         f"/objects/{obj.id}/policen", data={"praemie": "100.00"}
     )
@@ -485,7 +485,7 @@ def test_policen_put_404_when_object_not_accessible(
     db.add(policy)
     db.commit()
     from app.routers import objects as router_mod
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
     resp = steckbrief_admin_client.put(
         f"/objects/{obj.id}/policen/{policy.id}", data={"praemie": "99.00"}
     )
@@ -500,7 +500,7 @@ def test_policen_delete_404_when_object_not_accessible(
     db.add(policy)
     db.commit()
     from app.routers import objects as router_mod
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
     resp = steckbrief_admin_client.delete(f"/objects/{obj.id}/policen/{policy.id}")
     assert resp.status_code == 404
 
@@ -510,7 +510,7 @@ def test_sections_versicherungen_404_when_object_not_accessible(
 ):
     obj = make_object("AC6-S")
     from app.routers import objects as router_mod
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
     resp = steckbrief_admin_client.get(f"/objects/{obj.id}/sections/versicherungen")
     assert resp.status_code == 404
 
@@ -523,7 +523,7 @@ def test_policen_edit_form_404_when_object_not_accessible(
     db.add(policy)
     db.commit()
     from app.routers import objects as router_mod
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
     resp = steckbrief_admin_client.get(f"/objects/{obj.id}/policen/{policy.id}/edit-form")
     assert resp.status_code == 404
 

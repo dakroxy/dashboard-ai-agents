@@ -42,8 +42,15 @@ def get_current_user(
 ) -> User:
     user = _load_user(request, db)
     if user is None:
-        # Session abgelaufen oder User weg -> Redirect auf Login
+        # Session abgelaufen oder User weg
         request.session.clear()
+        # HTMX-Requests bekommen 401 + HX-Redirect statt 302 — sonst injiziert
+        # HTMX das Login-Form-Fragment in den aktuellen Page-Slot (AC9).
+        if request.headers.get("HX-Request") == "true":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                headers={"HX-Redirect": "/auth/google/login"},
+            )
         raise HTTPException(
             status_code=status.HTTP_302_FOUND,
             headers={"Location": "/auth/google/login"},

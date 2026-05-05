@@ -32,6 +32,10 @@ _PAGE_SIZE = 100
 # kein last-Flag, content immer voll) waere die Schleife sonst unbegrenzt.
 # 500 Seiten * 100 Items = 50k Conferences — well above any realistic Pool.
 _MAX_PAGES = 500
+# Maximale parallele Property-Lookups bei list_conferences_with_properties.
+# 10 ist heuristisch: bei ~30 Conferences kein Unterschied; bei 200+ wird
+# der Facilioo-Connection-Pool nicht geflutet. Wiederverwendbar fuer kuenftige Fanouts.
+_PROPERTY_LOOKUP_CONCURRENCY = 10
 
 # Wird beim ersten Import aus settings gelesen (Prod-Override via Env).
 _REQUEST_INTERVAL: float = settings.facilioo_rate_interval_seconds
@@ -247,8 +251,14 @@ async def list_conferences_with_properties() -> list[dict]:
     """
     async with _make_client() as client:
         conferences = await _get_all_paged(client, "/api/conferences", rate_gate=False)
+        sem = asyncio.Semaphore(_PROPERTY_LOOKUP_CONCURRENCY)
+
+        async def _bounded_get(c_id: int | str) -> dict | Exception:
+            async with sem:
+                return await _api_get(client, f"/api/conferences/{c_id}/property", rate_gate=False)
+
         prop_tasks = [
-            _api_get(client, f"/api/conferences/{c['id']}/property", rate_gate=False)
+            _bounded_get(c["id"])
             for c in conferences
             if c.get("id") is not None
         ]

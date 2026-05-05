@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import User
-from app.permissions import accessible_object_ids, require_permission
+from app.permissions import accessible_object_ids_for_request, require_permission
 from app.services.due_radar import list_due_within
 from app.templating import templates
 
@@ -29,7 +29,7 @@ async def due_radar_view(
     user: User = Depends(require_permission("due_radar:view")),
     db: Session = Depends(get_db),
 ):
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     entries = list_due_within(db, accessible_object_ids=accessible)
     return templates.TemplateResponse(
         request,
@@ -48,7 +48,7 @@ async def due_radar_rows(
 ):
     if "hx-request" not in request.headers:
         return RedirectResponse(url="/due-radar", status_code=302)
-    accessible = accessible_object_ids(db, user)
+    accessible = accessible_object_ids_for_request(request, db, user)
     types_filter = None if type == "all" else [type]
     severity_filter = _SEVERITY_MAP[severity]
     entries = list_due_within(

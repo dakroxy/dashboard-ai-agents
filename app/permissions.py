@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -269,3 +269,22 @@ def accessible_object_ids(db: Session, user: User) -> set[uuid.UUID]:
     if not has_permission(user, "objects:view"):
         return set()
     return set(db.execute(select(Object.id)).scalars().all())
+
+
+def accessible_object_ids_for_request(
+    request: Request, db: Session, user: User
+) -> set[uuid.UUID]:
+    """Request-scoped Cache fuer `accessible_object_ids`.
+
+    Speichert das Ergebnis auf `request.state._accessible_object_ids`; alle
+    weiteren Aufrufe im selben Request lesen aus dem State ohne DB-Hit.
+    Lebensdauer ist exakt ein Request — kein Cross-Request-Leak.
+    Fallback fuer Background-Tasks oder Tests ohne Request: ruft direkt
+    `accessible_object_ids` auf (dann kein State-Caching).
+    """
+    cached = getattr(request.state, "_accessible_object_ids", None)
+    if cached is not None:
+        return cached
+    result = accessible_object_ids(db, user)
+    request.state._accessible_object_ids = result
+    return result

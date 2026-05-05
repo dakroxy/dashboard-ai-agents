@@ -1110,11 +1110,15 @@ async def list_review_queue(
     min_age_days: int | None = Query(None, ge=0, le=36500),
     field_name: str | None = Query(None),
     assigned_to_user_id: str | None = Query(None),
+    page: int = Query(1, ge=1, le=10000),
+    page_size: int = Query(50, ge=1, le=200),
     user: User = Depends(require_permission("objects:approve_ki")),
     db: Session = Depends(get_db),
 ):
     q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
-    entries = _prepare_entries(db.execute(q).scalars().all())
+    total_count = db.execute(select(func.count()).select_from(q.subquery())).scalar_one()
+    paginated_q = q.offset((page - 1) * page_size).limit(page_size)
+    entries = _prepare_entries(db.execute(paginated_q).scalars().all())
     users_for_filter = db.execute(select(User).order_by(User.email)).scalars().all()
     return templates.TemplateResponse(
         request,
@@ -1125,6 +1129,9 @@ async def list_review_queue(
             "filter_min_age_days": min_age_days if min_age_days is not None else "",
             "filter_field_name": field_name or "",
             "filter_assigned_to_user_id": assigned_to_user_id or "",
+            "total_count": total_count,
+            "current_page": page,
+            "page_size": page_size,
             "user": user,
         },
     )
@@ -1166,16 +1173,23 @@ async def list_review_queue_rows(
     min_age_days: int | None = Query(None, ge=0, le=36500),
     field_name: str | None = Query(None),
     assigned_to_user_id: str | None = Query(None),
+    page: int = Query(1, ge=1, le=10000),
+    page_size: int = Query(50, ge=1, le=200),
     user: User = Depends(require_permission("objects:approve_ki")),
     db: Session = Depends(get_db),
 ):
     q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
-    entries = _prepare_entries(db.execute(q).scalars().all())
+    total_count = db.execute(select(func.count()).select_from(q.subquery())).scalar_one()
+    paginated_q = q.offset((page - 1) * page_size).limit(page_size)
+    entries = _prepare_entries(db.execute(paginated_q).scalars().all())
     response = templates.TemplateResponse(
         request,
         "admin/_review_queue_rows.html",
         {
             "entries": entries,
+            "total_count": total_count,
+            "current_page": page,
+            "page_size": page_size,
             "user": user,
         },
     )

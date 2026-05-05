@@ -45,7 +45,7 @@ unique Eintrag.
 | 30 | Non-ASCII-WEG-Namen Filename-Fallback                             | low      | no           | post-prod     |
 | 31 | `list_conferences_with_properties` fanout ohne Semaphore          | medium   | no           | post-prod     |
 | 32 | Test-Coverage 5xx vs 404 zusammengelegt                           | low      | no           | post-prod     |
-| 33 | Phase-2 gather killed PDF on single VG failure                    | medium   | no           | post-prod     |
+| 33 | Phase-2 gather killed PDF on single VG failure [deferred-fail-loud-by-design] | medium   | no           | post-prod-when-ux-feedback |
 | 34 | **Cache-Race Last-Writer-Wins (pflegegrad)**                      | high     | yes          | pre-prod      |
 | 35 | Commit-Fail-Loop ohne Backoff                                     | medium   | no           | post-prod     |
 | 36 | `weakest_fields` ohne Dedup/Sortierung                            | low      | no           | post-prod     |
@@ -145,7 +145,7 @@ unique Eintrag.
 | 130 | SharePoint-Zielpfad `DBS/Objekte/` nicht code-seitig garantiert  | low      | no           | post-prod     |
 | 131 | `drive_item_id = None` wenn Graph-API `id` fehlt                 | medium   | no           | post-prod     |
 | 132 | SharePoint-Foto-Anzeige via temp Download-Link                   | low      | no           | post-prod     |
-| 133 | Concurrent Page-Loads doppelte `SteckbriefPhoto`-Rows            | medium   | no           | post-prod     |
+| 133 | Concurrent Page-Loads doppelte `SteckbriefPhoto`-Rows [deferred-to-bulk-upload-story] | medium   | no           | post-prod-bulk-upload |
 | 134 | `Object`-Bootstrap-short_code/name aus Discover Platzhalter      | low      | no           | post-prod     |
 | 135 | `Object`-Row-Creation aus Mirror nicht in CD2 dokumentiert       | low      | no           | post-prod     |
 | 136 | `update_police` schreibt alle 8 Form-Felder unconditional        | medium   | no           | post-prod     |
@@ -166,7 +166,7 @@ unique Eintrag.
 | 151 | Pflegegrad-Cache-Commit-Fehler bleibt unsichtbar                 | medium   | no           | post-prod     |
 | 152 | Eindeutigkeit der `id="..."`-Werte nicht test-geschuetzt         | low      | no           | post-prod     |
 
-**Aggregierte Counts (Stand 2026-04-30):**
+**Aggregierte Counts (Stand 2026-05-05, nach Story 5-4):**
 
 - Severity high: **15** Eintraege (CSRF in #3/#80/#82/#119 = 1 unique → ~12 unique High-Items)
 - Severity medium: **34** Eintraege
@@ -174,6 +174,8 @@ unique Eintrag.
 - Pre-Prod-Blocker: **17** Eintraege (alle High plus #5, #116, #140 — Medium aber Pre-Prod-relevant aufgrund DSGVO-/Hardening-Surface)
 - Epic-4-Sprint-Target: **3** Eintraege (#64, #68, #72 — durch Story 4.0 erledigt; markiert "done")
 - Post-Prod-Sprint-Target: **131** Eintraege
+- Post-Prod-When-UX-Feedback: **1** Eintrag (#33 [deferred-fail-loud-by-design])
+- Post-Prod-Bulk-Upload: **1** Eintrag (#133 [deferred-to-bulk-upload-story])
 - Closed: **1** Eintrag (#71 — Versicherer-Deep-Link wurde mit Story 2.8 gemerged)
 
 **Lesart Pre-Prod-Block:** Vor externer Oeffnung von https://dashboard.dbshome.de
@@ -242,7 +244,7 @@ _Erledigt: „Workflow-Description-Strings in der Live-DB" — Migration 0017 (C
 - **Non-ASCII-WEG-Namen kollidieren auf Filename-Fallback** [`app/routers/etv_signature_list.py:90-96`] — Wenn `property.name` rein non-ASCII ist (Cyrillic/Chinese/Emoji), wird `_slug` leer und faellt auf `"unterschriften"` zurueck. Mehrere solche WEGs am gleichen Datum produzieren identische Filenames. DBS-Pool ist deutsch und ASCII-fold-bar; Future-Proofing nur bei Mandantenerweiterung relevant.
 - **`list_conferences_with_properties` fanout ohne Semaphore** [`app/services/facilioo_client.py:158-163`] — Bei ~30 Conferences harmlos (Spec-bestaetigt: ~1s). Wenn der Pool spaeter > 200 Conferences enthaelt, wuerde der parallele Fanout Facilioo-Rate-Limits / Connection-Pool stressen. Fix: `asyncio.Semaphore(10)` oder Chunked-Gather.
 - **Test-Coverage 5xx vs 404 zusammengelegt** [`tests/test_etv_signature_list.py`] — Beide Cases treffen denselben FaciliooError-Pfad im Router; Test mockt nur generischen Error. I/O-Matrix-Spec listet sie separat. Dedicated 404-Test waere eine Verfeinerung, kein Bugfix.
-- **Phase-2 gather killed PDF on single VG failure** [`app/services/facilioo_client.py:279`] — `await asyncio.gather(*vg_tasks)` ohne `return_exceptions=True`: ein 5xx auf einer von 8 Voting-Groups (nach Retry-Exhaust) killt die ganze PDF, User sieht "Facilioo nicht erreichbar"-Banner obwohl Conference + Property + Mandates problemlos geladen wurden. **Bewusst Fail-loud belassen**, weil Spec AC4 "exakt 8 Tabellenzeilen" verlangt — eine unterschriebene 7-von-8-Liste ist juristisch schlechter als ein Re-Try. Bei UX-Feedback ("Facilioo flackert zu oft") graceful-degrade einfuehren: gefailte VGs als Tabellenzeile `"— (Facilioo-Fehler)"` plus Warnbanner ueber der Tabelle.
+- **Phase-2 gather killed PDF on single VG failure** [deferred-fail-loud-by-design] [`app/services/facilioo_client.py:279`] — `await asyncio.gather(*vg_tasks)` ohne `return_exceptions=True`: ein 5xx auf einer von 8 Voting-Groups (nach Retry-Exhaust) killt die ganze PDF, User sieht "Facilioo nicht erreichbar"-Banner obwohl Conference + Property + Mandates problemlos geladen wurden. **Bewusst Fail-loud belassen** (Story 5-3 hat Phase-1+Phase-2 explizit fail-loud belassen — juristisches Risiko bei unvollstaendiger Vollmachts-Liste. Story 5-4 respektiert diese Entscheidung.), weil Spec AC4 "exakt 8 Tabellenzeilen" verlangt — eine unterschriebene 7-von-8-Liste ist juristisch schlechter als ein Re-Try. Trigger fuer Reopen: UX-Feedback "Facilioo flackert zu oft". Sprint-Target: post-prod-when-ux-feedback.
 
 ## Deferred from: code review of 3-3-pflegegrad-score-service (2026-04-29)
 
@@ -409,7 +411,7 @@ _Erledigt: „Workflow-Description-Strings in der Live-DB" — Migration 0017 (C
 ## Deferred from: 1-8-foto-upload-mit-sharepoint-local-fallback (2026-04-23)
 
 - **SharePoint-Foto-Anzeige via temporärer Download-Link** [`app/services/photo_store.py` + `_obj_photo_card.html`] — v1 zeigt für `backend="sharepoint"` nur Dateinamen statt Thumbnail. Graph-API liefert temporäre Download-URLs (Ablauf ~1h), die das Backend pro Render abrufen müsste. v1.1: `url()`-Methode auf `PhotoStore`-Protocol + URL-Cache + Template-Branch auf `<img src="{{ url }}">`.
-- **Concurrent Page-Loads erzeugen doppelte `SteckbriefPhoto`-Rows** [`app/routers/objects.py`] — kein UNIQUE-Constraint auf `(object_id, component_ref, filename, captured_at)`. Bei manueller Einzel-Upload-UI praktisch kein Problem; vor Bulk-Upload-Feature dedup über Constraint oder DB-seitige Checks ergänzen.
+- **Concurrent Page-Loads erzeugen doppelte `SteckbriefPhoto`-Rows** [deferred-to-bulk-upload-story] [`app/routers/objects.py`] — kein UNIQUE-Constraint auf `(object_id, component_ref, filename, captured_at)`. Heute kein Bulk-Upload-UI; manuelle Einzel-Uploads sind durch die Foto-Upload-Saga (5-2 AC6) hinreichend serialisiert. Trigger fuer Reopen: Bulk-Upload-Feature-Story. Sprint-Target: post-prod-bulk-upload.
 - **`Object`-Bootstrap-short_code/name aus Discover sind Platzhalter** [`app/services/steckbrief_impower_mirror.py`] — Discover legt `short_code = name = f"impw-{pid}"` als deterministischen Platzhalter an, weil ORM `nullable=False` ist und `_reconcile_object` diese Felder nicht spiegelt. User muss die Bootstrap-Eintraege via Steckbrief-UI umbenennen. Alternative: Discover so erweitern, dass er Impower-Property-Keys konsistent mit dem Reconcile-Pfad mapped (sobald ein Reconcile-Mapping fuer short_code/name existiert).
 - **`Object`-Row-Creation aus Mirror nicht in `architecture.md §CD2` als Write-Gate-Ausnahme dokumentiert** [`docs/architecture.md`] — Der Discover-Pfad fuehrt `db.add(Object(...))` direkt aus. CD2 listet nur `FieldProvenance`, `ReviewQueueEntry`, `AuditLog`, `SteckbriefPhoto`-Row-Creation explizit. Spirit deckt Row-Creation; trotzdem nachtraeglich in CD2 + §Daten-/Write-Patterns ergaenzen.
 

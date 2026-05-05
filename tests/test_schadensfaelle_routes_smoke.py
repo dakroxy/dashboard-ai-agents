@@ -199,7 +199,7 @@ def test_accessible_object_ids_gate_returns_404(
     policy = _make_policy(db, obj.id)
 
     from app.routers import objects as router_mod
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
 
     resp = admin_client.post(
         f"/objects/{obj.id}/schadensfaelle",
@@ -219,7 +219,7 @@ def test_accessible_object_ids_gate_no_audit_no_db_write(
     obj = make_object("SCH-F2")
     policy = _make_policy(db, obj.id)
 
-    monkeypatch.setattr(router_mod, "accessible_object_ids", lambda db, user: set())
+    monkeypatch.setattr(router_mod, "accessible_object_ids_for_request", lambda request, db, user: set())
 
     resp = admin_client.post(
         f"/objects/{obj.id}/schadensfaelle",

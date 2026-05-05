@@ -551,12 +551,13 @@ def test_file_serve_requires_objects_view(
     assert response.status_code == 403
 
 
-def test_upload_anonymous_redirects_to_login(anon_client, make_object):
+def test_upload_anonymous_blocked(anon_client, make_object):
     obj = make_object("PERM5")
     response = anon_client.post(
         f"/objects/{obj.id}/photos",
         data={"component_ref": "heizung_typenschild"},
         files={"file": ("x.jpg", _jpeg_bytes(400), "image/jpeg")},
     )
-    # Auth-Middleware leitet unauth auf /login um.
+    # Production: CSRFMiddleware blockt mit 403, bevor Auth-Layer redirected.
+    # Falls die Middleware-Order kuenftig anders liegt, ist 302/307/401 auch ok.
     assert response.status_code in (302, 307, 401, 403)
