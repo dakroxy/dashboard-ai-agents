@@ -17,10 +17,12 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def test_no_permission_magic_strings():
-    """Keine hardkodierten Permission-Strings in app/routers/ und app/services/.
+    """Keine hardkodierten Permission-Strings fuer die 5-6-Namespaces in app/routers/ und app/services/.
 
-    Alle Permission-Keys muessen ueber PERM_*-Konstanten aus app/permissions.py
-    referenziert werden. Template-Strings (app/templates/) bleiben als String-Literale.
+    Scope: objects:, registries:, due_radar:, sync: — die in Story 5-6 (AC1) auf PERM_*-
+    Konstanten umgestellten Namespaces. Andere Namespaces (documents:, workflows:, users:,
+    audit_log:, impower:) sind out-of-scope und haben eigene Konstanten-Stories.
+    Template-Strings (app/templates/) bleiben als String-Literale.
     """
     pattern = re.compile(r'"(objects|registries|due_radar|sync):[a-z_]+"')
     violations: list[str] = []
@@ -90,6 +92,10 @@ def test_proposed_value_decimal_roundtrip(db):
     raw = entry.proposed_value
     assert isinstance(raw, dict), "proposed_value muss ein dict sein"
     assert "value" in raw, "proposed_value muss 'value'-Key haben"
+    inner = raw["value"]
+    assert isinstance(inner, dict) and inner.get("__type__") == "decimal", (
+        f"proposed_value['value'] muss Decimal-Envelope sein, bekommen: {inner!r}"
+    )
 
     # Approve — darf keinen Exception werfen
     approve_review_entry(db, entry_id=entry.id, user=user)
@@ -137,8 +143,10 @@ def test_versicherer_schadensquote_zero_praemie(db, auth_client):
     from app.auth import get_current_user
     app.dependency_overrides[get_current_user] = lambda: user
     client = TestClient(app)
-    resp = client.get(f"/registries/versicherer/{v.id}")
-    app.dependency_overrides.clear()
+    try:
+        resp = client.get(f"/registries/versicherer/{v.id}")
+    finally:
+        app.dependency_overrides.clear()
 
     assert resp.status_code == 200
     # Muss "–" oder "0" rendern, NICHT "inf" oder Exception
@@ -231,13 +239,15 @@ def test_entry_code_write_requires_view_permission(db):
     app.dependency_overrides[get_current_user] = lambda: user
     client = TestClient(app)
     session_cookie = _make_session_cookie({"user_id": str(user.id), "csrf_token": _TEST_CSRF_TOKEN})
-    resp = client.post(
-        f"/objects/{obj.id}/zugangscodes/field",
-        data={"field_name": "entry_code_main_door", "value": "1234"},
-        headers={"X-CSRF-Token": _TEST_CSRF_TOKEN},
-        cookies={"session": session_cookie},
-    )
-    app.dependency_overrides.clear()
+    try:
+        resp = client.post(
+            f"/objects/{obj.id}/zugangscodes/field",
+            data={"field_name": "entry_code_main_door", "value": "1234"},
+            headers={"X-CSRF-Token": _TEST_CSRF_TOKEN},
+            cookies={"session": session_cookie},
+        )
+    finally:
+        app.dependency_overrides.clear()
 
     assert resp.status_code == 403, f"Erwartet 403, bekommen {resp.status_code}"
 

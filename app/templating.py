@@ -178,7 +178,7 @@ def _prov_tooltip(wrap: ProvenanceWithUser | None) -> str:
         if wrap.user_email:
             return f"Manuell gepflegt am {ts} von {wrap.user_email}"
         if prov.user_id is None:
-            return f"von [gelöschter Nutzer] am {ts}"
+            return f"Manuell gepflegt am {ts} [gelöschter Nutzer]"
         return f"Manuell gepflegt am {ts}"
     if prov.source == "impower_mirror":
         ref = f" (Ref {prov.source_ref})" if prov.source_ref else ""

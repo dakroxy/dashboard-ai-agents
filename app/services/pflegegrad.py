@@ -227,7 +227,7 @@ def pflegegrad_score(
     c6_vals = [
         _scalar_effective("last_known_balance"),
         _scalar_effective("reserve_current"),
-        _jsonb_bool_effective("sepa_mandate_refs", [m for m in (obj.sepa_mandate_refs or []) if m]),
+        _jsonb_bool_effective("sepa_mandate_refs", [m for m in (obj.sepa_mandate_refs or []) if m is not None]),
     ]
 
     # C8: has_police, has_wartungspflicht

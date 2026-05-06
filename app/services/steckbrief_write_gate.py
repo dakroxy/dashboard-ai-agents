@@ -176,16 +176,18 @@ def _json_safe(value: Any, _seen: set[int] | None = None) -> Any:
 
 
 def _json_safe_as_proposal(value: Any) -> Any:
-    """Wie `_json_safe`, aber Decimal- und date-Werte werden als typisiertes
-    Envelope `{"__type__": "decimal"|"date", "value": ...}` kodiert.
+    """Wie `_json_safe`, aber Decimal-, date- und datetime-Werte werden als
+    typisiertes Envelope `{"__type__": "decimal"|"date"|"datetime", "value": ...}` kodiert.
 
     Grund: `approve_review_entry` muss den Originaltyp rekonstruieren, um
-    SQLAlchemy-Numeric-Spalten korrekt zu befuellen. Ohne Envelope-Shape
+    SQLAlchemy-Numeric- und Datums-Spalten korrekt zu befuellen. Ohne Envelope-Shape
     wuerden Decimal-Werte als Strings geschrieben und koennen auf Postgres
     je nach Spaltentyp zu Commit-Fehlern fuehren."""
     if isinstance(value, decimal.Decimal):
         return {"__type__": "decimal", "value": str(value)}
-    if isinstance(value, _dt.date) and not isinstance(value, _dt.datetime):
+    if isinstance(value, _dt.datetime):
+        return {"__type__": "datetime", "value": value.isoformat()}
+    if isinstance(value, _dt.date):
         return {"__type__": "date", "value": value.isoformat()}
     return _json_safe(value)
 
@@ -198,9 +200,20 @@ def _unwrap_proposal_value(raw: Any) -> Any:
     if isinstance(raw, dict) and "__type__" in raw:
         t = raw["__type__"]
         if t == "decimal":
-            return decimal.Decimal(raw["value"])
+            try:
+                return decimal.Decimal(raw["value"])
+            except Exception:
+                return raw["value"]
         if t == "date":
-            return _dt.date.fromisoformat(raw["value"])
+            try:
+                return _dt.date.fromisoformat(raw["value"])
+            except Exception:
+                return raw["value"]
+        if t == "datetime":
+            try:
+                return _dt.datetime.fromisoformat(raw["value"])
+            except Exception:
+                return raw["value"]
     return raw
 
 
@@ -479,7 +492,7 @@ def approve_review_entry(
         db,
         entity=target,
         field=entry.field_name,
-        value=_unwrap_proposal_value(entry.proposed_value["value"]),
+        value=_unwrap_proposal_value(entry.proposed_value.get("value")),
         source="ai_suggestion",
         user=user,
         source_ref=entry.agent_ref,

@@ -1,6 +1,6 @@
 # Story 5.6: Code-Qualität & Refactoring
 
-Status: review
+Status: done
 
 ## Story
 
@@ -401,6 +401,26 @@ Diese Story bearbeitet **nicht**:
 - `_audit_sync`-Session-Convention: `app/services/_sync_common.py:127-144`
 - Provenance-Tooltip: `app/templating.py:~60`
 - Zugangscode-Permission-Enforcement: `app/routers/objects.py` + `app/templates/_obj_zugangscode_view.html`
+
+### Review Findings
+
+- [x] [Review][Patch] notes_owners Cleanup: Mirror-Guard blockiert Cleanup + Massen-Lösch-Risiko [app/services/steckbrief_impower_mirror.py:614]
+- [x] [Review][Patch] delete_police: with_for_update via db.get() trifft Identity Map — kein echter Row-Lock [app/services/steckbrief_policen.py:134]
+- [x] [Review][Patch] dependency_overrides.clear() ohne try/finally in zwei Tests [tests/test_code_quality.py:138,231]
+- [x] [Review][Patch] _unwrap_proposal_value: KeyError wenn proposed_value kein "value"-Key hat [app/services/steckbrief_write_gate.py:482]
+- [x] [Review][Patch] _json_safe_as_proposal: datetime-Werte nicht als Envelope kodiert [app/services/steckbrief_write_gate.py:188]
+- [x] [Review][Patch] _unwrap_proposal_value: InvalidOperation bei korruptem Decimal-String [app/services/steckbrief_write_gate.py:201]
+- [x] [Review][Patch] zugangscode_field_view + edit: db.flush() fehlt vor db.commit() im DecryptionError-Pfad [app/routers/objects.py:766]
+- [x] [Review][Patch] field_label-Filter nicht in Templates verwendet — _obj_stammdaten.html zeigt snake_case [app/templates/_obj_stammdaten.html:20]
+- [x] [Review][Patch] _prov_tooltip: "von [gelöschter Nutzer]" fehlt Prefix "Manuell gepflegt am" [app/templating.py:181]
+- [x] [Review][Patch] sepa_mandate_refs: `if m` filtert leere Dicts fälschlich — sollte `if m is not None` sein [app/services/pflegegrad.py:230]
+- [x] [Review][Patch] test_no_permission_magic_strings: Docstring beschreibt breiteren Scope als tatsächlich geprüft [tests/test_code_quality.py:20]
+- [x] [Review][Patch] test_proposed_value_decimal_roundtrip prüft Envelope-Shape nicht (nur dict+value-Key) [tests/test_code_quality.py:89]
+- [x] [Review][Defer] approve_review_entry: Double-Approve löst ValueError statt HTTP 409 — pre-existing [app/services/steckbrief_write_gate.py:493] — deferred, pre-existing
+- [x] [Review][Defer] _rate_limit_gate: min(wait, 7.5) ist Dead Code (wait ≤ 0.12s) — spec-beauftragt, harmlos [app/services/impower.py:714] — deferred, pre-existing
+- [x] [Review][Defer] _build_date_warning: bei zwei gleichzeitig ungültigen Daten nur erstes Warning — by-design [app/services/steckbrief_wartungen.py:131] — deferred, pre-existing
+- [x] [Review][Defer] police_update: Double-Consume request.form() — technisch sicher (Starlette-Cache), fehlt Erklärungskommentar [app/routers/objects.py:1607] — deferred, pre-existing
+- [x] [Review][Defer] RFC-5987 percent-encoding in Content-Disposition fehlt — harmlos da _slug ASCII-only [app/routers/etv_signature_list.py:434] — deferred, pre-existing
 
 ## Dev Agent Record
 

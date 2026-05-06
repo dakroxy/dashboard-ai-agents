@@ -17,7 +17,7 @@
         {% for item in stammdaten %}
         {% set pill = provenance_pill(item.prov) %}
         <div id="field-{{ item.field }}">
-            <div class="text-xs uppercase tracking-wider text-slate-500 mb-1">{{ item.field }}</div>
+            <div class="text-xs uppercase tracking-wider text-slate-500 mb-1">{{ item.field | field_label }}</div>
             <div class="flex items-center justify-between gap-3">
                 <div class="text-sm text-slate-900 truncate">
                     {% if item.value %}{{ item.value }}{% else %}<span class="text-slate-400">&mdash;</span>{% endif %}

@@ -764,6 +764,7 @@ async def zugangscode_field_view(
     _field_ctx = _zugangscode_field_ctx(detail.obj, field, db, request, user)
     if _field_ctx["error"] is not None:
         try:
+            db.flush()
             db.commit()
         except Exception:
             pass
@@ -806,6 +807,7 @@ async def zugangscode_field_edit(
     _field_ctx = _zugangscode_field_ctx(detail.obj, field, db, request, user)
     if _field_ctx["error"] is not None:
         try:
+            db.flush()
             db.commit()
         except Exception:
             pass

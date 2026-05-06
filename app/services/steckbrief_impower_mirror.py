@@ -32,6 +32,7 @@ from typing import Any
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.db import SessionLocal
 from app.models import Eigentuemer, Object
@@ -614,19 +615,22 @@ def _reconcile_eigentuemer(
     # notes_owners-Cleanup: Schluessel entfernen, die keinem vorhandenen
     # Eigentuemer mehr entsprechen. Variante "nach Mirror-Update" gewählt,
     # da kein User-initiierter Eigentuemer-Delete-Endpoint existiert (v1).
+    # Direkte JSONB-Zuweisung statt write_field_human, damit der Mirror-Guard
+    # (User-Edit-newer) den Cleanup nicht blockiert — strukturelles Bereinigen
+    # von Orphan-Keys ist unabhaengig davon, wer notes_owners zuletzt gepflegt hat.
     obj = db.get(Object, obj_id)
     if obj is not None and obj.notes_owners:
         all_eig_ids = {str(e.id) for e in db.execute(
             select(Eigentuemer).where(Eigentuemer.object_id == obj_id)
         ).scalars().all()}
+        # Sicherheitsnetz: keinen Cleanup wenn alle Eigentuemer verschwunden sind
+        # (koennte auf einen transient. Impower-API-Fehler hindeuten).
+        if not all_eig_ids:
+            return
         orphan_keys = set(obj.notes_owners.keys()) - all_eig_ids
         if orphan_keys:
-            new_owners = {k: v for k, v in obj.notes_owners.items() if k not in orphan_keys}
-            write_field_human(
-                db, entity=obj, field="notes_owners", value=new_owners,
-                source="impower_mirror", user=None,
-                source_ref="notes_owners_orphan_cleanup",
-            )
+            obj.notes_owners = {k: v for k, v in obj.notes_owners.items() if k not in orphan_keys}
+            flag_modified(obj, "notes_owners")
 
 
 # ---------------------------------------------------------------------------

@@ -130,8 +130,9 @@ def delete_police(
     user: User,
     request: Request | None,
 ) -> None:
-    # with_for_update=True: verhindert Race bei concurrent Delete auf dasselbe Parent.
-    db.get(InsurancePolicy, policy.id, with_for_update=True)
+    # SELECT FOR UPDATE via explizitem Statement — umgeht den SQLAlchemy-Identity-Map-Cache,
+    # der bei db.get() den DB-Roundtrip und damit den Row-Lock unterdruecken kann.
+    db.execute(select(InsurancePolicy).where(InsurancePolicy.id == policy.id).with_for_update())
     # `db.get(InsurancePolicy, id)` mit `lazy="selectin"` hat die Collections
     # bereits geladen — Counts in Locals einfrieren, damit Audit-Autoflush
     # sie nicht nachlaedt.
