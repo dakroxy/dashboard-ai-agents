@@ -1706,9 +1706,11 @@ async def wartungspflicht_create(
     db.refresh(policy)
 
     dienstleister_list = get_all_dienstleister(db)
+    policen = get_policen_for_object(db, obj.id)
     ctx = {
         "obj": obj,
         "policy": policy,
+        "policen": policen,
         "dienstleister_list": dienstleister_list,
         "get_due_severity": get_due_severity,
         "user": user,
@@ -1747,12 +1749,14 @@ async def wartungspflicht_delete(
 
     db.refresh(policy)
     dienstleister_list = get_all_dienstleister(db)
+    policen = get_policen_for_object(db, obj.id)
     return templates.TemplateResponse(
         request,
         "_obj_versicherungen_row.html",
         {
             "obj": obj,
             "policy": policy,
+            "policen": policen,
             "dienstleister_list": dienstleister_list,
             "get_due_severity": get_due_severity,
             "user": user,
