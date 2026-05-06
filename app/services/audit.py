@@ -123,6 +123,8 @@ def audit(
         entity_id=entity_id,
         document_id=document_id,
         ip_address=_client_ip(request) if request is not None else None,
+        # details_json enthaelt echte Umlaute (seit Umlaut-Sweep 2026-04-30).
+        # Log-Aggregatoren und grep-Patterns muessen UTF-8-aware sein.
         details_json=details,
     )
     db.add(entry)

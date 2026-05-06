@@ -56,6 +56,9 @@ def create_schadensfall(
     db.add(schaden)
     db.flush()
 
+    # FK-Felder (unit_id) werden durch write_field_human geleitet (Provenance),
+    # auch beim Row-Create. Spec-AC1 sagt "alle Feld-Writes"; Dev-Notes-Task-2.3
+    # erlaubt FK-Ausnahme beim Create. Aktuell: beide durch Gate → Provenance-Konsistenz gewährt.
     for field, value in [
         ("amount", amount),
         ("occurred_at", occurred_at),

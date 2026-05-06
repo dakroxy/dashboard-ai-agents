@@ -483,6 +483,8 @@ TECHNIK_HEIZUNG: tuple[TechnikField, ...] = (
     TechnikField("heating_hotline", "Störungs-Hotline", "tel", max_len=30),
 )
 TECHNIK_HISTORIE: tuple[TechnikField, ...] = (
+    # year_built/year_roof: Stammdaten-Cluster-1 (Impower-Mirror) UND Technik-Cluster-4 (User-Edit).
+    # Write-Gate-Mirror-Guard greift wenn Impower diese Felder kuenftig spiegelt.
     TechnikField("year_built", "Baujahr Gebäude", "int_year"),
     TechnikField("year_roof", "Jahr letzte Dach-Sanierung", "int_year"),
     TechnikField("year_electrics", "Jahr Elektrik-Check", "int_year"),

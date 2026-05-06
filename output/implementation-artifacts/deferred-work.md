@@ -14,7 +14,7 @@ unique Eintrag.
 | #  | Eintrag (Kurzform)                                                | Severity | Prod-Blocker | Sprint-Target |
 |----|-------------------------------------------------------------------|----------|--------------|---------------|
 | 1  | `onsubmit` confirm JS-Escape-Pattern                              | low      | no           | [done-5-5]    |
-| 2  | Audit-`details_json` Umlaute (Ops-Doku)                           | low      | no           | post-prod     |
+| 2  | Audit-`details_json` Umlaute (Ops-Doku)                           | low      | no           | post-prod [done-5-6] |
 | 3  | **CSRF-Token projektweit fehlt** (siehe auch #80, #82, #119)      | high     | yes          | pre-prod      |
 | 4  | `objects:approve_ki` portfolio-weit (kein Objekt-IDOR)            | medium   | no           | post-prod [deferred-to-v2] |
 | 5  | `Cache-Control: no-store` auf Admin-Fragment-Routes               | medium   | no           | pre-prod      |
@@ -32,33 +32,33 @@ unique Eintrag.
 | 17 | Anchor-Text ohne `object/`-Prefix                                 | low      | no           | [done-5-5]    |
 | 18 | Doppel-Highlight Review-Queue + Admin                             | low      | no           | [done-5-5]    |
 | 19 | `<main>`-Split fragil (Layout-Refactor)                           | low      | no           | [done-5-5]    |
-| 20 | Permission-Magic-String dupliziert (Konstanten-Refactor)          | medium   | no           | post-prod     |
+| 20 | Permission-Magic-String dupliziert (Konstanten-Refactor)          | medium   | no           | post-prod [done-5-6] |
 | 21 | `test_review_queue_unauthenticated` ohne Location-Check           | low      | no           | post-prod     |
 | 22 | Phase-1-Aggregator ohne Partial-Degradation                       | medium   | no           | post-prod     |
 | 23 | `int(total_pages)` ohne try/except                                | low      | no           | post-prod     |
-| 24 | Audit-Commit vor StreamingResponse-Zustellung                     | low      | no           | post-prod     |
-| 25 | Content-Disposition filename nicht RFC-5987                       | low      | no           | post-prod     |
+| 24 | Audit-Commit vor StreamingResponse-Zustellung                     | low      | no           | post-prod [done-5-6] |
+| 25 | Content-Disposition filename nicht RFC-5987                       | low      | no           | post-prod [done-5-6] |
 | 26 | `sidebar_workflows` oeffnet eigene SessionLocal pro Render        | medium   | no           | post-prod     |
 | 27 | Sidebar-Active-Detection prefix-startswith                        | low      | no           | [done-5-5]    |
 | 28 | Test fragil `test_generate_returns_403_without_workflow_access`   | low      | no           | post-prod     |
-| 29 | WeasyPrint-Monkeypatch fragil                                     | low      | no           | post-prod     |
-| 30 | Non-ASCII-WEG-Namen Filename-Fallback                             | low      | no           | post-prod     |
+| 29 | WeasyPrint-Monkeypatch fragil                                     | low      | no           | post-prod [done-5-6] |
+| 30 | Non-ASCII-WEG-Namen Filename-Fallback                             | low      | no           | post-prod [done-5-6] |
 | 31 | `list_conferences_with_properties` fanout ohne Semaphore          | medium   | no           | post-prod     |
 | 32 | Test-Coverage 5xx vs 404 zusammengelegt                           | low      | no           | post-prod     |
 | 33 | Phase-2 gather killed PDF on single VG failure [deferred-fail-loud-by-design] | medium   | no           | post-prod-when-ux-feedback |
 | 34 | **Cache-Race Last-Writer-Wins (pflegegrad)**                      | high     | yes          | pre-prod      |
 | 35 | Commit-Fail-Loop ohne Backoff                                     | medium   | no           | post-prod     |
-| 36 | `weakest_fields` ohne Dedup/Sortierung                            | low      | no           | post-prod     |
+| 36 | `weakest_fields` ohne Dedup/Sortierung                            | low      | no           | post-prod [done-5-6] |
 | 37 | Cache-Hit-Pfad berechnet trotzdem alles neu                       | low      | no           | post-prod     |
-| 38 | `order_by(created_at.desc())` ohne stable Tie-Break               | low      | no           | post-prod     |
+| 38 | `order_by(created_at.desc())` ohne stable Tie-Break               | low      | no           | post-prod [done-5-6] |
 | 39 | `_BASE = datetime.now()` zur Import-Zeit                          | low      | no           | post-prod     |
 | 40 | Fehlender Test: Provenance vorhanden, Wert None                   | low      | no           | post-prod     |
 | 41 | Fehlender Test: leeres Objekt → Score 0                           | low      | no           | post-prod     |
 | 42 | Cache nur `score`, nicht `per_cluster`/`weakest_fields`           | low      | no           | post-prod     |
 | 43 | `pflegegrad_score()`-Crash → 500 fuer Detail-Page                 | medium   | no           | post-prod     |
-| 44 | `sepa_mandate_refs` mit Falsy-Items                               | low      | no           | post-prod     |
-| 45 | `last_known_balance == 0` als "befuellt"                          | low      | no           | post-prod     |
-| 46 | Naming-Drift `_ALL_SCALAR` vs `_ALL_SCALAR_FIELDS`                | low      | no           | post-prod     |
+| 44 | `sepa_mandate_refs` mit Falsy-Items                               | low      | no           | post-prod [done-5-6] |
+| 45 | `last_known_balance == 0` als "befuellt"                          | low      | no           | post-prod [done-5-6] |
+| 46 | Naming-Drift `_ALL_SCALAR` vs `_ALL_SCALAR_FIELDS`                | low      | no           | post-prod [done-5-6] |
 | 47 | AC6 ohne dedizierten Route-Test                                   | low      | no           | post-prod     |
 | 48 | AC3-Test prueft nur `per_cluster`                                 | low      | no           | post-prod     |
 | 49 | Statement-Count-Threshold `<= 21` Obergrenze                      | low      | no           | post-prod     |
@@ -74,19 +74,19 @@ unique Eintrag.
 | 59 | Kein `hx-indicator` fuer Loading-Feedback                         | low      | no           | [done-5-5]    |
 | 60 | Money-Format `"%.0f"` ohne Tausenderpunkt                         | low      | no           | [done-5-5]    |
 | 61 | `/objects` Voll-Page ignoriert Sort/Order/Filter                  | low      | no           | [done-5-5]    |
-| 62 | Spec-interner Widerspruch numerische Sort-Default                 | low      | no           | post-prod     |
+| 62 | Spec-interner Widerspruch numerische Sort-Default                 | low      | no           | post-prod [done-5-6] |
 | 63 | **Negative Praemie/Schaden nicht sanitiziert (registries.py)**    | high     | yes          | pre-prod      |
 | 64 | **`date.today()` ohne Timezone (registries.py:216)**              | medium   | no           | epic-4 (H1' — done) |
-| 65 | `policen_anzahl` vs Heatmap-Sichtbarkeit inkonsistent             | low      | no           | post-prod     |
-| 66 | Monkeypatch von `reg_mod.date` redundant                          | low      | no           | post-prod     |
+| 65 | `policen_anzahl` vs Heatmap-Sichtbarkeit inkonsistent             | low      | no           | post-prod [done-5-6] |
+| 66 | Monkeypatch von `reg_mod.date` redundant                          | low      | no           | post-prod [done-5-6] |
 | 67 | Smoke-Test `test_detail_permitted_user_returns_200` Render-Check  | low      | no           | post-prod     |
 | 68 | **Magic Numbers 30/90 doppelt im Code (Severity-Konstanten)**     | medium   | no           | epic-4 (H2' — done) |
 | 69 | **Negative `praemie`/`Schadensfall.amount` ohne Guard**           | high     | yes          | pre-prod      |
-| 70 | Schadensquote-Anzeige-Inkonsistenz bei kleinen Verhältnissen      | low      | no           | post-prod     |
+| 70 | Schadensquote-Anzeige-Inkonsistenz bei kleinen Verhältnissen      | low      | no           | post-prod [done-5-6] |
 | 71 | Versicherer-Deep-Link 404 bis Story 2.8 (erledigt)                | low      | no           | closed        |
 | 72 | **Magic-Strings ohne Konstanten (Severity StrEnum)**              | medium   | no           | epic-4 (H2' — done) |
-| 73 | Sort-Stabilitaet bei gleichem `due_date`                          | low      | no           | post-prod     |
-| 74 | Spec-Doc-Wording Wartung `object_id`                              | low      | no           | post-prod     |
+| 73 | Sort-Stabilitaet bei gleichem `due_date`                          | low      | no           | post-prod [done-5-6] |
+| 74 | Spec-Doc-Wording Wartung `object_id`                              | low      | no           | post-prod [done-5-6] |
 | 75 | Per-Feld „manuell"-Pill fehlt                                     | low      | no           | [done-5-5]    |
 | 76 | `sepa_date` ohne Bounds (>9999-12-31 / <1900-01-01)               | low      | no           | post-prod     |
 | 77 | **Concurrent-Save-Race auf demselben Document**                   | high     | yes          | pre-prod      |
@@ -97,58 +97,58 @@ unique Eintrag.
 | 82 | CSRF-Schutz fehlt projektweit alle POSTs → siehe #3               | high     | yes          | pre-prod      |
 | 83 | **Race-Condition zwei Admins notes_owners JSONB**                 | high     | yes          | pre-prod      |
 | 84 | Unicode-Whitespace nicht aus Note-Text gestripped                 | low      | no           | post-prod     |
-| 85 | Orphan keys in `notes_owners` nach Eigentuemer-Loeschung          | low      | no           | post-prod     |
+| 85 | Orphan keys in `notes_owners` nach Eigentuemer-Loeschung          | low      | no           | post-prod [done-5-6] |
 | 86 | Manuelle Browser-Smoke (Task 8.2) noch offen                      | low      | no           | post-prod     |
 | 87 | **`Schadensfall.description` ohne Length-Cap**                    | high     | yes          | pre-prod      |
-| 88 | Race bei concurrent Policy-Delete                                 | medium   | no           | post-prod     |
+| 88 | Race bei concurrent Policy-Delete                                 | medium   | no           | post-prod [done-5-6] |
 | 89 | **`audit_log.ip_address` ohne Length-Cap**                        | high     | yes          | pre-prod      |
-| 90 | Spec-Selbstwiderspruch FK-`write_field_human`                     | low      | no           | post-prod     |
+| 90 | Spec-Selbstwiderspruch FK-`write_field_human`                     | low      | no           | post-prod [done-5-6] |
 | 91 | **Multi-Worker-Race Erst-Boot `_seed_default_roles`**             | high     | yes          | pre-prod      |
-| 92 | `X-Robots-Tag` nicht setzbar bei mid-stream-Fehler                | low      | no           | post-prod     |
-| 93 | Waise-Permission-Keys in `Role.permissions`                       | low      | no           | post-prod     |
+| 92 | `X-Robots-Tag` nicht setzbar bei mid-stream-Fehler                | low      | no           | post-prod [done-5-6] |
+| 93 | Waise-Permission-Keys in `Role.permissions`                       | low      | no           | post-prod [done-5-6] |
 | 94 | AST-basierter Write-Gate-Coverage-Test (Stufe 2)                  | low      | no           | post-prod     |
 | 95 | Coverage-Scanner-Luecken zusaetzlich zu AST-Stufe-2               | low      | no           | post-prod     |
 | 96 | Approve-Race ohne Row-Lock (vor 3.6 erledigt)                     | medium   | no           | post-prod     |
 | 97 | Stale-Proposal-Check beim Approve                                 | low      | no           | post-prod     |
-| 98 | `_latest_provenance` Tie-Breaker per uuid4 nicht monoton          | low      | no           | post-prod     |
+| 98 | `_latest_provenance` Tie-Breaker per uuid4 nicht monoton          | low      | no           | post-prod [done-5-6] |
 | 99 | Combined-Index `field_provenance` ORDER BY Coverage               | medium   | no           | post-prod     |
-| 100 | FK-Semantik (`ON DELETE SET NULL`) nur metadata-getestet         | low      | no           | post-prod     |
-| 101 | `proposed_value`-Typ-Roundtrip Decimal/Date                      | medium   | no           | post-prod     |
-| 102 | `_ENCRYPTED_FIELDS` nur fuer `"object"`                          | low      | no           | post-prod     |
-| 103 | `docs/architecture.md` Audit-Actions-Liste dupliziert            | low      | no           | post-prod     |
+| 100 | FK-Semantik (`ON DELETE SET NULL`) nur metadata-getestet         | low      | no           | post-prod [done-5-6] |
+| 101 | `proposed_value`-Typ-Roundtrip Decimal/Date                      | medium   | no           | post-prod [done-5-6] |
+| 102 | `_ENCRYPTED_FIELDS` nur fuer `"object"`                          | low      | no           | post-prod [done-5-6] |
+| 103 | `docs/architecture.md` Audit-Actions-Liste dupliziert            | low      | no           | post-prod [done-5-6] |
 | 104 | `get_provenance_map` laedt alle Rows + pickt in Python           | medium   | no           | post-prod     |
-| 105 | Tooltip-Timestamp ohne Timezone-Marker                           | low      | no           | post-prod     |
+| 105 | Tooltip-Timestamp ohne Timezone-Marker                           | low      | no           | post-prod [done-5-6] |
 | 106 | `accessible_object_ids` laedt alle Object.ids pro Request        | medium   | no           | post-prod     |
-| 107 | Feld-Labels rendern raw snake_case                               | low      | no           | post-prod     |
-| 108 | Kein Field-Level-Redaction `view_confidential` (teilweise 2.0)   | medium   | no           | post-prod     |
-| 109 | `FieldProvenance.user_id SET NULL` → Tooltip ohne "von …"        | low      | no           | post-prod     |
-| 110 | Rate-Gate-Wartezeit nicht durch 8s-HTTP-Timeout begrenzt         | low      | no           | post-prod     |
+| 107 | Feld-Labels rendern raw snake_case                               | low      | no           | post-prod [done-5-6] |
+| 108 | Kein Field-Level-Redaction `view_confidential` (teilweise 2.0)   | medium   | no           | post-prod [done-5-6] |
+| 109 | `FieldProvenance.user_id SET NULL` → Tooltip ohne "von …"        | low      | no           | post-prod [done-5-6] |
+| 110 | Rate-Gate-Wartezeit nicht durch 8s-HTTP-Timeout begrenzt         | low      | no           | post-prod [done-5-6] |
 | 111 | `asyncio.CancelledError` propagiert als 500 aus get_bank_balance | low      | no           | post-prod     |
 | 112 | Concurrent Page-Loads doppelte FieldProvenance-Rows              | medium   | no           | post-prod     |
-| 113 | Index-Name-Widerspruch Spec AC8 vs Task 1.3                      | low      | no           | post-prod     |
-| 114 | `_audit_sync` Session-Convention undokumentiert                  | low      | no           | post-prod     |
+| 113 | Index-Name-Widerspruch Spec AC8 vs Task 1.3                      | low      | no           | post-prod [done-5-6] |
+| 114 | `_audit_sync` Session-Convention undokumentiert                  | low      | no           | post-prod [done-5-6] |
 | 115 | `key_id`-Rotation-Illusion (Master-Key-Wechsel) [deferred-to-v2-key-ring-story] | medium   | no           | post-prod-v2  |
 | 116 | Double-Encrypt-Risiko fuer zukuenftige Write-Pfade               | medium   | no           | pre-prod      |
-| 117 | Template `max="3000"` divergiert bewusst von Server-Limit        | low      | no           | post-prod     |
-| 118 | year_built/year_roof in zwei konzeptuellen Domaenen              | low      | no           | post-prod     |
+| 117 | Template `max="3000"` divergiert bewusst von Server-Limit        | low      | no           | post-prod [done-5-6] |
+| 118 | year_built/year_roof in zwei konzeptuellen Domaenen              | low      | no           | post-prod [done-5-6] |
 | 119 | CSRF-Schutz fehlt POST-Endpunkten → siehe #3                     | high     | yes          | pre-prod      |
 | 120 | `get_provenance_map` dreifach SQL-Hit in object_detail           | medium   | no           | post-prod     |
 | 121 | Jinja2 Autoescape nicht explizit konfiguriert                    | low      | no           | post-prod     |
-| 122 | Edit-Button `_obj_zugangscode_view.html` ohne view_confidential  | low      | no           | post-prod     |
-| 123 | `objects:view` nicht Pflicht-Dependency Zugangscode-Write        | low      | no           | post-prod     |
+| 122 | Edit-Button `_obj_zugangscode_view.html` ohne view_confidential  | low      | no           | post-prod [done-5-6] |
+| 123 | `objects:view` nicht Pflicht-Dependency Zugangscode-Write        | low      | no           | post-prod [done-5-6] |
 | 124 | SQL-Statement-Count-Test ohne Non-Confidential-Pfad              | low      | no           | post-prod     |
 | 125 | HTMX-Requests bei abgelaufener Session 302 statt 401             | medium   | no           | post-prod     |
-| 126 | Audit-Row bei `DecryptionError` + `db.commit()`-Fail             | low      | no           | post-prod     |
+| 126 | Audit-Row bei `DecryptionError` + `db.commit()`-Fail             | low      | no           | post-prod [done-5-6] |
 | 127 | `_get_token()` blockiert Event-Loop                              | medium   | no           | post-prod     |
 | 128 | **Orphan-Datei wenn DB-Commit nach Store-Upload scheitert**      | high     | yes          | pre-prod      |
 | 129 | **OOM durch `file.read()` vor Size-Check**                       | high     | yes          | pre-prod      |
-| 130 | SharePoint-Zielpfad `DBS/Objekte/` nicht code-seitig garantiert  | low      | no           | post-prod     |
-| 131 | `drive_item_id = None` wenn Graph-API `id` fehlt                 | medium   | no           | post-prod     |
-| 132 | SharePoint-Foto-Anzeige via temp Download-Link                   | low      | no           | post-prod     |
+| 130 | SharePoint-Zielpfad `DBS/Objekte/` nicht code-seitig garantiert  | low      | no           | post-prod [done-5-6] |
+| 131 | `drive_item_id = None` wenn Graph-API `id` fehlt                 | medium   | no           | post-prod [done-5-6] |
+| 132 | SharePoint-Foto-Anzeige via temp Download-Link                   | low      | no           | post-prod [done-5-6] |
 | 133 | Concurrent Page-Loads doppelte `SteckbriefPhoto`-Rows [deferred-to-bulk-upload-story] | medium   | no           | post-prod-bulk-upload |
-| 134 | `Object`-Bootstrap-short_code/name aus Discover Platzhalter      | low      | no           | post-prod     |
-| 135 | `Object`-Row-Creation aus Mirror nicht in CD2 dokumentiert       | low      | no           | post-prod     |
-| 136 | `update_police` schreibt alle 8 Form-Felder unconditional        | medium   | no           | post-prod     |
+| 134 | `Object`-Bootstrap-short_code/name aus Discover Platzhalter      | low      | no           | post-prod [done-5-6] |
+| 135 | `Object`-Row-Creation aus Mirror nicht in CD2 dokumentiert       | low      | no           | post-prod [done-5-6] |
+| 136 | `update_police` schreibt alle 8 Form-Felder unconditional        | medium   | no           | post-prod [done-5-6] |
 | 137 | 422-Validation-Error zeigt Fehler aber verstecktes Form          | low      | no           | [done-5-5]    |
 | 138 | `versicherer_id` nicht-existent UUID → 500 statt 422             | medium   | no           | post-prod     |
 | 139 | `praemie` > `Numeric(12,2)` Precision → 500                      | low      | no           | post-prod     |
@@ -156,9 +156,9 @@ unique Eintrag.
 | 141 | Police-Delete mit FK-Abhaengigkeiten unklar                      | medium   | no           | post-prod     |
 | 142 | **`produkt_typ`/`police_number` unbegrenzte Laenge**             | high     | yes          | pre-prod      |
 | 143 | DELETE retourniert full section bei `wart.policy is None`        | low      | no           | post-prod     |
-| 144 | Audit-`delete`-Aktion nutzt `object_field_updated`-Semantik      | low      | no           | post-prod     |
+| 144 | Audit-`delete`-Aktion nutzt `object_field_updated`-Semantik      | low      | no           | post-prod [done-5-6] |
 | 145 | ORM-cascade mit `lazy="selectin"` braucht geladene Collection    | low      | no           | post-prod     |
-| 146 | `letzte_wartung` in Zukunft / `next_due_date` Vergangenheit      | low      | no           | post-prod     |
+| 146 | `letzte_wartung` in Zukunft / `next_due_date` Vergangenheit      | low      | no           | post-prod [done-5-6] |
 | 147 | `intervall_monate` Int32-Overflow → 500                          | low      | no           | post-prod     |
 | 148 | NBSP-only-bezeichnung umgeht `strip()`-Check                     | low      | no           | post-prod     |
 | 149 | Stale Dropdown bei multiplen Policies nach Dienstleister-Add     | low      | no           | [done-5-5]    |

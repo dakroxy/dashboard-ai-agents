@@ -38,7 +38,16 @@ from app.models import Eigentuemer, InsurancePolicy, Object, Schadensfall, Unit,
 from app.models.object import SteckbriefPhoto
 from app.models.registry import Dienstleister, Versicherer
 from app.services._text import _normalize_text
-from app.permissions import accessible_object_ids, accessible_object_ids_for_request, has_permission, require_permission
+from app.permissions import (
+    PERM_OBJECTS_APPROVE_KI,
+    PERM_OBJECTS_EDIT,
+    PERM_OBJECTS_VIEW,
+    PERM_OBJECTS_VIEW_CONFIDENTIAL,
+    accessible_object_ids,
+    accessible_object_ids_for_request,
+    has_permission,
+    require_permission,
+)
 from app.services.impower import get_bank_balance
 from app.services.audit import audit, _audit_in_new_session
 from app.services.field_encryption import DecryptionError, decrypt_field
@@ -128,12 +137,13 @@ FINANZEN_FIELDS: tuple[str, ...] = (
 @router.get("", response_class=HTMLResponse)
 async def list_objects(
     request: Request,
+    # Default sort: short_code asc — bewusst kein numerischer Default (Spec-interner Widerspruch; Story-3.1-Entscheidung: alpha-sort ist explizit nutzbar).
     sort: str = Query("short_code"),
     order: str = Query("asc"),
     filter_reserve: str = Query("false"),
     page: int = Query(1, ge=1, le=10000),
     page_size: int = Query(50, ge=1, le=200),
-    user: User = Depends(require_permission("objects:view")),
+    user: User = Depends(require_permission(PERM_OBJECTS_VIEW)),
     db: Session = Depends(get_db),
 ):
     accessible = accessible_object_ids_for_request(request, db, user)
@@ -181,7 +191,7 @@ async def list_objects_rows(
     filter_reserve: str = Query("false"),
     page: int = Query(1, ge=1, le=10000),
     page_size: int = Query(50, ge=1, le=200),
-    user: User = Depends(require_permission("objects:view")),
+    user: User = Depends(require_permission(PERM_OBJECTS_VIEW)),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     if not request.headers.get("HX-Request"):
@@ -234,7 +244,7 @@ async def list_objects_rows(
 async def object_detail(
     object_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:view")),
+    user: User = Depends(require_permission(PERM_OBJECTS_VIEW)),
     db: Session = Depends(get_db),
 ):
     accessible = accessible_object_ids_for_request(request, db, user)
@@ -332,7 +342,7 @@ async def object_detail(
     # nicht vorkommen. Damit der Bulk-Fall hier nicht doch noch eine Extra-Query
     # ausloest, fuellen wir die noch fehlenden Scalar-Keys explizit mit None auf
     # ("haben wir geprueft, da ist nichts").
-    from app.services.pflegegrad import _ALL_SCALAR as _PFG_SCALAR
+    from app.services.pflegegrad import _ALL_SCALAR_FIELDS as _PFG_SCALAR
     pflegegrad_prov_map = dict(prov_map)
     for _f in _PFG_SCALAR:
         pflegegrad_prov_map.setdefault(_f, None)
@@ -392,7 +402,7 @@ async def object_detail(
 
     # --- Zugangscodes (Fernet-decrypted, nur fuer view_confidential, Story 2.0) ---
     tech_zugangscodes: list[dict] = []
-    if has_permission(user, "objects:view_confidential"):
+    if has_permission(user, PERM_OBJECTS_VIEW_CONFIDENTIAL):
         zug_prov_map = {f.key: prov_map.get(f.key) for f in ZUGANGSCODE_FIELDS}
         _zug_decrypt_failed = False
         for _zf in ZUGANGSCODE_FIELDS:
@@ -430,14 +440,20 @@ async def object_detail(
             })
         if _zug_decrypt_failed:
             try:
+                # flush() stellt sicher, dass der Audit-Row in der DB-Session
+                # persistiert ist, bevor der aeussere Render-Request endet.
+                db.flush()
                 db.commit()
             except Exception:
                 pass  # Audit-Commit-Fehler darf Page-Render nicht blockieren
 
     # --- Menschen-Notizen (Story 2.4, nur fuer view_confidential) ---
-    notes_owners: dict | None = None
-    if has_permission(user, "objects:view_confidential"):
-        notes_owners = dict(detail.obj.notes_owners or {})
+    # Serverseitig auf {} setzen, nicht None — kein Notizen-JSON im HTML fuer
+    # nicht-autorisierte User (schliesst direkten HTML-Source-Angriffsvektor).
+    if has_permission(user, PERM_OBJECTS_VIEW_CONFIDENTIAL):
+        notes_owners: dict = dict(detail.obj.notes_owners or {})
+    else:
+        notes_owners = {}
 
     # ---- Versicherungs-Sektion (Story 2.1+2.2+2.3) ----
     policen = get_policen_for_object(db, detail.obj.id)
@@ -546,7 +562,7 @@ async def technik_field_edit(
     object_id: uuid.UUID,
     request: Request,
     field: str,
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     if field not in TECHNIK_FIELD_KEYS:
@@ -578,7 +594,7 @@ async def technik_field_view(
     object_id: uuid.UUID,
     request: Request,
     field: str,
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     """Cancel-Button rendert den View-Zustand wieder — gleicher Permission-
@@ -612,7 +628,7 @@ async def technik_field_save(
     request: Request,
     field_name: str = Form(...),
     value: str = Form(""),
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     if field_name not in TECHNIK_FIELD_KEYS:
@@ -730,7 +746,7 @@ async def zugangscode_field_view(
     object_id: uuid.UUID,
     request: Request,
     field: str,
-    user: User = Depends(require_permission("objects:view_confidential")),
+    user: User = Depends(require_permission(PERM_OBJECTS_VIEW_CONFIDENTIAL)),
     db: Session = Depends(get_db),
 ):
     if field not in ZUGANGSCODE_FIELD_KEYS:
@@ -767,10 +783,10 @@ async def zugangscode_field_edit(
     object_id: uuid.UUID,
     request: Request,
     field: str,
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
-    if not has_permission(user, "objects:view_confidential"):
+    if not has_permission(user, PERM_OBJECTS_VIEW_CONFIDENTIAL):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für Zugangscodes",
@@ -811,10 +827,15 @@ async def zugangscode_field_save(
     request: Request,
     field_name: str = Form(...),
     value: str = Form(""),
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
-    if not has_permission(user, "objects:view_confidential"):
+    if not has_permission(user, PERM_OBJECTS_VIEW):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Keine Berechtigung: {PERM_OBJECTS_VIEW}",
+        )
+    if not has_permission(user, PERM_OBJECTS_VIEW_CONFIDENTIAL):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für Zugangscodes",
@@ -900,7 +921,7 @@ async def photo_upload(
     background_tasks: BackgroundTasks,
     component_ref: str = Form(...),
     file: UploadFile = File(...),
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     """Upload-Endpoint mit Validierung. Splittet nach Content-Groesse in
@@ -1120,7 +1141,7 @@ async def photo_status(
     object_id: uuid.UUID,
     photo_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:view")),
+    user: User = Depends(require_permission(PERM_OBJECTS_VIEW)),
     db: Session = Depends(get_db),
 ):
     """Polling-Endpoint waehrend BG-Upload laeuft. Liefert je nach Status
@@ -1150,7 +1171,7 @@ async def photo_delete(
     object_id: uuid.UUID,
     photo_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     """Loescht Foto aus Backend + DB-Row. Backend-Fehler sind nicht-blockierend
@@ -1193,7 +1214,7 @@ async def photo_file_serve(
     request: Request,
     object_id: uuid.UUID,
     photo_id: uuid.UUID,
-    user: User = Depends(require_permission("objects:view")),
+    user: User = Depends(require_permission(PERM_OBJECTS_VIEW)),
     db: Session = Depends(get_db),
 ):
     """Liefert lokal gespeicherte Foto-Dateien (backend='local') aus.
@@ -1290,7 +1311,7 @@ def _render_versicherungen(
 async def versicherungen_section(
     object_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:view")),
+    user: User = Depends(require_permission(PERM_OBJECTS_VIEW)),
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1307,7 +1328,7 @@ async def create_schadensfall_route(
     estimated_sum: str = Form(""),
     description: str | None = Form(None, max_length=5000),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
 ):
     # AC5: accessible_object_ids-Gate als ERSTER Aufruf
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1437,7 +1458,7 @@ async def police_create(
     next_main_due: str | None = Form(None),
     notice_period_months: str | None = Form(None),
     praemie: str | None = Form(None),
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1506,7 +1527,7 @@ async def police_edit_form(
     object_id: uuid.UUID,
     policy_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1534,7 +1555,7 @@ async def police_update(
     next_main_due: str | None = Form(None),
     notice_period_months: str | None = Form(None),
     praemie: str | None = Form(None),
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1586,16 +1607,24 @@ async def police_update(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
-    changed_fields: dict = {
-        "versicherer_id": parsed_versicherer_id,
-        "police_number": police_number or None,
-        "produkt_typ": produkt_typ or None,
-        "start_date": parsed_start,
-        "end_date": parsed_end,
-        "next_main_due": parsed_due,
-        "notice_period_months": parsed_months,
-        "praemie": parsed_praemie,
-    }
+    form_data = await request.form()
+    changed_fields: dict = {}
+    if "versicherer_id" in form_data:
+        changed_fields["versicherer_id"] = parsed_versicherer_id
+    if "police_number" in form_data:
+        changed_fields["police_number"] = police_number or None
+    if "produkt_typ" in form_data:
+        changed_fields["produkt_typ"] = produkt_typ or None
+    if "start_date" in form_data:
+        changed_fields["start_date"] = parsed_start
+    if "end_date" in form_data:
+        changed_fields["end_date"] = parsed_end
+    if "next_main_due" in form_data:
+        changed_fields["next_main_due"] = parsed_due
+    if "notice_period_months" in form_data:
+        changed_fields["notice_period_months"] = parsed_months
+    if "praemie" in form_data:
+        changed_fields["praemie"] = parsed_praemie
     update_police(db, policy, user, request, **changed_fields)
     db.commit()
     return _render_versicherungen(request, obj, db, user)
@@ -1606,7 +1635,7 @@ async def police_delete(
     object_id: uuid.UUID,
     policy_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1636,7 +1665,7 @@ async def wartungspflicht_create(
     intervall_monate: str | None = Form(None),
     letzte_wartung: str | None = Form(None),
     next_due_date: str | None = Form(None),
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1728,7 +1757,7 @@ async def wartungspflicht_delete(
     object_id: uuid.UUID,
     wart_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1775,7 +1804,7 @@ async def notiz_view(
     object_id: uuid.UUID,
     eigentuemer_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:view_confidential")),
+    user: User = Depends(require_permission(PERM_OBJECTS_VIEW_CONFIDENTIAL)),
     db: Session = Depends(get_db),
 ):
     obj = _load_accessible_object(request, db, object_id, user)
@@ -1794,10 +1823,10 @@ async def notiz_edit(
     object_id: uuid.UUID,
     eigentuemer_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
-    if not has_permission(user, "objects:view_confidential"):
+    if not has_permission(user, PERM_OBJECTS_VIEW_CONFIDENTIAL):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für vertrauliche Felder",
@@ -1819,10 +1848,10 @@ async def notiz_save(
     eigentuemer_id: uuid.UUID,
     request: Request,
     note: str | None = Form(None, max_length=4000),
-    user: User = Depends(require_permission("objects:edit")),
+    user: User = Depends(require_permission(PERM_OBJECTS_EDIT)),
     db: Session = Depends(get_db),
 ):
-    if not has_permission(user, "objects:view_confidential"):
+    if not has_permission(user, PERM_OBJECTS_VIEW_CONFIDENTIAL):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für vertrauliche Felder",

@@ -831,6 +831,8 @@ def test_generate_returns_pdf_on_happy_path(
     )
 
     # WeasyPrint mocken (System-Libs fehlen evtl. lokal).
+    # FRAGIL: Funktioniert nur weil der echte Import lazily im Handler passiert.
+    # Wird der Import auf Modul-Ebene gezogen, greift dieser Patch nicht mehr.
     fake_weasy = types.ModuleType("weasyprint")
 
     class _FakeHTML:

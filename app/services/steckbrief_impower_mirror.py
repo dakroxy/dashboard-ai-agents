@@ -674,6 +674,9 @@ async def run_impower_mirror(
                 if pid_str in existing_pids:
                     continue
                 prop = data.get("property") or {}
+                # Bootstrap-short_code/name = "impw-{pid}" als deterministischer
+                # Platzhalter (NOT-NULL ORM-Constraint). User muss via Steckbrief-UI
+                # umbenennen. v1.1: Mapping aus Impower-Property-Keys ergaenzen.
                 # short_code + name sind im ORM nullable=False, also
                 # zwingend — _reconcile_object spiegelt sie aber nicht
                 # (Task 12.5 Mapping-Konsistenz). Wir nutzen die garantiert

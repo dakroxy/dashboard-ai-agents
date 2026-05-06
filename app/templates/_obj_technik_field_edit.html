@@ -20,7 +20,7 @@
                name="value"
                type="{{ 'number' if field.kind == 'int_year' else ('tel' if field.kind == 'tel' else 'text') }}"
                value="{{ current_value }}"
-               {% if field.kind == 'int_year' %}min="1800" max="3000" step="1"{% endif %}
+               {% if field.kind == 'int_year' %}min="1800" max="3000" step="1"{% endif %}{# bewusst statischer Wert statt {{ max_year }} — kein jaehrlicher Template-Change noetig; Server-Validator ist die harte Grenze. #}
                class="block w-full rounded border {{ 'border-rose-300' if error else 'border-slate-300' }} px-2 py-1 text-sm">
         {% if error %}
             <p class="text-xs text-rose-600 mt-0.5">{{ error }}</p>

@@ -150,31 +150,12 @@ def test_versicherer_schadensquote_zero_praemie(db, auth_client):
 # AC5 — update_police partieller Body
 # ---------------------------------------------------------------------------
 
-def test_update_police_partial_body(db, auth_client):
+def test_update_police_partial_body(db, steckbrief_admin_client):
     """update_police: Nur gesendete Felder werden geändert, Rest bleibt erhalten."""
     import uuid as _uuid
     from decimal import Decimal as _Dec
-    from datetime import date
-    from app.models import Object, Role, User
-    from app.models.registry import Versicherer
-    from app.models.object import InsurancePolicy
-    from app.services.steckbrief_policen import create_police
+    from app.models import Object, InsurancePolicy
 
-    role = Role(
-        id=_uuid.uuid4(),
-        key="obj_edit_cq",
-        name="Obj Edit",
-        permissions=["objects:view", "objects:edit"],
-    )
-    db.add(role)
-    user = User(
-        id=_uuid.uuid4(),
-        google_sub="sub-police-cq",
-        email="policecq@test.de",
-        name="Police CQ",
-        role=role,
-    )
-    db.add(user)
     obj = Object(
         id=_uuid.uuid4(),
         short_code="POL1",
@@ -194,27 +175,15 @@ def test_update_police_partial_body(db, auth_client):
     db.add(policy)
     db.commit()
 
-    from fastapi.testclient import TestClient
-    from app.main import app
-    from app.auth import get_current_user
-    app.dependency_overrides[get_current_user] = lambda: user
-
-    client = TestClient(app)
-    # Nur police_number senden (ohne praemie)
-    resp = client.post(
+    # Route ist PUT; steckbrief_admin_client traegt CSRF-Token automatisch.
+    # Nur police_number + produkt_typ senden — praemie wird weggelassen.
+    resp = steckbrief_admin_client.put(
         f"/objects/{obj.id}/policen/{policy.id}",
         data={
             "police_number": "POL-UPDATED",
             "produkt_typ": "Haftpflicht",
-            "versicherer_id": "",
-            "start_date": "",
-            "end_date": "",
-            "next_main_due": "",
-            "notice_period_months": "",
-            "praemie": "500.00",
         },
     )
-    app.dependency_overrides.clear()
 
     assert resp.status_code == 200
     db.refresh(policy)
@@ -281,7 +250,7 @@ def test_wartung_deleted_audit_action(db):
     """delete_wartungspflicht erzeugt AuditLog mit action='wartung_deleted'."""
     import uuid as _uuid
     from app.models import AuditLog, Object, Role, User
-    from app.models.object import InsurancePolicy, Wartungspflicht
+    from app.models import InsurancePolicy, Wartungspflicht
     from app.services.steckbrief_wartungen import delete_wartungspflicht
 
     role = Role(id=_uuid.uuid4(), key="audit_cq", name="Audit CQ", permissions=["objects:edit"])
@@ -301,7 +270,7 @@ def test_wartung_deleted_audit_action(db):
     policy = InsurancePolicy(id=_uuid.uuid4(), object_id=obj.id)
     db.add(policy)
     wart = Wartungspflicht(
-        id=_uuid.uuid4(), policy_id=policy.id, bezeichnung="Heizung", intervall_monate=12
+        id=_uuid.uuid4(), policy_id=policy.id, object_id=obj.id, bezeichnung="Heizung", intervall_monate=12
     )
     db.add(wart)
     db.commit()

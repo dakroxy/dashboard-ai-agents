@@ -1,6 +1,6 @@
 # Story 5.6: Code-Qualität & Refactoring
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -207,82 +207,82 @@ Diese Story schließt 47 Deferred-Work-Einträge (#2, #20, #24, #25, #29, #30, #
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: AC1 — Permission-Konstanten** (#20 #93 #102)
-  - [ ] 1.1 `PERM_*`-Konstanten in `permissions.py` einführen
-  - [ ] 1.2 Magic-Strings in `app/routers/` und `app/services/` ersetzen (grep-basiert)
-  - [ ] 1.3 Waisen-Key-Cleanup in `_seed_default_roles`
-  - [ ] 1.4 Kommentar `_ENCRYPTED_FIELDS` in `steckbrief_write_gate.py`
-  - [ ] 1.5 Test: `test_no_permission_magic_strings`
+- [x] **Task 1: AC1 — Permission-Konstanten** (#20 #93 #102)
+  - [x] 1.1 `PERM_*`-Konstanten in `permissions.py` einführen
+  - [x] 1.2 Magic-Strings in `app/routers/` und `app/services/` ersetzen (grep-basiert)
+  - [x] 1.3 Waisen-Key-Cleanup in `_seed_default_roles`
+  - [x] 1.4 Kommentar `_ENCRYPTED_FIELDS` in `steckbrief_write_gate.py`
+  - [x] 1.5 Test: `test_no_permission_magic_strings`
 
-- [ ] **Task 2: AC2 — Score-Service Algorithmus** (#46 #38 #98 #36 #45)
-  - [ ] 2.1 `_ALL_SCALAR` → `_ALL_SCALAR_FIELDS` umbenennen in `pflegegrad.py`
-  - [ ] 2.2 Stable Tie-Break `created_at.desc(), id.desc()` in `pflegegrad.py` + `steckbrief_write_gate.py`
-  - [ ] 2.3 `weakest_fields` dedup+sort in `pflegegrad.py`
-  - [ ] 2.4 Kommentar `last_known_balance == 0` in `pflegegrad.py`
+- [x] **Task 2: AC2 — Score-Service Algorithmus** (#46 #38 #98 #36 #45)
+  - [x] 2.1 `_ALL_SCALAR` → `_ALL_SCALAR_FIELDS` umbenennen in `pflegegrad.py`
+  - [x] 2.2 Stable Tie-Break `created_at.desc(), id.desc()` in `pflegegrad.py` + `steckbrief_write_gate.py`
+  - [x] 2.3 `weakest_fields` dedup+sort in `pflegegrad.py`
+  - [x] 2.4 Kommentar `last_known_balance == 0` in `pflegegrad.py`
 
-- [ ] **Task 3: AC3 — JSONB-Feld-Qualität** (#44 #85 #101)
-  - [ ] 3.1 `sepa_mandate_refs` Falsy-Filter in `pflegegrad.py`
-  - [ ] 3.2 Orphan `notes_owners` Cleanup-Step bei Eigentuemer-Delete
-  - [ ] 3.3 `proposed_value` Decimal/Date typisiertes Envelope in `steckbrief_write_gate.py`
-  - [ ] 3.4 Test: `test_proposed_value_decimal_roundtrip`
+- [x] **Task 3: AC3 — JSONB-Feld-Qualität** (#44 #85 #101)
+  - [x] 3.1 `sepa_mandate_refs` Falsy-Filter in `pflegegrad.py`
+  - [x] 3.2 Orphan `notes_owners` Cleanup-Step bei Eigentuemer-Delete
+  - [x] 3.3 `proposed_value` Decimal/Date typisiertes Envelope in `steckbrief_write_gate.py`
+  - [x] 3.4 Test: `test_proposed_value_decimal_roundtrip`
 
-- [ ] **Task 4: AC4 — Due-Radar & Registry** (#73 #65 #70 #62 #74)
-  - [ ] 4.1 `due_date + entity_id` Tiebreaker in `due_radar.py`
-  - [ ] 4.2 `policen_anzahl` vs Heatmap Kommentar/Angleichung
-  - [ ] 4.3 Schadensquote Division-by-Zero Guard in Service/Template
-  - [ ] 4.4 Sort-Default-Kommentar in `objects.py`
-  - [ ] 4.5 `object_id`-Kommentar in `steckbrief_wartungen.py`
-  - [ ] 4.6 Test: `test_versicherer_schadensquote_zero_praemie`
+- [x] **Task 4: AC4 — Due-Radar & Registry** (#73 #65 #70 #62 #74)
+  - [x] 4.1 `due_date + entity_id` Tiebreaker in `due_radar.py`
+  - [x] 4.2 `policen_anzahl` vs Heatmap Kommentar/Angleichung
+  - [x] 4.3 Schadensquote Division-by-Zero Guard in Service/Template
+  - [x] 4.4 Sort-Default-Kommentar in `objects.py`
+  - [x] 4.5 `object_id`-Kommentar in `steckbrief_wartungen.py`
+  - [x] 4.6 Test: `test_versicherer_schadensquote_zero_praemie`
 
-- [ ] **Task 5: AC5 — Police-Form & PhotoStore** (#136 #88 #131 #146)
-  - [ ] 5.1 `update_police` auf `request.form()`-basierten partiellen Update umstellen
-  - [ ] 5.2 `delete_police` mit `with_for_update=True` absichern
-  - [ ] 5.3 PhotoStore `drive_item_id = None` Guard in `photo_store.py`
-  - [ ] 5.4 `letzte_wartung`/`next_due_date` Warning im Audit-Log
-  - [ ] 5.5 Test: `test_update_police_partial_body`
+- [x] **Task 5: AC5 — Police-Form & PhotoStore** (#136 #88 #131 #146)
+  - [x] 5.1 `update_police` auf `request.form()`-basierten partiellen Update umstellen
+  - [x] 5.2 `delete_police` mit `with_for_update=True` absichern
+  - [x] 5.3 PhotoStore `drive_item_id = None` Guard in `photo_store.py`
+  - [x] 5.4 `letzte_wartung`/`next_due_date` Warning im Audit-Log
+  - [x] 5.5 Test: `test_update_police_partial_body`
 
-- [ ] **Task 6: AC6 — Permission-Enforcement** (#123 #122 #108 #109 #126)
-  - [ ] 6.1 `objects:view`-Dep auf Zugangscode-Write-Endpoints
-  - [ ] 6.2 Edit-Button `_obj_zugangscode_view.html` innerer Permission-Check
-  - [ ] 6.3 `notes_owners` serverseitig für non-confidential User leeren
-  - [ ] 6.4 `_prov_tooltip` "von [gelöschter Nutzer]" Fallback
-  - [ ] 6.5 Audit-Row bei `DecryptionError` abgesichert
-  - [ ] 6.6 Test: `test_entry_code_write_requires_view_permission`
+- [x] **Task 6: AC6 — Permission-Enforcement** (#123 #122 #108 #109 #126)
+  - [x] 6.1 `objects:view`-Dep auf Zugangscode-Write-Endpoints
+  - [x] 6.2 Edit-Button `_obj_zugangscode_view.html` innerer Permission-Check
+  - [x] 6.3 `notes_owners` serverseitig für non-confidential User leeren
+  - [x] 6.4 `_prov_tooltip` "von [gelöschter Nutzer]" Fallback
+  - [x] 6.5 Audit-Row bei `DecryptionError` abgesichert
+  - [x] 6.6 Test: `test_entry_code_write_requires_view_permission`
 
-- [ ] **Task 7: AC7 — Audit-Action Konsistenz** (#144 #92)
-  - [ ] 7.1 `"wartung_deleted"` in `KNOWN_AUDIT_ACTIONS` + `steckbrief_wartungen.py`
-  - [ ] 7.2 Kommentar X-Robots-Tag Streaming in `main.py`
-  - [ ] 7.3 Test: `test_wartung_deleted_audit_action`
+- [x] **Task 7: AC7 — Audit-Action Konsistenz** (#144 #92)
+  - [x] 7.1 `"wartung_deleted"` in `KNOWN_AUDIT_ACTIONS` + `steckbrief_wartungen.py`
+  - [x] 7.2 Kommentar X-Robots-Tag Streaming in `main.py`
+  - [x] 7.3 Test: `test_wartung_deleted_audit_action`
 
-- [ ] **Task 8: AC8 — Template & UI-Details** (#107 #105 #110 #113 #100)
-  - [ ] 8.1 `FIELD_LABEL_MAP` + `field_label`-Filter in `templating.py`/`steckbrief.py`
-  - [ ] 8.2 Timestamp-Tooltips mit `" UTC"`-Suffix in `templating.py`
-  - [ ] 8.3 Rate-Gate `min(sleep_s, 7.5)` in `impower.py`
-  - [ ] 8.4 Index-Name-Kommentar in Migration 0012
-  - [ ] 8.5 FK-Test-Kommentar in `conftest.py` / Write-Gate-Test
-  - [ ] 8.6 Test: `test_field_label_filter`
+- [x] **Task 8: AC8 — Template & UI-Details** (#107 #105 #110 #113 #100)
+  - [x] 8.1 `FIELD_LABEL_MAP` + `field_label`-Filter in `templating.py`/`steckbrief.py`
+  - [x] 8.2 Timestamp-Tooltips mit `" UTC"`-Suffix in `templating.py`
+  - [x] 8.3 Rate-Gate `min(sleep_s, 7.5)` in `impower.py`
+  - [x] 8.4 Index-Name-Kommentar in Migration 0012
+  - [x] 8.5 FK-Test-Kommentar in `conftest.py` / Write-Gate-Test
+  - [x] 8.6 Test: `test_field_label_filter`
 
-- [ ] **Task 9: AC9 — HTTP-Compliance & Test-Qualität** (#25 #29 #30 #66 #24)
-  - [ ] 9.1 `Content-Disposition` RFC-5987 in `etv_signature_list.py`
-  - [ ] 9.2 WeasyPrint-Monkeypatch Fragilitäts-Kommentar
-  - [ ] 9.3 Non-ASCII Filename-Fallback Kommentar
-  - [ ] 9.4 Redundante `reg_mod.date`-Mocks entfernen
-  - [ ] 9.5 Audit-Commit-vor-Streaming Kommentar
+- [x] **Task 9: AC9 — HTTP-Compliance & Test-Qualität** (#25 #29 #30 #66 #24)
+  - [x] 9.1 `Content-Disposition` RFC-5987 in `etv_signature_list.py`
+  - [x] 9.2 WeasyPrint-Monkeypatch Fragilitäts-Kommentar
+  - [x] 9.3 Non-ASCII Filename-Fallback Kommentar
+  - [x] 9.4 Redundante `reg_mod.date`-Mocks entfernen
+  - [x] 9.5 Audit-Commit-vor-Streaming Kommentar
 
-- [ ] **Task 10: AC10 — Dokumentation & Kommentare** (#2 #90 #103 #114 #117 #118 #130 #132 #134 #135)
-  - [ ] 10.1 Umlaut-Kommentar in `audit.py`
-  - [ ] 10.2 FK-Spec-Selbstwiderspruch-Kommentar in Schadensfälle-Service
-  - [ ] 10.3 `docs/architecture.md §8` Audit-Actions deduplizieren
-  - [ ] 10.4 `_sync_common.py:run_sync_job` Docstring
-  - [ ] 10.5 Template `max="3000"` Kommentar
-  - [ ] 10.6 `year_built`/`year_roof` Domänen-Kommentar
-  - [ ] 10.7 SharePoint-Zielpfad Kommentar in `photo_store.py`
-  - [ ] 10.8 SharePoint-Foto-URL v1.1-TODO
-  - [ ] 10.9 Object-Bootstrap Platzhalter Kommentar
-  - [ ] 10.10 CD2-Ausnahme in `docs/architecture.md`
+- [x] **Task 10: AC10 — Dokumentation & Kommentare** (#2 #90 #103 #114 #117 #118 #130 #132 #134 #135)
+  - [x] 10.1 Umlaut-Kommentar in `audit.py`
+  - [x] 10.2 FK-Spec-Selbstwiderspruch-Kommentar in Schadensfälle-Service
+  - [x] 10.3 `docs/architecture.md §8` Audit-Actions deduplizieren
+  - [x] 10.4 `_sync_common.py:run_sync_job` Docstring
+  - [x] 10.5 Template `max="3000"` Kommentar
+  - [x] 10.6 `year_built`/`year_roof` Domänen-Kommentar
+  - [x] 10.7 SharePoint-Zielpfad Kommentar in `photo_store.py`
+  - [x] 10.8 SharePoint-Foto-URL v1.1-TODO
+  - [x] 10.9 Object-Bootstrap Platzhalter Kommentar
+  - [x] 10.10 CD2-Ausnahme in `docs/architecture.md`
 
-- [ ] **Task 11: AC11 — Deferred-Work.md aktualisieren**
-  - [ ] 11.1 Alle 47 Items mit `[done-5-6]` markieren
+- [x] **Task 11: AC11 — Deferred-Work.md aktualisieren**
+  - [x] 11.1 Alle 47 Items mit `[done-5-6]` markieren
 
 ## Dev Notes
 
@@ -412,4 +412,65 @@ claude-sonnet-4-6
 
 ### Completion Notes List
 
+- AC3 #85 Orphan-notes_owners: Simpler Variant gewählt (cleanup im Mirror-Update statt im Eigentuemer-Delete, da kein Delete-Endpoint in v1 existiert).
+- AC4 #70 Schadensquote: Typ `float | None` statt `float`; alle drei Stellen (VersichererAggRow, VersichererDetailData, _build_heatmap-Kommentar) angepasst; Templates rendern `"–"` bei None. Bestehende Tests auf `None` umgestellt.
+- AC1 #93 Waisen-Keys: Vorhandene Tests spiegeln altes Verhalten (Keys bleiben) — Charakterisierungstest umbenannt + Assertion invertiert auf neues Cleanup-Verhalten.
+- AC7 #144 `wartung_deleted`: Route-Test + Unit-Test beide auf neuen Action-Key umgestellt.
+- AC8 #105 UTC-Suffix: In `_prov_tooltip` ergänzt; kein neues Paket (pytz) nötig, Low-Risk-Fix.
+- AC9 #66 reg_mod.date: Die `.today`-Einträge in den 4 Mocks sind redundant (registries.py nutzt `today_local()` aus `_time.py`). Entfernt. `.max`/`.min` bleiben als Sort-Sentinel.
+- Umbenennung `_ALL_SCALAR` → `_ALL_SCALAR_FIELDS`: Drei Import-Stellen nachgezogen (objects.py, test_performance_query_optimization.py).
+- test_update_police_partial_body: Route ist PUT (HTMX), nicht POST. Test auf `steckbrief_admin_client.put(...)` umgestellt (CSRF-Token inkludiert).
+- 1112 Tests grün, 2 xfailed, 3 xpassed.
+
 ### File List
+
+**Python Services:**
+- `app/permissions.py`
+- `app/main.py`
+- `app/services/pflegegrad.py`
+- `app/services/steckbrief_write_gate.py`
+- `app/services/steckbrief_impower_mirror.py`
+- `app/services/due_radar.py`
+- `app/services/steckbrief_policen.py`
+- `app/services/steckbrief_wartungen.py`
+- `app/services/steckbrief_schadensfaelle.py`
+- `app/services/photo_store.py`
+- `app/services/audit.py`
+- `app/services/impower.py`
+- `app/services/_sync_common.py`
+- `app/services/registries.py`
+- `app/services/steckbrief.py`
+
+**Python Routers:**
+- `app/routers/objects.py`
+- `app/routers/registries.py`
+- `app/routers/due_radar.py`
+- `app/routers/admin.py`
+- `app/routers/etv_signature_list.py`
+
+**Templating:**
+- `app/templating.py`
+
+**Templates:**
+- `app/templates/_obj_zugangscode_view.html`
+- `app/templates/_obj_technik_field_edit.html`
+- `app/templates/_versicherer_rows.html`
+- `app/templates/registries_versicherer_detail.html`
+
+**Migrations:**
+- `migrations/versions/0012_steckbrief_finance_mirror_fields.py`
+
+**Tests:**
+- `tests/test_code_quality.py` (neu)
+- `tests/test_write_gate_unit.py`
+- `tests/test_registries_unit.py`
+- `tests/test_steckbrief_bootstrap.py`
+- `tests/test_wartungspflichten_routes_smoke.py`
+- `tests/test_wartungspflichten_unit.py`
+- `tests/test_etv_signature_list.py`
+- `tests/test_performance_query_optimization.py`
+
+**Dokumentation:**
+- `docs/architecture.md`
+- `output/implementation-artifacts/deferred-work.md`
+- `output/implementation-artifacts/5-6-code-qualitaet-refactoring.md`

@@ -205,6 +205,9 @@ async def run_sync_job(
     """Fuehrt einen kompletten Sync-Lauf aus: Lock, Audit, per-Item-Session,
     Fehler-Isolation, Audit-Finish.
 
+    Diese Funktion oeffnet ihre eigene DB-Session via db_factory() und committet
+    eigenstaendig. Nicht in transaktionalen Test-Scopes mischen (kein Savepoint-Support).
+
     - `fetch_items` laedt die Liste zu verarbeitender Items. Wirft es, wird
       `fetch_failed=True` gesetzt, sync_failed + sync_finished geaudited.
     - `reconcile_item(item, db)` darf werfen — entweder als

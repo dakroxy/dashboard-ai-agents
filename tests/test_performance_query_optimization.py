@@ -576,7 +576,7 @@ def test_pflegegrad_score_works_without_prov_map_argument(db):
 def test_pflegegrad_score_uses_prov_map_when_provided(db):
     """Vollstaendiger prov_map (alle _ALL_SCALAR-Keys explicit gesetzt) → kein
     FieldProvenance-SELECT, nur die 3 relationalen COUNTs."""
-    from app.services.pflegegrad import _ALL_SCALAR
+    from app.services.pflegegrad import _ALL_SCALAR_FIELDS as _ALL_SCALAR
 
     obj = Object(
         id=uuid.uuid4(),

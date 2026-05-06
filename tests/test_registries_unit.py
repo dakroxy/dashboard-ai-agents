@@ -95,7 +95,8 @@ def test_schadensquote_null_safe_when_no_praemie(db):
 
     rows = list_versicherer_aggregated(db)
     assert len(rows) == 1
-    assert rows[0].schadensquote == 0.0
+    # praemie=None → gesamtpraemie=0 → schadensquote=None (kein Division-by-Zero)
+    assert rows[0].schadensquote is None
 
 
 def test_versicherer_without_policen_has_zero_counts(db):
@@ -108,7 +109,8 @@ def test_versicherer_without_policen_has_zero_counts(db):
     assert r.policen_anzahl == 0
     assert r.gesamtpraemie == Decimal("0")
     assert r.objekte_anzahl == 0
-    assert r.schadensquote == 0.0
+    # keine Policen → gesamtpraemie=0 → schadensquote=None
+    assert r.schadensquote is None
 
 
 def test_sort_by_policen_anzahl_desc(db):
@@ -137,7 +139,7 @@ def test_sort_by_name_asc_is_default(db):
     assert rows[1].name == "Zurich"
 
 
-def test_schadensquote_zero_when_schaden_without_praemie(db):
+def test_schadensquote_null_when_schaden_without_praemie(db):
     obj = _make_object(db, "MUC1")
     v = _make_versicherer(db, "HUK")
     p = _make_policy(db, obj, v, praemie=Decimal("0"))
@@ -146,7 +148,8 @@ def test_schadensquote_zero_when_schaden_without_praemie(db):
 
     rows = list_versicherer_aggregated(db)
     assert len(rows) == 1
-    assert rows[0].schadensquote == 0.0
+    # praemie=0 → kein Division-by-Zero → schadensquote=None, Anzeige zeigt "–"
+    assert rows[0].schadensquote is None
 
 
 # ---------------------------------------------------------------------------

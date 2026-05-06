@@ -243,20 +243,14 @@ def test_delete_wartungspflicht_writes_audit(db, policy, user):
     delete_wartungspflicht(db, wart, user, None)
     db.flush()
 
-    # Write-Gate schreibt ebenfalls object_field_updated-Entries pro Feld →
-    # .all() + Python-Filter um den Delete-Audit-Entry zu finden.
-    all_logs = (
+    delete_log = (
         db.query(AuditLog)
         .filter(
-            AuditLog.action == "object_field_updated",
+            AuditLog.action == "wartung_deleted",
             AuditLog.entity_type == "wartung",
             AuditLog.entity_id == wart_id,
         )
-        .all()
-    )
-    delete_log = next(
-        (l for l in all_logs if l.details_json and l.details_json.get("action") == "delete"),
-        None,
+        .first()
     )
     assert delete_log is not None, "Kein Delete-AuditLog-Entry gefunden"
     assert delete_log.details_json["bezeichnung"] == "Loeschanlage"

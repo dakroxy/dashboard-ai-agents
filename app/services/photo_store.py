@@ -12,6 +12,8 @@ emittiert dann den ``sharepoint_init_failed``-Audit-Eintrag).
 Die ``url()``-Methode aus architecture.md §ID1 ist bewusst NICHT im v1-Protocol
 enthalten — temporaere Graph-API-Download-URLs werden in v1.1 nachgezogen
 (Defer; siehe ``deferred-work.md``).
+v1: Foto-Anzeige nicht implementiert (temp Download-URLs Ablauf ~1h).
+v1.1: url()-Methode + URL-Cache + Template-<img>-Branch.
 """
 from __future__ import annotations
 
@@ -152,7 +154,7 @@ class SharePointPhotoStore:
     Speicherort wird damit ``SharePoint/DBS/Objekte/{short_code}/{category}/{filename}``.
     Zeigt ``drive_id`` stattdessen auf die Site-Root, muss der Praefix
     ``DBS/Objekte/`` explizit in die URL — Entscheidung beim M365-Ticket
-    klaeren und in ``.env.op`` kommentieren.
+    klaeren und SHAREPOINT_DRIVE_ID-Setting anpassen.
     """
 
     backend_name: str = "sharepoint"

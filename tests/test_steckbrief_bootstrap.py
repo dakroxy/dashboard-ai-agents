@@ -109,15 +109,9 @@ def test_seed_merges_new_permissions_into_existing_user_role(db):
         session.close()
 
 
-def test_seed_merge_preserves_orphan_permission_keys():
-    """Characterization-Test: der `set | set`-Merge in `_seed_default_roles`
-    ist rein additiv — Keys, die NICHT (mehr) in PERMISSION_KEYS stehen,
-    bleiben in `role.permissions` erhalten.
-
-    Aktuell bewusst akzeptiert (siehe `output/implementation-artifacts/
-    deferred-work.md` > "Waise-Permission-Keys"). Wenn spaeter eine
-    Intersection gegen PERMISSION_KEYS eingezogen wird, muss dieser Test
-    entsprechend gespiegelt werden.
+def test_seed_merge_removes_orphan_permission_keys():
+    """Nach #93-Fix: `_seed_default_roles` prueft keys gegen PERMISSION_KEYS
+    und entfernt Waisen stumm beim naechsten App-Start.
     """
     orphan_key = "retired:permission_keep_me_out"
     assert orphan_key not in PERMISSION_KEYS
@@ -144,9 +138,9 @@ def test_seed_merge_preserves_orphan_permission_keys():
     try:
         role = session.query(Role).filter(Role.key == "user").one()
         perms = set(role.permissions or [])
-        # Waise bleibt erhalten — kein Cleanup gegen PERMISSION_KEYS.
-        assert orphan_key in perms
-        # Default-Merge laeuft trotzdem durch.
+        # Waise wurde bereinigt.
+        assert orphan_key not in perms
+        # Valide Keys bleiben erhalten.
         assert USER_SUBSET_KEYS <= perms
         assert "documents:upload" in perms
     finally:

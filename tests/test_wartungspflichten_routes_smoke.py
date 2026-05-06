@@ -369,13 +369,13 @@ def test_delete_wartungspflicht_removes_row_and_audits(
     log = (
         db.query(AuditLog)
         .filter(
-            AuditLog.action == "object_field_updated",
+            AuditLog.action == "wartung_deleted",
             AuditLog.entity_type == "wartung",
         )
         .first()
     )
     assert log is not None
-    assert log.details_json["action"] == "delete"
+    assert log.details_json["bezeichnung"] is not None
 
 
 def test_delete_wartungspflicht_returns_only_policy_article(

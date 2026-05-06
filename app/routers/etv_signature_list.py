@@ -140,6 +140,9 @@ _FILENAME_KEEP = re.compile(r"[^a-z0-9]+")
 
 
 def _slug(value: str | None, fallback: str = "etv") -> str:
+    # Non-ASCII-WEG-Namen werden zu leerem _slug → Fallback "unterschriften" aktiviert.
+    # Bei mehreren solchen WEGs am gleichen Tag entsteht identischer Dateiname.
+    # Acceptable for DBS-German-ASCII portfolio.
     if not value:
         return fallback
     norm = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
@@ -419,13 +422,18 @@ async def generate_pdf(
         },
         request=request,
     )
+    # Audit "PDF generated" committed vor Streaming-Start. Semantisch: "PDF gerendert+bereit",
+    # nicht "Delivered". Bei Client-Disconnect mid-stream bleibt der Audit-Eintrag korrekt.
     db.commit()
 
     filename = _build_filename(
         payload.get("conference") or {}, payload.get("property") or {}
     )
+    # RFC-5987: filename*=UTF-8'' fuer korrekte Non-ASCII-Uebertragung. _slug ist ohnehin
+    # rein ASCII, daher harmlos; macht den Header formal konform.
+    cd_header = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{filename}'
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": cd_header},
     )
