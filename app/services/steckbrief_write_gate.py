@@ -112,6 +112,7 @@ _REGISTRY_ENTITY_TYPES: frozenset[str] = frozenset(
 )
 
 _ENCRYPTED_FIELDS: dict[str, frozenset[str]] = {
+    # v1: nur "object"; Erweiterung auf Unit/Mieter in v1.1 wenn deren Entry-Codes verschlüsselt werden.
     "object": frozenset(
         {"entry_code_main_door", "entry_code_garage", "entry_code_technical_room"}
     ),
@@ -172,6 +173,35 @@ def _json_safe(value: Any, _seen: set[int] | None = None) -> Any:
         finally:
             _seen.discard(marker)
     return str(value)
+
+
+def _json_safe_as_proposal(value: Any) -> Any:
+    """Wie `_json_safe`, aber Decimal- und date-Werte werden als typisiertes
+    Envelope `{"__type__": "decimal"|"date", "value": ...}` kodiert.
+
+    Grund: `approve_review_entry` muss den Originaltyp rekonstruieren, um
+    SQLAlchemy-Numeric-Spalten korrekt zu befuellen. Ohne Envelope-Shape
+    wuerden Decimal-Werte als Strings geschrieben und koennen auf Postgres
+    je nach Spaltentyp zu Commit-Fehlern fuehren."""
+    if isinstance(value, decimal.Decimal):
+        return {"__type__": "decimal", "value": str(value)}
+    if isinstance(value, _dt.date) and not isinstance(value, _dt.datetime):
+        return {"__type__": "date", "value": value.isoformat()}
+    return _json_safe(value)
+
+
+def _unwrap_proposal_value(raw: Any) -> Any:
+    """Umkehrung von `_json_safe_as_proposal`: Envelope → nativer Python-Typ.
+
+    Backward-Compat: Alte proposed_value-Rows enthalten entweder einen String
+    oder eine Zahl ohne Envelope — diese werden direkt weitergereicht."""
+    if isinstance(raw, dict) and "__type__" in raw:
+        t = raw["__type__"]
+        if t == "decimal":
+            return decimal.Decimal(raw["value"])
+        if t == "date":
+            return _dt.date.fromisoformat(raw["value"])
+    return raw
 
 
 def _json_safe_for_provenance(
@@ -379,7 +409,7 @@ def write_field_ai_proposal(
         target_entity_type=target_entity_type,
         target_entity_id=target_entity_id,
         field_name=field,
-        proposed_value={"value": _json_safe(proposed_value)},
+        proposed_value={"value": _json_safe_as_proposal(proposed_value)},
         agent_ref=agent_ref,
         confidence=float(confidence),
         source_doc_id=source_doc_id,
@@ -449,7 +479,7 @@ def approve_review_entry(
         db,
         entity=target,
         field=entry.field_name,
-        value=entry.proposed_value["value"],
+        value=_unwrap_proposal_value(entry.proposed_value["value"]),
         source="ai_suggestion",
         user=user,
         source_ref=entry.agent_ref,
@@ -553,6 +583,7 @@ def _latest_provenance(
             FieldProvenance.entity_id == entity_id,
             FieldProvenance.field_name == field_name,
         )
+        # Tiebreaker via created_at+id statt uuid4, da uuid4-DESC nicht monoton ist.
         .order_by(FieldProvenance.created_at.desc(), FieldProvenance.id.desc())
         .limit(1)
     )

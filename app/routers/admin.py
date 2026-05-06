@@ -31,6 +31,8 @@ from app.db import get_db
 from app.models import AuditLog, ResourceAccess, Role, User, Workflow
 from app.models.governance import ReviewQueueEntry
 from app.permissions import (
+    PERM_OBJECTS_APPROVE_KI,
+    PERM_SYNC_ADMIN,
     PERMISSIONS_BY_GROUP,
     PERMISSION_KEYS,
     RESOURCE_TYPE_WORKFLOW,
@@ -947,7 +949,7 @@ def _load_error_budget_alert(db: Session, *, job_name: str) -> dict | None:
 async def sync_status_home(
     request: Request,
     triggered: int = Query(0),
-    user: User = Depends(require_permission("sync:admin")),
+    user: User = Depends(require_permission(PERM_SYNC_ADMIN)),
     db: Session = Depends(get_db),
 ):
     from app.config import settings as _settings
@@ -1020,7 +1022,7 @@ async def trigger_mirror_run(
     request: Request,
     background_tasks: BackgroundTasks,
     job_name: str = Form(_MIRROR_JOB_NAME),
-    user: User = Depends(require_permission("sync:admin")),
+    user: User = Depends(require_permission(PERM_SYNC_ADMIN)),
 ):
     """Manueller Trigger fuer einen Mirror-Lauf.
 
@@ -1114,7 +1116,7 @@ async def list_review_queue(
     assigned_to_user_id: str | None = Query(None),
     page: int = Query(1, ge=1, le=10000),
     page_size: int = Query(50, ge=1, le=200),
-    user: User = Depends(require_permission("objects:approve_ki")),
+    user: User = Depends(require_permission(PERM_OBJECTS_APPROVE_KI)),
     db: Session = Depends(get_db),
 ):
     q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
@@ -1179,7 +1181,7 @@ async def list_review_queue_rows(
     assigned_to_user_id: str | None = Query(None),
     page: int = Query(1, ge=1, le=10000),
     page_size: int = Query(50, ge=1, le=200),
-    user: User = Depends(require_permission("objects:approve_ki")),
+    user: User = Depends(require_permission(PERM_OBJECTS_APPROVE_KI)),
     db: Session = Depends(get_db),
 ):
     q = _build_queue_query(db, min_age_days, field_name, assigned_to_user_id)
@@ -1207,7 +1209,7 @@ async def list_review_queue_rows(
 async def approve_entry(
     entry_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:approve_ki")),
+    user: User = Depends(require_permission(PERM_OBJECTS_APPROVE_KI)),
     db: Session = Depends(get_db),
 ):
     # Row-Lock gegen Race-Approves konkurrierender Tabs/Admins. Unter Postgres
@@ -1253,7 +1255,7 @@ async def reject_entry(
     entry_id: uuid.UUID,
     request: Request,
     reason: str = Form(""),
-    user: User = Depends(require_permission("objects:approve_ki")),
+    user: User = Depends(require_permission(PERM_OBJECTS_APPROVE_KI)),
     db: Session = Depends(get_db),
 ):
     # Laengen-Guard vor dem Strip — verhindert Audit-/DB-Bloat durch
@@ -1287,7 +1289,7 @@ async def reject_entry(
 async def reject_form_fragment(
     entry_id: uuid.UUID,
     request: Request,
-    user: User = Depends(require_permission("objects:approve_ki")),
+    user: User = Depends(require_permission(PERM_OBJECTS_APPROVE_KI)),
     db: Session = Depends(get_db),
 ):
     # Stale-Form-Schutz: Wenn der Entry zwischen Liste-Render und Reject-Click

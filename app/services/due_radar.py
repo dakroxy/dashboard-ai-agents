@@ -129,5 +129,5 @@ def list_due_within(
     elif severity == DueRadarSeverity.LT90:
         entries = [e for e in entries if e.days_remaining < 90]
 
-    entries.sort(key=lambda e: e.due_date)
+    entries.sort(key=lambda e: (e.due_date, e.entity_id))
     return entries

@@ -28,7 +28,7 @@ class VersichererAggRow:
     gesamtpraemie: Decimal
     gesamtschaden: Decimal
     objekte_anzahl: int
-    schadensquote: float
+    schadensquote: float | None
 
 
 def list_versicherer_aggregated(
@@ -76,7 +76,7 @@ def list_versicherer_aggregated(
         p = policen_by_vid.get(v.id)
         praemie = Decimal(str(p.praemie_sum)) if p else Decimal("0")
         schaden = schaden_by_vid.get(v.id, Decimal("0"))
-        schadensquote = float(schaden / praemie) if praemie > 0 else 0.0
+        schadensquote = float(schaden / praemie) if praemie > 0 else None
         result.append(
             VersichererAggRow(
                 versicherer_id=v.id,
@@ -153,7 +153,7 @@ class VersichererDetailData:
     policen_anzahl: int
     gesamtpraemie: Decimal
     gesamtschaden: Decimal
-    schadensquote: float
+    schadensquote: float | None
     policen: list[PolicyDetailRow]
     schadensfaelle: list[SchadensfallDetailRow]
     verbundene_objekte: list[VerbundeneObjektRow]
@@ -162,6 +162,10 @@ class VersichererDetailData:
 
 
 def _build_heatmap(policen: list[PolicyDetailRow], today: date) -> list[HeatmapBucket]:
+    # policen_anzahl (Detailseite) zählt alle Policen ohne Filter.
+    # Heatmap-Slots zählen nur Policen mit next_main_due is not None.
+    # Beide Zahlen dürfen legitim divergieren (Policen ohne Fälligkeitsdatum
+    # tauchen in der Heatmap nicht auf, aber in policen_anzahl schon).
     buckets: list[HeatmapBucket] = []
     for i in range(12):
         m = (today.month - 1 + i) % 12 + 1
@@ -303,7 +307,7 @@ def get_versicherer_detail(
     )
 
     # Step 7
-    schadensquote = float(gesamtschaden / gesamtpraemie) if gesamtpraemie > 0 else 0.0
+    schadensquote = float(gesamtschaden / gesamtpraemie) if gesamtpraemie > 0 else None
 
     # Step 8
     seen_obj_ids: set[uuid.UUID] = set()

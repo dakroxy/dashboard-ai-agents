@@ -224,9 +224,12 @@ class SharePointPhotoStore:
                     f"SharePoint-Upload: {exc.response.status_code} {exc.response.text}"
                 ) from exc
             item = response.json()
+        item_id = item.get("id")
+        if not item_id:
+            raise PhotoStoreError("Graph-API lieferte kein 'id' in der Upload-Response")
         return PhotoRef(
             backend="sharepoint",
-            drive_item_id=item.get("id"),
+            drive_item_id=item_id,
             local_path=None,
             filename=filename,
         )

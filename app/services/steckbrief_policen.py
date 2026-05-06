@@ -130,6 +130,8 @@ def delete_police(
     user: User,
     request: Request | None,
 ) -> None:
+    # with_for_update=True: verhindert Race bei concurrent Delete auf dasselbe Parent.
+    db.get(InsurancePolicy, policy.id, with_for_update=True)
     # `db.get(InsurancePolicy, id)` mit `lazy="selectin"` hat die Collections
     # bereits geladen — Counts in Locals einfrieren, damit Audit-Autoflush
     # sie nicht nachlaedt.

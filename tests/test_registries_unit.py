@@ -203,8 +203,9 @@ def test_heatmap_marks_expiring_policy_as_critical(db, monkeypatch):
     # Stabilisiert auf Mitte des Monats, damit `today + 10 Tage` und `today - 5 Tage`
     # garantiert im selben Kalendermonat liegen (verhindert Test-Flake am Monatsanfang).
     today = date.today().replace(day=15)
+    # registries.py nutzt today_local() statt date.today() — "today" im Fake unnoetig.
+    # .max/.min sind noetig als Sort-Sentinel fuer Policen ohne next_main_due.
     monkeypatch.setattr(reg_mod, "date", type("_FakeDate", (), {
-        "today": staticmethod(lambda: today),
         "max": date.max,
         "min": date.min,
     }))
@@ -228,7 +229,6 @@ def test_heatmap_marks_overdue_policy_as_critical(db, monkeypatch):
 
     today = date.today().replace(day=15)
     monkeypatch.setattr(reg_mod, "date", type("_FakeDate", (), {
-        "today": staticmethod(lambda: today),
         "max": date.max,
         "min": date.min,
     }))
@@ -252,7 +252,6 @@ def test_overdue_count_counts_policies_before_current_month(db, monkeypatch):
 
     today = date.today().replace(day=15)
     monkeypatch.setattr(reg_mod, "date", type("_FakeDate", (), {
-        "today": staticmethod(lambda: today),
         "max": date.max,
         "min": date.min,
     }))
@@ -275,7 +274,6 @@ def test_heatmap_marks_expiring_policy_as_warning(db, monkeypatch):
 
     today = date.today().replace(day=15)
     monkeypatch.setattr(reg_mod, "date", type("_FakeDate", (), {
-        "today": staticmethod(lambda: today),
         "max": date.max,
         "min": date.min,
     }))

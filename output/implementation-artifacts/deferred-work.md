@@ -511,3 +511,10 @@ _Erledigt: „Workflow-Description-Strings in der Live-DB" — Migration 0017 (C
 - **DF17: `_get_all_paged` MAX_PAGES-Cap-Warning ist dict-only** [`app/services/facilioo.py`] — Bare-List-Loop hits den globalen Cap silent (nur dict-Branch loggt). Logging-Konsistenz, kein Bug.
 - **DF18: Row-Lock-Tests sind Statement-Introspection auf private SQLAlchemy-API** [`tests/test_backend_robustness.py:1500, 1567`] — `getattr(stmt, "_for_update_arg", None)` nutzt SQLA-Private-Attribute. SQLA-Upgrade kann silent durchschleusen, ohne dass Tests failen. Real-Concurrency erst auf Postgres testbar (Memory `project_testing_strategy.md`). Test-Hardening in 5-7.
 - **DF19: `policy_deleted`-Audit vor `db.delete(policy)`** [`app/services/steckbrief_policen.py:144`] — Atomar in selber TX, idiomatisch waere Audit nach Mutation. Nur Style.
+
+## Deferred from: code review of 5-5-ux-polish-frontend (2026-05-06)
+
+- **DF20: `money_de`-Filter rendert NaN/Infinity als Literal-String** [`app/templating.py:267`] — `f"{float('nan'):,.0f}"` ergibt `"nan"`. Template-None-Guard (`{% if row.saldo is not none %}`) schuetzt gegen None-Werte; NaN/Inf erfordern kaputte DB-Daten. Defensiv-Fix: `lambda v: f"{float(v):,.0f}".replace(",", ".")` durch Version mit `math.isfinite`-Check ersetzen; Fallback `"—"`.
+- **DF21: `_manual_fields` markiert Feld auch bei Wert-Clear auf None** [`app/services/document_field_edit.py:172`] — Wenn User ein Feld leert (Wert auf None/Leerstring), wird `field` trotzdem in `_manual_fields` eingetragen → "manuell"-Pill neben `—`-Platzhalter. Semantisch vertretbar (User hat aktiv geleert), aber UX-verwirrend. Option: nur setzen wenn `new_value` nicht None/Leerstring.
+- **DF22: `heating_hotline` max_len=30 ohne Grenzwert-Test** [`app/services/steckbrief.py:480`] — Kein Test prueft, dass ≥31 Zeichen mit Validation-Fehler abgewiesen werden. Boundary-Test in 5-7 ergaenzen.
+- **DF23: `case_detail.html:227,:315,:1007` noch onsubmit="return confirm()" statt data-confirm** [`app/templates/case_detail.html`] — Spec markierte diese als "optional" da statische Texte ohne Jinja-Interpolation (kein XSS-Risiko). Konsistenz-Migration in Story 5-6 (Code-Qualitaet).

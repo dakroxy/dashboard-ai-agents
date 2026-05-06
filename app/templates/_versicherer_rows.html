@@ -14,8 +14,8 @@
     <td class="text-right px-4 py-3 {% if row.gesamtpraemie == 0 %}text-slate-400{% else %}text-slate-700{% endif %}">
         {{ "%.0f"|format(row.gesamtpraemie|float) }} €
     </td>
-    <td class="text-right px-4 py-3 {% if row.schadensquote == 0 %}text-slate-400{% else %}text-slate-700{% endif %}">
-        {{ "%.1f"|format(row.schadensquote * 100) }} %
+    <td class="text-right px-4 py-3 {% if not row.schadensquote %}text-slate-400{% else %}text-slate-700{% endif %}">
+        {% if row.schadensquote is none %}&ndash;{% else %}{{ "%.1f"|format(row.schadensquote * 100) }} %{% endif %}
     </td>
     <td class="text-right px-4 py-3 {% if row.objekte_anzahl == 0 %}text-slate-400{% else %}text-slate-700{% endif %}">
         {{ row.objekte_anzahl }}

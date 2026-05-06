@@ -84,6 +84,7 @@ def create_wartungspflicht(
     # write_field_human sieht "" != bezeichnung und schreibt die Provenance.
     wart = Wartungspflicht(
         policy_id=policy.id,
+        # object_id = Spec-Wording, kodiert dasselbe wie police.object_id (gleiche Entität); kein eigenes JOIN nötig.
         object_id=policy.object_id,
         bezeichnung="",
     )
@@ -109,7 +110,29 @@ def create_wartungspflicht(
                 request=request,
             )
 
+    today = today_local()
+    date_warning = _build_date_warning(letzte_wartung, next_due_date, today)
+    if date_warning:
+        audit(
+            db, user, "object_field_updated",
+            entity_type="wartung", entity_id=wart.id,
+            details={"warning": date_warning},
+            request=request,
+        )
+
     return wart
+
+
+def _build_date_warning(
+    letzte_wartung: date | None,
+    next_due_date: date | None,
+    today: date,
+) -> str | None:
+    if letzte_wartung is not None and letzte_wartung > today:
+        return f"Datum möglicherweise fehlerhaft: letzte_wartung ({letzte_wartung}) liegt in der Zukunft."
+    if next_due_date is not None and next_due_date < today - timedelta(days=30):
+        return f"Datum möglicherweise fehlerhaft: next_due_date ({next_due_date}) liegt mehr als 30 Tage in der Vergangenheit."
+    return None
 
 
 def delete_wartungspflicht(
@@ -118,11 +141,10 @@ def delete_wartungspflicht(
     audit(
         db,
         user,
-        "object_field_updated",
+        "wartung_deleted",
         entity_type="wartung",
         entity_id=wart.id,
         details={
-            "action": "delete",
             "bezeichnung": wart.bezeichnung,
             "policy_id": str(wart.policy_id),
         },

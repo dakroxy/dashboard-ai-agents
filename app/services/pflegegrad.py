@@ -43,7 +43,7 @@ _C4_SCALAR: tuple[str, ...] = (
 _C6_SCALAR: tuple[str, ...] = ("last_known_balance", "reserve_current")
 
 # Union aller Scalar-Felder fuer eine einzige Provenance-Query
-_ALL_SCALAR: tuple[str, ...] = _C1_SCALAR + _C4_SCALAR + _C6_SCALAR
+_ALL_SCALAR_FIELDS: tuple[str, ...] = _C1_SCALAR + _C4_SCALAR + _C6_SCALAR
 
 CACHE_TTL = timedelta(minutes=5)
 
@@ -127,7 +127,7 @@ def pflegegrad_score(
         for field_name, wrap in prov_map.items():
             if wrap is not None:
                 latest_prov[field_name] = wrap.prov
-        missing = [f for f in _ALL_SCALAR if f not in prov_map]
+        missing = [f for f in _ALL_SCALAR_FIELDS if f not in prov_map]
         if missing:
             # Ein einziger Bulk-Lookup fuer alle nicht im prov_map enthaltenen
             # Felder — vermeidet N Einzel-Queries und stellt Korrektheit her,
@@ -140,7 +140,7 @@ def pflegegrad_score(
                         FieldProvenance.entity_id == obj.id,
                         FieldProvenance.field_name.in_(missing),
                     )
-                    .order_by(FieldProvenance.created_at.desc())
+                    .order_by(FieldProvenance.created_at.desc(), FieldProvenance.id.desc())
                 )
                 .scalars()
                 .all()
@@ -156,9 +156,9 @@ def pflegegrad_score(
                 .where(
                     FieldProvenance.entity_type == "object",
                     FieldProvenance.entity_id == obj.id,
-                    FieldProvenance.field_name.in_(_ALL_SCALAR),
+                    FieldProvenance.field_name.in_(_ALL_SCALAR_FIELDS),
                 )
-                .order_by(FieldProvenance.created_at.desc())
+                .order_by(FieldProvenance.created_at.desc(), FieldProvenance.id.desc())
             )
             .scalars()
             .all()
@@ -223,10 +223,11 @@ def pflegegrad_score(
     ]
 
     # C6: last_known_balance, reserve_current, sepa_mandate_refs
+    # 0€-Saldo ist fachlich "befuellt" (kein Impower-Saldo ist None, nicht 0). is_none-Check ist korrekt.
     c6_vals = [
         _scalar_effective("last_known_balance"),
         _scalar_effective("reserve_current"),
-        _jsonb_bool_effective("sepa_mandate_refs", obj.sepa_mandate_refs or []),
+        _jsonb_bool_effective("sepa_mandate_refs", [m for m in (obj.sepa_mandate_refs or []) if m]),
     ]
 
     # C8: has_police, has_wartungspflicht
@@ -245,10 +246,28 @@ def pflegegrad_score(
     raw_score = sum(per_cluster[k] * CLUSTER_WEIGHTS[k] for k in per_cluster)
     score = round(raw_score * 100)
 
+    # weakest_fields: dedup + absteigend nach Cluster-Gewicht sortieren.
+    # Felder mit hoeherer Gewichtung erscheinen zuerst im Popover.
+    _cluster_weight_for_field: dict[str, float] = {}
+    for field in _C1_SCALAR:
+        _cluster_weight_for_field[field] = CLUSTER_WEIGHTS["C1"]
+    for field in _C4_SCALAR:
+        _cluster_weight_for_field[field] = CLUSTER_WEIGHTS["C4"]
+    for field in _C6_SCALAR:
+        _cluster_weight_for_field[field] = CLUSTER_WEIGHTS["C6"]
+    for sentinel in ("has_eigentuemer", "sepa_mandate_refs"):
+        _cluster_weight_for_field[sentinel] = CLUSTER_WEIGHTS["C6"]
+    for sentinel in ("has_police", "has_wartungspflicht"):
+        _cluster_weight_for_field[sentinel] = CLUSTER_WEIGHTS["C8"]
+
+    seen: set[str] = set()
+    deduped = [f for f in weakest if not (f in seen or seen.add(f))]  # type: ignore[func-returns-value]
+    deduped.sort(key=lambda f: _cluster_weight_for_field.get(f, 0.0), reverse=True)
+
     return PflegegradResult(
         score=score,
         per_cluster=per_cluster,
-        weakest_fields=weakest,
+        weakest_fields=deduped,
     )
 
 

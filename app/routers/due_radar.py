@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import User
-from app.permissions import accessible_object_ids_for_request, require_permission
+from app.permissions import PERM_DUE_RADAR_VIEW, accessible_object_ids_for_request, require_permission
 from app.services.due_radar import list_due_within
 from app.templating import templates
 
@@ -26,7 +26,7 @@ _SEVERITY_MAP: dict[str, str | None] = {
 @router.get("", response_class=HTMLResponse)
 async def due_radar_view(
     request: Request,
-    user: User = Depends(require_permission("due_radar:view")),
+    user: User = Depends(require_permission(PERM_DUE_RADAR_VIEW)),
     db: Session = Depends(get_db),
 ):
     accessible = accessible_object_ids_for_request(request, db, user)
@@ -43,7 +43,7 @@ async def due_radar_rows(
     request: Request,
     type: Literal["all", "police", "wartung"] = "all",
     severity: Literal["all", "lt30", "lt90"] = "all",
-    user: User = Depends(require_permission("due_radar:view")),
+    user: User = Depends(require_permission(PERM_DUE_RADAR_VIEW)),
     db: Session = Depends(get_db),
 ):
     if "hx-request" not in request.headers:

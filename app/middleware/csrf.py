@@ -139,7 +139,8 @@ class CSRFMiddleware:
                 content_type = value.lower()
             elif lname == b"content-length":
                 try:
-                    content_length = int(value.decode("ascii", errors="ignore"))
+                    parsed_cl = int(value.decode("ascii", errors="ignore"))
+                    content_length = max(0, parsed_cl)
                 except (ValueError, UnicodeDecodeError):
                     content_length = None
 

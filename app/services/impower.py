@@ -62,7 +62,7 @@ async def _rate_limit_gate() -> None:
         now = time.monotonic()
         wait = _REQUEST_DELAY - (now - _last_request_time)
         if wait > 0:
-            await asyncio.sleep(wait)
+            await asyncio.sleep(min(wait, 7.5))
         _last_request_time = time.monotonic()
 
 

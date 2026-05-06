@@ -26,6 +26,20 @@ from app.models import ResourceAccess, User, Workflow
 
 
 # ---------------------------------------------------------------------------
+# Permission-Konstanten (Quelle der Wahrheit fuer Permission-Keys)
+# ---------------------------------------------------------------------------
+
+PERM_OBJECTS_VIEW = "objects:view"
+PERM_OBJECTS_EDIT = "objects:edit"
+PERM_OBJECTS_APPROVE_KI = "objects:approve_ki"
+PERM_OBJECTS_VIEW_CONFIDENTIAL = "objects:view_confidential"
+PERM_REGISTRIES_VIEW = "registries:view"
+PERM_REGISTRIES_EDIT = "registries:edit"
+PERM_DUE_RADAR_VIEW = "due_radar:view"
+PERM_SYNC_ADMIN = "sync:admin"
+
+
+# ---------------------------------------------------------------------------
 # Permission-Registry
 # ---------------------------------------------------------------------------
 

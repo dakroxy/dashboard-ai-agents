@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import ResourceAccess, Role, User, Workflow
 from app.permissions import (
     DEFAULT_ROLE_PERMISSIONS,
+    PERMISSION_KEYS,
     RESOURCE_TYPE_WORKFLOW,
     accessible_workflow_ids,
 )
@@ -235,9 +236,9 @@ def _seed_default_roles() -> None:
             existing = db.query(Role).filter(Role.key == key).first()
             if existing is not None:
                 existing.is_system_role = True
-                existing.permissions = sorted(
-                    set(existing.permissions or []) | set(perms)
-                )
+                merged = set(existing.permissions or []) | set(perms)
+                # Waisen-Keys (aus entfernten Features) stumm bereinigen.
+                existing.permissions = sorted(k for k in merged if k in PERMISSION_KEYS)
                 continue
             meta = _ROLE_META.get(key, {"name": key.title(), "description": ""})
             _seed_role_idempotent(
@@ -463,6 +464,7 @@ async def set_default_security_headers(request: Request, call_next):
     except Exception:
         _logger.exception("Unhandled exception in request %s %s", request.method, request.url.path)
         response = PlainTextResponse("Internal Server Error", status_code=500)
+    # Bei StreamingResponse mid-stream-Fehler ist X-Robots-Tag bereits gesendet — kein Nachtrag möglich.
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response
 

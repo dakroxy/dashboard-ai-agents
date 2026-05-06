@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import User
-from app.permissions import require_permission
+from app.permissions import PERM_REGISTRIES_EDIT, PERM_REGISTRIES_VIEW, require_permission
 from app.services.registries import get_versicherer_detail, list_versicherer_aggregated
 from app.services.steckbrief_policen import create_versicherer, get_all_versicherer
 from app.services.steckbrief_wartungen import create_dienstleister, get_all_dienstleister
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/registries", tags=["registries"])
 @router.get("/versicherer", response_class=HTMLResponse)
 async def versicherer_list(
     request: Request,
-    user: User = Depends(require_permission("registries:view")),
+    user: User = Depends(require_permission(PERM_REGISTRIES_VIEW)),
     db: Session = Depends(get_db),
 ):
     rows = list_versicherer_aggregated(db)
@@ -37,7 +37,7 @@ async def versicherer_rows(
     request: Request,
     sort: str = Query("name"),
     order: str = Query("asc"),
-    user: User = Depends(require_permission("registries:view")),
+    user: User = Depends(require_permission(PERM_REGISTRIES_VIEW)),
     db: Session = Depends(get_db),
 ):
     rows = list_versicherer_aggregated(db, sort=sort, order=order)
@@ -51,7 +51,7 @@ async def versicherer_rows(
 @router.get("/versicherer/new-form", response_class=HTMLResponse)
 async def versicherer_new_form(
     request: Request,
-    user: User = Depends(require_permission("registries:edit")),
+    user: User = Depends(require_permission(PERM_REGISTRIES_EDIT)),
     db: Session = Depends(get_db),
 ):
     return templates.TemplateResponse(
@@ -68,7 +68,7 @@ async def versicherer_create(
     adresse: str | None = Form(None),
     kontakt_email: str | None = Form(None),
     kontakt_tel: str | None = Form(None),
-    user: User = Depends(require_permission("registries:edit")),
+    user: User = Depends(require_permission(PERM_REGISTRIES_EDIT)),
     db: Session = Depends(get_db),
 ):
     if not name.strip():
@@ -109,7 +109,7 @@ async def versicherer_detail(
     versicherer_id: uuid.UUID,
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("registries:view")),
+    user: User = Depends(require_permission(PERM_REGISTRIES_VIEW)),
 ) -> HTMLResponse:
     detail = get_versicherer_detail(db, versicherer_id)
     if detail is None:
@@ -124,7 +124,7 @@ async def dienstleister_new_form(
     request: Request,
     policy_id: uuid.UUID | None = Query(None),
     other_policy_ids: list[str] = Query(default=[]),
-    user: User = Depends(require_permission("registries:edit")),
+    user: User = Depends(require_permission(PERM_REGISTRIES_EDIT)),
     db: Session = Depends(get_db),
 ):
     return templates.TemplateResponse(
@@ -141,7 +141,7 @@ async def dienstleister_create(
     gewerke_tags_raw: str | None = Form(None),
     policy_id: uuid.UUID | None = Form(None),
     other_policy_ids: list[str] = Form(default=[]),
-    user: User = Depends(require_permission("registries:edit")),
+    user: User = Depends(require_permission(PERM_REGISTRIES_EDIT)),
     db: Session = Depends(get_db),
 ):
     if not name.strip():

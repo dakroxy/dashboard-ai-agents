@@ -59,7 +59,7 @@ def upgrade() -> None:
     # koennte theoretisch denselben Contact zweimal als Owner fuehren, das
     # soll keinen Insert abbrechen lassen.
     op.create_index(
-        "ix_eigentuemer_impower_contact",
+        "ix_eigentuemer_impower_contact",  # ix_<table>_<col> ohne _id-Suffix — bewusst kuerzer; kein Rename (DB-Op ohne fachlichen Mehrwert)
         "eigentuemer",
         ["object_id", "impower_contact_id"],
     )

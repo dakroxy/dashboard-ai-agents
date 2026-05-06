@@ -611,6 +611,23 @@ def _reconcile_eigentuemer(
                 }
             )
 
+    # notes_owners-Cleanup: Schluessel entfernen, die keinem vorhandenen
+    # Eigentuemer mehr entsprechen. Variante "nach Mirror-Update" gewählt,
+    # da kein User-initiierter Eigentuemer-Delete-Endpoint existiert (v1).
+    obj = db.get(Object, obj_id)
+    if obj is not None and obj.notes_owners:
+        all_eig_ids = {str(e.id) for e in db.execute(
+            select(Eigentuemer).where(Eigentuemer.object_id == obj_id)
+        ).scalars().all()}
+        orphan_keys = set(obj.notes_owners.keys()) - all_eig_ids
+        if orphan_keys:
+            new_owners = {k: v for k, v in obj.notes_owners.items() if k not in orphan_keys}
+            write_field_human(
+                db, entity=obj, field="notes_owners", value=new_owners,
+                source="impower_mirror", user=None,
+                source_ref="notes_owners_orphan_cleanup",
+            )
+
 
 # ---------------------------------------------------------------------------
 # Orchestrator

@@ -23,7 +23,7 @@
                     {{ pill.label }}
                 </span>
             {% endif %}
-            {% if has_permission(user, "objects:edit") %}
+            {% if has_permission(user, "objects:edit") and has_permission(user, "objects:view_confidential") %}
                 <button type="button"
                         data-edit-field="{{ field.key }}"
                         hx-get="/objects/{{ obj.id }}/zugangscodes/edit?field={{ field.key }}"

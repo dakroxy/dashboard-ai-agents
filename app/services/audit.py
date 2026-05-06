@@ -92,6 +92,7 @@ KNOWN_AUDIT_ACTIONS: list[str] = sorted(
         "photo_upload_orphan",
         "policy_deleted",
         "pflegegrad_cache_commit_fail",
+        "wartung_deleted",
     ]
 )
 

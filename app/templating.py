@@ -26,6 +26,31 @@ from app.services.steckbrief import ProvenanceWithUser
 
 _logger = logging.getLogger(__name__)
 
+
+# Human-readable Labels fuer Steckbrief-Felder (fuer den field_label-Filter).
+# Fallback: k.replace("_", " ").title() fuer unbekannte Felder.
+FIELD_LABEL_MAP: dict[str, str] = {
+    "year_built": "Baujahr",
+    "year_roof": "Dachjahr",
+    "weg_nr": "WEG-Nr.",
+    "impower_property_id": "Impower-ID",
+    "full_address": "Adresse",
+    "reserve_current": "Rücklage",
+    "reserve_target": "Rücklage (Soll)",
+    "last_known_balance": "Kontosaldo",
+    "short_code": "Kürzel",
+    "shutoff_water_location": "Absperrung Wasser",
+    "shutoff_electricity_location": "Absperrung Strom",
+    "heating_type": "Heizungstyp",
+    "sepa_mandate_refs": "SEPA-Mandate",
+    "wirtschaftsplan_status": "Wirtschaftsplan-Status",
+    "notes_owners": "Eigentümer-Notizen",
+    "entry_code_main_door": "Hauseingang",
+    "entry_code_garage": "Garage",
+    "entry_code_technical_room": "Technikraum",
+}
+
+
 _SIDEBAR_WORKFLOWS_CACHE: dict[uuid.UUID, tuple[float, list[dict[str, Any]]]] = {}
 _SIDEBAR_WORKFLOWS_TTL_SECONDS = 30
 # Hard-Cap: schuetzt vor Memory-Wachstum bei vielen kurzlebigen Sessions
@@ -147,10 +172,13 @@ def _prov_tooltip(wrap: ProvenanceWithUser | None) -> str:
     if wrap is None:
         return "Noch nicht gepflegt"
     prov = wrap.prov
-    ts = prov.created_at.strftime("%Y-%m-%d %H:%M") if prov.created_at else ""
+    # Timestamps in DB = UTC; fuer CET/CEST korrekte Darstellung ggf. pytz ergaenzen.
+    ts = prov.created_at.strftime("%Y-%m-%d %H:%M UTC") if prov.created_at else ""
     if prov.source == "user_edit":
         if wrap.user_email:
             return f"Manuell gepflegt am {ts} von {wrap.user_email}"
+        if prov.user_id is None:
+            return f"von [gelöschter Nutzer] am {ts}"
         return f"Manuell gepflegt am {ts}"
     if prov.source == "impower_mirror":
         ref = f" (Ref {prov.source_ref})" if prov.source_ref else ""
@@ -265,3 +293,4 @@ templates.env.globals["sidebar_workflows"] = sidebar_workflows
 templates.env.globals["facilioo_ticket_url"] = facilioo_ticket_url
 templates.env.filters["iban_format"] = _format_iban
 templates.env.filters["money_de"] = lambda v: f"{float(v):,.0f}".replace(",", ".")
+templates.env.filters["field_label"] = lambda k: FIELD_LABEL_MAP.get(k, k.replace("_", " ").title())

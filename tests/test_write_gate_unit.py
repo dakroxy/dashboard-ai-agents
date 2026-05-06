@@ -323,7 +323,11 @@ def test_review_queue_source_doc_fk_on_delete_set_null():
 
     Wird hier auf Metadata-Ebene geprueft: SQLite erzwingt ON DELETE-
     Policies nicht ohne `PRAGMA foreign_keys=ON`, fuer Postgres-Sematik
-    im Unit-Test reicht die Schema-Definition."""
+    im Unit-Test reicht die Schema-Definition.
+
+    HINWEIS: SQLite ohne PRAGMA foreign_keys=ON ignoriert FK-Constraints.
+    Dieser Test prueft nur ORM-Metadata. Fuer echte FK-Enforcement ist
+    eine Postgres-Fixture noetig (project_testing_strategy.md)."""
     from app.models import ReviewQueueEntry
 
     source_doc_col = ReviewQueueEntry.__table__.c.source_doc_id

@@ -406,8 +406,19 @@ _keine_
 - `tests/test_ux_polish.py` (neu)
 - `output/implementation-artifacts/deferred-work.md`
 
+### Review Findings
+
+- [x] [Review][Patch] Pagination-Links verlieren sort/order/filter_reserve bei Seitenwechsel [app/templates/objects_list.html:48,54,60,89,95,101] — AC3 Regression: list_objects respektiert jetzt Query-Params, aber die statischen Paginierungs-Links tragen sie nicht weiter. Fix: `&sort={{ sort }}&order={{ order }}&filter_reserve={{ filter_reserve }}` an alle href-Attribute.
+- [x] [Review][Patch] wartungspflicht_create/_delete: `policen` fehlt im Template-Context [app/routers/objects.py:1738,1779] — `_obj_versicherungen_row.html` iteriert `policen` für `other_policy_ids`-URL-Params; beide Wartungs-Routen übergeben `policen` nicht → OOB-Multi-Dropdown-Refresh greift nur für anfragende Police.
+- [x] [Review][Patch] Negative Content-Length umgeht 2MB-Pre-Check-Optimierung [app/middleware/csrf.py] — `int(b'-1')` ist < 0, daher `-1 > 2MB` == False → Pre-Check skipped. Sicherheits-Invariante hält (Body-Cap beim Lesen greift), aber Optimierung ist wirkungslos. Fix: `content_length = max(0, parsed)` nach Parsing.
+- [x] [Review][Defer] money_de-Filter rendert NaN/Infinity als Literal-String [app/templating.py:267] — deferred, pre-existing; erfordert kaputte DB-Daten (Decimal('NaN')); Template-None-Guard schützt gegen None.
+- [x] [Review][Defer] _manual_fields wird gesetzt auch wenn Feldwert auf None gecleart [app/services/document_field_edit.py:172] — deferred, low-impact; "manuell"-Pill neben leerem Feld ist leicht verwirrend, aber semantisch vertretbar (User hat manuell geleert).
+- [x] [Review][Defer] heating_hotline max_len=30 ohne dedizierten Grenzwert-Test [app/services/steckbrief.py:480] — deferred, kein Produktions-Blocker; funktional korrekt.
+- [x] [Review][Defer] case_detail.html:227,:315,:1007 noch onsubmit="return confirm()" statt data-confirm [app/templates/case_detail.html] — deferred, spec-optional; statische Texte ohne Jinja-Interpolation, kein XSS-Risiko; Konsistenz-Migration in Story 5-6.
+
 ## Change Log
 
 | Date       | Version | Author              | Changes                                     |
 |------------|---------|---------------------|---------------------------------------------|
 | 2026-05-06 | 1.0     | claude-sonnet-4-6   | Story implementiert, alle ACs abgeschlossen |
+| 2026-05-06 | 1.1     | claude-sonnet-4-6   | Code-Review-Fixes: Pagination-State, Wartung-Policen-Context, CSRF-Content-Length-Guard |
