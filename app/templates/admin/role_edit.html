@@ -8,6 +8,7 @@
 {% set action_url = "/admin/roles" if is_new else "/admin/roles/" ~ role.id %}
 
 <form action="{{ action_url }}" method="post" class="space-y-5 max-w-4xl">
+    {{ csrf_input(request) }}
     <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-4">
         <div class="flex items-baseline justify-between">
             <h1 class="text-xl font-semibold">
@@ -95,6 +96,7 @@
             {% if not is_new and not role.is_system_role %}
             <form action="/admin/roles/{{ role.id }}/delete" method="post"
                   onsubmit="return confirm('Rolle wirklich löschen? Das ist nur möglich, wenn kein User mehr zugeordnet ist.');">
+                {{ csrf_input(request) }}
                 <button type="submit" class="text-sm text-rose-700 hover:underline">Rolle löschen</button>
             </form>
             {% endif %}

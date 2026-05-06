@@ -169,6 +169,9 @@ def update_extraction_field(
     # versehentlich mutieren).
     new_extracted = copy.deepcopy(latest.extracted)
     new_extracted[field] = new_value
+    new_extracted.setdefault("_manual_fields", [])
+    if field not in new_extracted["_manual_fields"]:
+        new_extracted["_manual_fields"].append(field)
 
     # ``-manual`` einmalig — wiederholte Saves sollten nicht
     # ``sepa-v1-manual-manual-manual...`` produzieren.

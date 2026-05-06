@@ -90,6 +90,7 @@
                 <td class="px-4 py-3 text-right">
                     <form action="/admin/logs/{{ log.id }}/delete" method="post"
                           onsubmit="return confirm('Eintrag löschen?');">
+                        {{ csrf_input(request) }}
                         <button class="text-xs text-rose-700 hover:underline">Löschen</button>
                     </form>
                 </td>

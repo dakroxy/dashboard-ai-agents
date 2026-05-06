@@ -13,7 +13,7 @@ unique Eintrag.
 
 | #  | Eintrag (Kurzform)                                                | Severity | Prod-Blocker | Sprint-Target |
 |----|-------------------------------------------------------------------|----------|--------------|---------------|
-| 1  | `onsubmit` confirm JS-Escape-Pattern                              | low      | no           | post-prod     |
+| 1  | `onsubmit` confirm JS-Escape-Pattern                              | low      | no           | [done-5-5]    |
 | 2  | Audit-`details_json` Umlaute (Ops-Doku)                           | low      | no           | post-prod     |
 | 3  | **CSRF-Token projektweit fehlt** (siehe auch #80, #82, #119)      | high     | yes          | pre-prod      |
 | 4  | `objects:approve_ki` portfolio-weit (kein Objekt-IDOR)            | medium   | no           | post-prod [deferred-to-v2] |
@@ -22,16 +22,16 @@ unique Eintrag.
 | 7  | Phase-3 Aggregator ohne `return_exceptions=True`                  | medium   | no           | post-prod     |
 | 8  | `_get_all_paged` Bare-List-Truncation                             | medium   | no           | post-prod     |
 | 9  | `vg_details[].get("units")` Schema-Drift-Crash                    | medium   | no           | post-prod     |
-| 10 | Tfoot near-empty page in PDF                                      | low      | no           | post-prod     |
+| 10 | Tfoot near-empty page in PDF                                      | low      | no           | [done-5-5]    |
 | 11 | Pagination Review-Queue                                           | medium   | no           | post-prod     |
-| 12 | HTMX `hx-include="[name]"` zu greedy                              | low      | no           | post-prod     |
-| 13 | HTMX double-fire on Enter                                         | low      | no           | post-prod     |
-| 14 | `agent_ref` ohne Truncation / max-w                               | low      | no           | post-prod     |
-| 15 | `age_days` kann negativ werden                                    | low      | no           | post-prod     |
-| 16 | Confidence ausserhalb [0,1]                                       | low      | no           | post-prod     |
-| 17 | Anchor-Text ohne `object/`-Prefix                                 | low      | no           | post-prod     |
-| 18 | Doppel-Highlight Review-Queue + Admin                             | low      | no           | post-prod     |
-| 19 | `<main>`-Split fragil (Layout-Refactor)                           | low      | no           | post-prod     |
+| 12 | HTMX `hx-include="[name]"` zu greedy                              | low      | no           | [done-5-5]    |
+| 13 | HTMX double-fire on Enter                                         | low      | no           | [done-5-5]    |
+| 14 | `agent_ref` ohne Truncation / max-w                               | low      | no           | [done-5-5]    |
+| 15 | `age_days` kann negativ werden                                    | low      | no           | [done-5-5]    |
+| 16 | Confidence ausserhalb [0,1]                                       | low      | no           | [done-5-5]    |
+| 17 | Anchor-Text ohne `object/`-Prefix                                 | low      | no           | [done-5-5]    |
+| 18 | Doppel-Highlight Review-Queue + Admin                             | low      | no           | [done-5-5]    |
+| 19 | `<main>`-Split fragil (Layout-Refactor)                           | low      | no           | [done-5-5]    |
 | 20 | Permission-Magic-String dupliziert (Konstanten-Refactor)          | medium   | no           | post-prod     |
 | 21 | `test_review_queue_unauthenticated` ohne Location-Check           | low      | no           | post-prod     |
 | 22 | Phase-1-Aggregator ohne Partial-Degradation                       | medium   | no           | post-prod     |
@@ -39,7 +39,7 @@ unique Eintrag.
 | 24 | Audit-Commit vor StreamingResponse-Zustellung                     | low      | no           | post-prod     |
 | 25 | Content-Disposition filename nicht RFC-5987                       | low      | no           | post-prod     |
 | 26 | `sidebar_workflows` oeffnet eigene SessionLocal pro Render        | medium   | no           | post-prod     |
-| 27 | Sidebar-Active-Detection prefix-startswith                        | low      | no           | post-prod     |
+| 27 | Sidebar-Active-Detection prefix-startswith                        | low      | no           | [done-5-5]    |
 | 28 | Test fragil `test_generate_returns_403_without_workflow_access`   | low      | no           | post-prod     |
 | 29 | WeasyPrint-Monkeypatch fragil                                     | low      | no           | post-prod     |
 | 30 | Non-ASCII-WEG-Namen Filename-Fallback                             | low      | no           | post-prod     |
@@ -62,18 +62,18 @@ unique Eintrag.
 | 47 | AC6 ohne dedizierten Route-Test                                   | low      | no           | post-prod     |
 | 48 | AC3-Test prueft nur `per_cluster`                                 | low      | no           | post-prod     |
 | 49 | Statement-Count-Threshold `<= 21` Obergrenze                      | low      | no           | post-prod     |
-| 50 | `tel:`-URI Format-Härtung im href                                 | low      | no           | post-prod     |
-| 51 | Mobile-Layout verwirft `?filter_reserve=true`                     | low      | no           | post-prod     |
-| 52 | Mobile-Card pflegegrad ohne Range-Cap                             | low      | no           | post-prod     |
-| 53 | `TechnikField.max_len=500` für `tel`                              | low      | no           | post-prod     |
-| 54 | iOS scroll-snap mit `min-w` Snap-Konsistenz                       | low      | no           | post-prod     |
+| 50 | `tel:`-URI Format-Härtung im href                                 | low      | no           | [done-5-5]    |
+| 51 | Mobile-Layout verwirft `?filter_reserve=true`                     | low      | no           | [done-5-5]    |
+| 52 | Mobile-Card pflegegrad ohne Range-Cap                             | low      | no           | [done-5-5]    |
+| 53 | `TechnikField.max_len=500` für `tel`                              | low      | no           | [done-5-5]    |
+| 54 | iOS scroll-snap mit `min-w` Snap-Konsistenz                       | low      | no           | [done-5-5]    |
 | 55 | Keine Pagination in `/objects` und `/objects/rows`                | medium   | no           | post-prod     |
-| 56 | A11y fehlt an Sort-Headern                                        | low      | no           | post-prod     |
+| 56 | A11y fehlt an Sort-Headern                                        | low      | no           | [done-5-5]    |
 | 57 | `accessible_object_ids` pro Request neu berechnet                 | medium   | no           | post-prod     |
-| 58 | `hx-push-url` fehlt fuer Bookmarking                              | low      | no           | post-prod     |
-| 59 | Kein `hx-indicator` fuer Loading-Feedback                         | low      | no           | post-prod     |
-| 60 | Money-Format `"%.0f"` ohne Tausenderpunkt                         | low      | no           | post-prod     |
-| 61 | `/objects` Voll-Page ignoriert Sort/Order/Filter                  | low      | no           | post-prod     |
+| 58 | `hx-push-url` fehlt fuer Bookmarking                              | low      | no           | [done-5-5]    |
+| 59 | Kein `hx-indicator` fuer Loading-Feedback                         | low      | no           | [done-5-5]    |
+| 60 | Money-Format `"%.0f"` ohne Tausenderpunkt                         | low      | no           | [done-5-5]    |
+| 61 | `/objects` Voll-Page ignoriert Sort/Order/Filter                  | low      | no           | [done-5-5]    |
 | 62 | Spec-interner Widerspruch numerische Sort-Default                 | low      | no           | post-prod     |
 | 63 | **Negative Praemie/Schaden nicht sanitiziert (registries.py)**    | high     | yes          | pre-prod      |
 | 64 | **`date.today()` ohne Timezone (registries.py:216)**              | medium   | no           | epic-4 (H1' — done) |
@@ -87,11 +87,11 @@ unique Eintrag.
 | 72 | **Magic-Strings ohne Konstanten (Severity StrEnum)**              | medium   | no           | epic-4 (H2' — done) |
 | 73 | Sort-Stabilitaet bei gleichem `due_date`                          | low      | no           | post-prod     |
 | 74 | Spec-Doc-Wording Wartung `object_id`                              | low      | no           | post-prod     |
-| 75 | Per-Feld „manuell"-Pill fehlt                                     | low      | no           | post-prod     |
+| 75 | Per-Feld „manuell"-Pill fehlt                                     | low      | no           | [done-5-5]    |
 | 76 | `sepa_date` ohne Bounds (>9999-12-31 / <1900-01-01)               | low      | no           | post-prod     |
 | 77 | **Concurrent-Save-Race auf demselben Document**                   | high     | yes          | pre-prod      |
-| 78 | Pen-Icon ohne distinctes `aria-label`-Pattern                     | low      | no           | post-prod     |
-| 79 | Mobile IBAN-Input ohne `inputmode`/`pattern`-Hint                 | low      | no           | post-prod     |
+| 78 | Pen-Icon ohne distinctes `aria-label`-Pattern                     | low      | no           | [done-5-5]    |
+| 79 | Mobile IBAN-Input ohne `inputmode`/`pattern`-Hint                 | low      | no           | [done-5-5]    |
 | 80 | CSRF-Schutz fehlt projektweit (Mention) → siehe #3                | high     | yes          | pre-prod      |
 | 81 | GET `/extraction/view` kein `documents:approve`-Check             | low      | no           | post-prod [deferred-to-v2] |
 | 82 | CSRF-Schutz fehlt projektweit alle POSTs → siehe #3               | high     | yes          | pre-prod      |
@@ -149,7 +149,7 @@ unique Eintrag.
 | 134 | `Object`-Bootstrap-short_code/name aus Discover Platzhalter      | low      | no           | post-prod     |
 | 135 | `Object`-Row-Creation aus Mirror nicht in CD2 dokumentiert       | low      | no           | post-prod     |
 | 136 | `update_police` schreibt alle 8 Form-Felder unconditional        | medium   | no           | post-prod     |
-| 137 | 422-Validation-Error zeigt Fehler aber verstecktes Form          | low      | no           | post-prod     |
+| 137 | 422-Validation-Error zeigt Fehler aber verstecktes Form          | low      | no           | [done-5-5]    |
 | 138 | `versicherer_id` nicht-existent UUID → 500 statt 422             | medium   | no           | post-prod     |
 | 139 | `praemie` > `Numeric(12,2)` Precision → 500                      | low      | no           | post-prod     |
 | 140 | `notice_period_months` Range-Check fehlt                         | medium   | no           | pre-prod      |
@@ -161,10 +161,10 @@ unique Eintrag.
 | 146 | `letzte_wartung` in Zukunft / `next_due_date` Vergangenheit      | low      | no           | post-prod     |
 | 147 | `intervall_monate` Int32-Overflow → 500                          | low      | no           | post-prod     |
 | 148 | NBSP-only-bezeichnung umgeht `strip()`-Check                     | low      | no           | post-prod     |
-| 149 | Stale Dropdown bei multiplen Policies nach Dienstleister-Add     | low      | no           | post-prod     |
+| 149 | Stale Dropdown bei multiplen Policies nach Dienstleister-Add     | low      | no           | [done-5-5]    |
 | 150 | Score-Clamping <0 / >100 fehlt                                   | low      | no           | post-prod     |
 | 151 | Pflegegrad-Cache-Commit-Fehler bleibt unsichtbar                 | medium   | no           | post-prod     |
-| 152 | Eindeutigkeit der `id="..."`-Werte nicht test-geschuetzt         | low      | no           | post-prod     |
+| 152 | Eindeutigkeit der `id="..."`-Werte nicht test-geschuetzt         | low      | no           | [done-5-5]    |
 
 **Aggregierte Counts (Stand 2026-05-05, nach Story 5-4):**
 

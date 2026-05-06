@@ -264,3 +264,4 @@ templates.env.globals["pflegegrad_color"] = pflegegrad_color
 templates.env.globals["sidebar_workflows"] = sidebar_workflows
 templates.env.globals["facilioo_ticket_url"] = facilioo_ticket_url
 templates.env.filters["iban_format"] = _format_iban
+templates.env.filters["money_de"] = lambda v: f"{float(v):,.0f}".replace(",", ".")

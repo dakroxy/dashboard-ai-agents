@@ -640,7 +640,7 @@ def test_pdf_template_renders_summen_zeile_when_rows_present():
         rows=[{"owner_names": "A", "units": "1", "shares": "128", "has_mandate": False}],
         mea_total="128",
     )
-    assert "<tfoot>" in html
+    assert "<tfoot" in html
     assert "Summe" in html
     # MEA-Wert in der Summen-Zelle.
     assert ">128<" in html

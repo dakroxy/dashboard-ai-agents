@@ -123,13 +123,14 @@ async def versicherer_detail(
 async def dienstleister_new_form(
     request: Request,
     policy_id: uuid.UUID | None = Query(None),
+    other_policy_ids: list[str] = Query(default=[]),
     user: User = Depends(require_permission("registries:edit")),
     db: Session = Depends(get_db),
 ):
     return templates.TemplateResponse(
         request,
         "_registries_dienstleister_form.html",
-        {"user": user, "policy_id": policy_id, "error": None},
+        {"user": user, "policy_id": policy_id, "other_policy_ids": other_policy_ids, "error": None},
     )
 
 
@@ -139,6 +140,7 @@ async def dienstleister_create(
     name: str = Form(...),
     gewerke_tags_raw: str | None = Form(None),
     policy_id: uuid.UUID | None = Form(None),
+    other_policy_ids: list[str] = Form(default=[]),
     user: User = Depends(require_permission("registries:edit")),
     db: Session = Depends(get_db),
 ):
@@ -146,7 +148,7 @@ async def dienstleister_create(
         return templates.TemplateResponse(
             request,
             "_registries_dienstleister_form.html",
-            {"user": user, "policy_id": policy_id, "error": "Name ist Pflichtfeld"},
+            {"user": user, "policy_id": policy_id, "other_policy_ids": other_policy_ids, "error": "Name ist Pflichtfeld"},
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
@@ -162,15 +164,21 @@ async def dienstleister_create(
     all_dienstleister = get_all_dienstleister(db)
 
     if policy_id is not None:
-        target_id = f"dienstleister-dropdown-{policy_id}"
-        dropdown_html = templates.get_template("_registries_dienstleister_options.html").render(
-            target_dropdown_id=target_id,
-            all_dienstleister=all_dienstleister,
-            selected_id=str(new_d.id),
-            request=request,
-        )
+        # Alle Policy-IDs sammeln (anfragende Policy + übrige aus hidden inputs, dedupliziert)
+        all_policy_ids = list(dict.fromkeys([str(policy_id)] + [p for p in other_policy_ids if p]))
+        oob_blocks = []
+        for pid in all_policy_ids:
+            selected = str(new_d.id) if pid == str(policy_id) else ""
+            block = templates.get_template("_registries_dienstleister_options.html").render(
+                target_dropdown_id=f"dienstleister-dropdown-{pid}",
+                all_dienstleister=all_dienstleister,
+                selected_id=selected,
+                request=request,
+            )
+            oob_blocks.append(block)
         oob_clear = f'<div id="new-dienstleister-inline-{policy_id}" hx-swap-oob="true"></div>'
-        return HTMLResponse(content=dropdown_html + "\n" + oob_clear)
+        oob_blocks.append(oob_clear)
+        return HTMLResponse(content="\n".join(oob_blocks))
     else:
         dropdown_html = templates.get_template("_registries_dienstleister_options.html").render(
             target_dropdown_id="dienstleister-dropdown",

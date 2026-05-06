@@ -56,12 +56,12 @@
                 <div class="text-xs uppercase tracking-wider text-slate-500 mb-2">{{ label }}</div>
                 <div class="flex gap-3 overflow-x-auto snap-x snap-mandatory sm:flex-wrap sm:overflow-x-visible items-start pb-2 sm:pb-0">
                     {% for photo in photos_by_component.get(component_ref, []) %}
-                    <div class="snap-start flex-none">
+                    <div class="snap-start flex-none min-w-[6rem]">
                         {% include "_obj_photo_card.html" %}
                     </div>
                     {% endfor %}
                     {% if has_permission(user, "objects:edit") %}
-                    <div class="snap-start flex-none">
+                    <div class="snap-start flex-none min-w-[6rem]">
                         {% include "_obj_photo_upload_form.html" %}
                     </div>
                     {% endif %}

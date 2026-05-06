@@ -1,6 +1,7 @@
 """Service-Helfer fuer Schadensfaelle (Story 2.3)."""
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -44,6 +45,11 @@ def create_schadensfall(
 ) -> Schadensfall:
     if amount < 0:
         raise ValueError("amount must be >= 0")
+    if description is not None:
+        # NFKC-Normalize verhindert Codepoint-Inflation (Word-Paste mit
+        # Zero-Width-Spaces, Kompatibilitaets-Codepoints) — sonst wuerde ein
+        # 5000-char-Text mit unsichtbaren Insertions am Cap-Check scheitern.
+        description = unicodedata.normalize("NFKC", description).strip()
     if description and len(description) > 5000:
         raise ValueError("description exceeds 5000 chars")
     schaden = Schadensfall(policy_id=policy.id)

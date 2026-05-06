@@ -20,6 +20,15 @@ depends_on = None
 def upgrade() -> None:
     conn = op.get_bind()
 
+    # Defensive: bei frischer DB / Test-Re-Run kann die Tabelle fehlen.
+    # Ohne diesen Check wuerde der naechste Step mit einem unklaren
+    # `ProgrammingError` (PG) bzw. `OperationalError` (SQLite) crashen.
+    inspector = sa.inspect(conn)
+    if not inspector.has_table("policen"):
+        # Nichts zu cappen — die Spalten kommen aus Migration 0009 ohnehin
+        # bereits mit den neuen Caps in einer frischen Initial-Migration.
+        return
+
     row = conn.execute(
         sa.text(
             "SELECT MAX(LENGTH(produkt_typ)), MAX(LENGTH(police_number)) FROM policen"

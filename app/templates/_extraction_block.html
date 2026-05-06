@@ -65,8 +65,10 @@
                 ("SEPA-Datum", "sepa_date"),
                 ("Gläubiger-ID", "creditor_id")
             ] %}
+            {% set manual_fields = extraction.extracted.get("_manual_fields", []) if extraction.extracted else [] %}
             {% for label, key in fields %}
                 {% set value = extraction.extracted.get(key) %}
+                {% set is_manual = key in manual_fields %}
                 {% include "_extraction_field_view.html" %}
             {% endfor %}
         </dl>
@@ -177,6 +179,7 @@
             </p>
             {% endif %}
             <form action="/documents/{{ document.id }}/approve" method="post">
+                {{ csrf_input(request) }}
                 <button type="submit"
                         class="w-full rounded-md
                             {% if document.status == 'matched' %}bg-emerald-600 hover:bg-emerald-700
@@ -193,6 +196,7 @@
                 Fehler behoben? Extraktion im Chat korrigieren, dann erneut freigeben.
             </p>
             <form action="/documents/{{ document.id }}/approve" method="post">
+                {{ csrf_input(request) }}
                 <button type="submit"
                         class="w-full rounded-md bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 text-sm font-medium">
                     Erneut versuchen

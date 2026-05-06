@@ -19,6 +19,7 @@
             <p class="text-sm text-slate-600 mt-1">Leeren Fall anlegen, danach 1&ndash;n Dokumente hochladen.</p>
         </div>
         <form action="/cases/" method="post">
+            {{ csrf_input(request) }}
             <button type="submit"
                     class="rounded-md bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-800">
                 + Neuer Fall

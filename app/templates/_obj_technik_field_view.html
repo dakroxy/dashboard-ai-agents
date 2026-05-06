@@ -8,7 +8,7 @@
         <div class="text-sm text-slate-900 truncate">
             {% if field.value is not none and field.value != "" %}
                 {% if field.kind == "tel" %}
-                    <a href="tel:{{ field.value }}"
+                    <a href="tel:{{ field.value | replace(' ', '') | replace('(', '') | replace(')', '') | replace('-', '') }}"
                        class="text-green-600 hover:text-green-700 underline font-medium">{{ field.value }}</a>
                 {% else %}
                     {{ field.value }}
@@ -30,6 +30,7 @@
                         hx-get="/objects/{{ obj.id }}/technik/edit?field={{ field.key }}"
                         hx-target="#field-{{ field.key }}"
                         hx-swap="outerHTML"
+                        aria-label="{{ field.label }} bearbeiten"
                         class="text-xs text-sky-600 hover:text-sky-900">Edit</button>
             {% endif %}
         </div>

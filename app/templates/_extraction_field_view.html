@@ -1,6 +1,7 @@
 {# Read-only Cell fuer ein einzelnes Extraktionsfeld der SEPA-Lastschrift.
    Container-ID = `extraction-cell-<key>`, sodass Edit-Fragments via
    hx-swap="outerHTML" genau diesen Block ersetzen. #}
+{% set is_manual = is_manual | default(false) %}
 <div id="extraction-cell-{{ key }}"
      class="grid grid-cols-[8rem_1fr_auto] items-baseline gap-3">
     <dt class="text-xs text-slate-400 uppercase tracking-wide">{{ label | safe }}</dt>
@@ -11,6 +12,9 @@
             {{ value | iban_format }}
         {% else %}
             {{ value }}
+        {% endif %}
+        {% if is_manual %}
+        <span class="ml-1 text-xs font-medium text-amber-600 bg-amber-50 px-1 rounded">manuell</span>
         {% endif %}
     </dd>
     {% if editable %}

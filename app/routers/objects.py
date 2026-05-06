@@ -128,14 +128,20 @@ FINANZEN_FIELDS: tuple[str, ...] = (
 @router.get("", response_class=HTMLResponse)
 async def list_objects(
     request: Request,
+    sort: str = Query("short_code"),
+    order: str = Query("asc"),
+    filter_reserve: str = Query("false"),
     page: int = Query(1, ge=1, le=10000),
     page_size: int = Query(50, ge=1, le=200),
     user: User = Depends(require_permission("objects:view")),
     db: Session = Depends(get_db),
 ):
     accessible = accessible_object_ids_for_request(request, db, user)
+    safe_sort, safe_order = normalize_sort_order(sort, order)
+    filter_bool = filter_reserve.strip().lower() in _FILTER_TRUE_VALUES
     rows, total_count = list_objects_with_unit_counts(
         db, accessible_ids=accessible, page=page, page_size=page_size,
+        sort=safe_sort, order=safe_order, filter_reserve_below_target=filter_bool,
     )
     # Page-Clamp: wenn z. B. Filter-Aenderung die Treffermenge schrumpfen laesst
     # und der User auf einer hoeheren Page steht, fuehrt das sonst zu leerer Liste
@@ -145,6 +151,7 @@ async def list_objects(
     if effective_page != page and total_count > 0:
         rows, _ = list_objects_with_unit_counts(
             db, accessible_ids=accessible, page=effective_page, page_size=page_size,
+            sort=safe_sort, order=safe_order, filter_reserve_below_target=filter_bool,
         )
     return templates.TemplateResponse(
         request,
@@ -153,9 +160,9 @@ async def list_objects(
             "title": "Objekte",
             "user": user,
             "rows": rows,
-            "sort": "short_code",
-            "order": "asc",
-            "filter_reserve": "false",
+            "sort": safe_sort,
+            "order": safe_order,
+            "filter_reserve": "true" if filter_bool else "false",
             "total_count": total_count,
             "current_page": effective_page,
             "page_size": page_size,

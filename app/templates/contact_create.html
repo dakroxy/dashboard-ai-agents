@@ -76,6 +76,7 @@
         trotzdem anlegen.
     </p>
     <form action="/contacts/confirm" method="post" class="flex items-center gap-3">
+        {{ csrf_input(request) }}
         <input type="hidden" name="payload_json" value="{{ payload_json }}">
         <input type="hidden" name="return_to" value="{{ return_to }}">
         <button type="submit" class="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-800">
@@ -94,6 +95,7 @@
         Duplicate-Check OK &mdash; keine aehnlichen Kontakte gefunden.
     </p>
     <form action="/contacts/confirm" method="post" class="flex items-center gap-3">
+        {{ csrf_input(request) }}
         <input type="hidden" name="payload_json" value="{{ payload_json }}">
         <input type="hidden" name="return_to" value="{{ return_to }}">
         <button type="submit" class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
@@ -108,7 +110,7 @@
 
 {% if not success_contact %}
 <form action="/contacts/new" method="post" class="rounded-lg bg-white border border-slate-200 p-5 space-y-5">
-
+    {{ csrf_input(request) }}
     <input type="hidden" name="return_to" value="{{ return_to }}">
 
     <div>

@@ -15,7 +15,9 @@
               hx-target="#obj-rows"
               hx-swap="outerHTML"
               hx-trigger="change"
-              hx-include="#sort-state, #order-state">
+              hx-include="#sort-state, #order-state"
+              hx-push-url="true"
+              hx-indicator="#objects-loading">
         <option value="false" {% if filter_reserve == "false" %}selected{% endif %}>Alle Objekte</option>
         <option value="true"  {% if filter_reserve == "true"  %}selected{% endif %}>Rücklage &lt; 6 Monatsbeiträge</option>
       </select>

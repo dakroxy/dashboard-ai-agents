@@ -4,32 +4,42 @@ Token-Storage: scope["session"]["csrf_token"] (gesetzt beim Login in auth.py).
 Token-Transport (in dieser Reihenfolge geprueft):
   1. X-CSRF-Token-Header (HTMX: hx-headers in base.html, fetch()-Calls)
   2. _csrf-Form-Field aus dem Body (klassische <form method="post">,
-     emittiert via Jinja-Helper csrf_input(request) — siehe templating.py)
+     emittiert via Jinja-Helper csrf_input(request) - siehe templating.py)
 
-Granularitaet: einmal pro Session (keine Per-Request-Rotation).
+Granularitaet: einmal pro Session (keine Per-Request-Rotation), Rotation
+bei Login (auth.py).
 
-Pure-ASGI-Klasse statt BaseHTTPMiddleware — vermeidet ExceptionGroup-Issue
+Pure-ASGI-Klasse statt BaseHTTPMiddleware - vermeidet ExceptionGroup-Issue
 in Starlette 1.0+ bei Early-Return ohne call_next.
 """
 from __future__ import annotations
 
+import logging
 import re
 import secrets
-from typing import Any
 from urllib.parse import parse_qs
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+logger = logging.getLogger(__name__)
 
 _SAFE_METHODS = frozenset({b"GET", b"HEAD", b"OPTIONS"})
 _FORM_CONTENT_TYPES: tuple[bytes, ...] = (
     b"application/x-www-form-urlencoded",
     b"multipart/form-data",
 )
+# 403-Reject-Header: kein Caching, keine Indexierung, kein Frame-Embed.
 _REJECT_HEADERS = {
+    "Cache-Control": "no-store",
     "X-Robots-Tag": "noindex, nofollow",
     "X-Frame-Options": "DENY",
 }
+# Body-Cap fuer Form-Body-Fallback: 2 MB. Verhindert DoS via Multi-GB-Form-POST
+# ohne X-CSRF-Token-Header. Echte Datei-Uploads laufen ueber HTMX/JS mit Header
+# und treffen den schnellen Pfad; klassische <form>-Submits fuer Doc-Upload
+# bleiben unter 2 MB-Cap (max 1 PDF in der Praxis).
+_MAX_FORM_BODY_BYTES = 2 * 1024 * 1024
 
 
 async def _empty_receive() -> Message:
@@ -37,9 +47,14 @@ async def _empty_receive() -> Message:
 
 
 _MULTIPART_BOUNDARY_RE = re.compile(rb"boundary=([^;]+)", re.IGNORECASE)
-# Matched: <CRLF>Content-Disposition: form-data; name="_csrf"<CRLF><CRLF><value><CRLF>--
+# Matcht Content-Disposition, optional gefolgt von weiteren Header-Zeilen
+# (z. B. Content-Type: text/plain) vor der Leerzeile zum Body. Browser
+# emittieren bei file:-Inputs zusaetzliche Header; bei reinen Text-Feldern
+# je nach Implementierung wechselnd.
 _MULTIPART_CSRF_RE = re.compile(
-    rb'Content-Disposition:\s*form-data;\s*name="_csrf"\s*\r\n\r\n([^\r]*)\r\n',
+    rb'Content-Disposition:\s*form-data;\s*name="_csrf"'
+    rb"(?:\r\n[^\r\n]*)*"
+    rb"\r\n\r\n([^\r\n]*)\r\n",
     re.IGNORECASE,
 )
 
@@ -47,7 +62,7 @@ _MULTIPART_CSRF_RE = re.compile(
 def _extract_csrf_from_body(body: bytes, content_type: bytes) -> str:
     """Liest das `_csrf`-Field aus einem Form-Body.
 
-    Pure Bytes-Parsing — wir bauen bewusst KEIN Starlette-Request-Objekt,
+    Pure Bytes-Parsing - wir bauen bewusst KEIN Starlette-Request-Objekt,
     damit der downstream-Request-Stream unangetastet bleibt (sonst bricht
     z. B. ein nachgelagerter StreamingResponse mit 0-Byte-Body).
     """
@@ -78,32 +93,57 @@ class CSRFMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Lazy-Init des Session-Tokens — muss VOR dem Safe-Method-Bypass
-        # laufen, damit der GET, der die Form rendert, das Token bereits
-        # in der Session hat. Bestandssessions vor Story 5-1 haben keinen
-        # `csrf_token`-Key (Token wird sonst nur im OAuth-Callback gesetzt).
-        # Mutation auf scope["session"] propagiert via SessionMiddleware
-        # automatisch in den Response-Cookie.
-        session = scope.get("session")
-        if session is not None and not session.get("csrf_token"):
-            session["csrf_token"] = secrets.token_urlsafe(32)
-        session_token: str = (session or {}).get("csrf_token", "")
-
         method = scope.get("method", "GET").encode()
+        session = scope.get("session")
+
+        # Diagnose: SessionMiddleware fehlt komplett. Ohne sie wuerde JEDER
+        # non-safe Request 403 ergeben - ohne Hinweis aufs Root-Cause.
+        if session is None:
+            if method not in _SAFE_METHODS:
+                logger.error(
+                    "CSRFMiddleware: scope['session'] missing - "
+                    "SessionMiddleware not registered? path=%s method=%s",
+                    scope.get("path", ""),
+                    method.decode("ascii", errors="replace"),
+                )
+            await self.app(scope, receive, send)
+            return
+
+        # Lazy-Init des Session-Tokens NUR fuer authentifizierte Sessions
+        # (user_id ist gesetzt). Damit:
+        #  - Bestandssessions vor Story 5-1 bekommen beim naechsten Hit einen
+        #    Token nachgesetzt, ohne Re-Login zu erzwingen.
+        #  - Anonyme Visitors / Bots / Health-Probes erzeugen keine Session-
+        #    Mutation -> kein Set-Cookie-Storm, keine Cookie-Inflation.
+        if session.get("user_id") and not session.get("csrf_token"):
+            session["csrf_token"] = secrets.token_urlsafe(32)
+        session_token: str = session.get("csrf_token", "")
+
         if method in _SAFE_METHODS:
             await self.app(scope, receive, send)
             return
 
         header_token = ""
         content_type = b""
+        content_length: int | None = None
         for name, value in scope.get("headers", []):
             lname = name.lower()
             if lname == b"x-csrf-token":
-                header_token = value.decode("ascii", errors="replace")
+                # Strikte ASCII-Decodierung. Token ist secrets.token_urlsafe
+                # (URL-safe Base64, ASCII-only). Non-ASCII = Tampering -> 403.
+                try:
+                    header_token = value.decode("ascii")
+                except UnicodeDecodeError:
+                    header_token = ""
             elif lname == b"content-type":
                 content_type = value.lower()
+            elif lname == b"content-length":
+                try:
+                    content_length = int(value.decode("ascii", errors="ignore"))
+                except (ValueError, UnicodeDecodeError):
+                    content_length = None
 
-        # Schneller Pfad: Header passt → durchwinken, Body nicht anfassen.
+        # Schneller Pfad: Header passt -> durchwinken, Body nicht anfassen.
         if (
             session_token
             and header_token
@@ -117,19 +157,36 @@ class CSRFMiddleware:
         # Requests bleiben strikt header-only.
         is_form = any(content_type.startswith(t) for t in _FORM_CONTENT_TYPES)
         if session_token and is_form:
-            body = b""
-            while True:
-                message = await receive()
-                if message["type"] != "http.request":
-                    await self._reject(scope, send)
-                    return
-                body += message.get("body", b"")
-                if not message.get("more_body", False):
-                    break
+            # Body-Cap-Vorab-Check ueber Content-Length-Header.
+            if content_length is not None and content_length > _MAX_FORM_BODY_BYTES:
+                await self._reject(scope, send)
+                return
 
-            # Body manuell parsen — wir haben den downstream-Stream sonst
-            # angefasst (Starlette's Request.form() merkt sich Parser-State
-            # auf dem Scope-Pfad und brach den nachgelagerten StreamingResponse).
+            body = b""
+            try:
+                while True:
+                    message = await receive()
+                    if message["type"] != "http.request":
+                        # http.disconnect mid-body -> sauberer Abbruch.
+                        await self._reject(scope, send)
+                        return
+                    body += message.get("body", b"")
+                    # Body-Cap waehrend des Lesens (kein Content-Length-Header
+                    # oder gefaelschter Wert). Schliesst den DoS-Vektor auch
+                    # gegen Chunked-Transfer.
+                    if len(body) > _MAX_FORM_BODY_BYTES:
+                        await self._reject(scope, send)
+                        return
+                    if not message.get("more_body", False):
+                        break
+            except Exception:
+                # Defensives Catch: jeder Body-Read-Fehler -> 403, kein Crash.
+                await self._reject(scope, send)
+                return
+
+            # Body manuell parsen - Starlette's Request.form() merkt sich
+            # Parser-State auf dem Scope-Pfad und brach den nachgelagerten
+            # StreamingResponse.
             form_token = _extract_csrf_from_body(body, content_type)
 
             if form_token and secrets.compare_digest(session_token, form_token):
@@ -145,10 +202,10 @@ class CSRFMiddleware:
                             "more_body": False,
                         }
                     # Nach dem Body-Delivery auf das Original-receive
-                    # durchreichen — sonst interpretiert
+                    # durchreichen - sonst interpretiert
                     # `StreamingResponse.listen_for_disconnect` ein synthetisches
                     # http.disconnect als Client-Trennung und canceled die
-                    # Streaming-Task → 0-Byte-Body trotz Status 200.
+                    # Streaming-Task -> 0-Byte-Body trotz Status 200.
                     return await receive()
 
                 await self.app(scope, replay, send)

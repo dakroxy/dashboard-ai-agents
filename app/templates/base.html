@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.3"></script>
 </head>
-<body class="bg-slate-50 text-slate-900 antialiased" hx-headers='{"X-CSRF-Token": "{{ csrf_token(request) }}"}'>
+<body class="bg-slate-50 text-slate-900 antialiased"{% if request %} hx-headers='{{ {"X-CSRF-Token": csrf_token(request)} | tojson }}'{% endif %}>
 <div class="flex min-h-screen">
 
     {% if user %}
@@ -83,14 +83,14 @@
             {% set sidebar_wfs = sidebar_workflows(user) %}
             {% set ns = namespace(in_wf_path=false) %}
             {% for wf in sidebar_wfs %}
-                {% if wf.url|length > 1 and path.startswith(wf.url.rstrip('/')) %}{% set ns.in_wf_path = true %}{% endif %}
+                {% if wf.url|length > 1 and (path == wf.url or path.startswith(wf.url.rstrip('/') + '/')) %}{% set ns.in_wf_path = true %}{% endif %}
             {% endfor %}
             {% if sidebar_wfs %}
             <div class="px-6 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                 Workflows
             </div>
             {% for wf in sidebar_wfs %}
-            {% set active = path == wf.url or (wf.url|length > 1 and path.startswith(wf.url.rstrip('/'))) %}
+            {% set active = path == wf.url or (wf.url|length > 1 and path.startswith(wf.url.rstrip('/') + '/')) %}
             <a href="{{ wf.url }}"
                class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
                       {% if active %}bg-slate-800 text-white border-emerald-400
@@ -136,7 +136,7 @@
 
             {# Admin #}
             {% if has_permission(user, "users:manage") or has_permission(user, "audit_log:view") %}
-            {% set active = path.startswith("/admin") %}
+            {% set active = path.startswith("/admin") and not path.startswith("/admin/review-queue") %}
             <a href="/admin"
                class="flex items-center gap-3 px-6 py-2.5 text-sm border-l-2 transition-colors pl-[calc(1.5rem-2px)]
                       {% if active %}bg-slate-800 text-white border-emerald-400
@@ -182,5 +182,12 @@
     </main>
 
 </div>
+<script>
+document.addEventListener('submit', function(e){
+  var t = e.target;
+  var msg = t && t.dataset && t.dataset.confirm;
+  if (msg && !confirm(msg)) { e.preventDefault(); }
+});
+</script>
 </body>
 </html>

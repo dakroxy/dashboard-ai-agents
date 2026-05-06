@@ -752,7 +752,7 @@ async def document_status_fragment(
         .order_by(Extraction.created_at.desc())
         .first()
     )
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "_extraction_block.html",
         {
@@ -761,6 +761,8 @@ async def document_status_fragment(
             "extraction": extraction,
         },
     )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.get("/{document_id}/file")
@@ -833,7 +835,7 @@ async def extraction_field_edit_form(
             detail="Keine Extraktion vorhanden — Edit nicht möglich.",
         )
     current_value = extraction.extracted.get(field)
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "_extraction_field_edit.html",
         {
@@ -844,6 +846,8 @@ async def extraction_field_edit_form(
             "form_error": None,
         },
     )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # v2-TODO: documents:approve-Check ergaenzen (siehe deferred-work.md #81). Information-Disclosure-Risiko aktuell minimal — der Wert ist auf der Detail-Page ohnehin sichtbar.
@@ -870,7 +874,7 @@ async def extraction_field_view_fragment(
         doc.status in EDITABLE_STATUSES
         and has_permission(user, "documents:approve")
     )
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "_extraction_field_view.html",
         {
@@ -881,6 +885,8 @@ async def extraction_field_view_fragment(
             "editable": editable,
         },
     )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.post("/{document_id}/extraction/field", response_class=HTMLResponse)

@@ -5,6 +5,7 @@
 </div>
 
 <form action="/workflows/{{ workflow.key }}" method="post" class="space-y-5 max-w-4xl">
+    {{ csrf_input(request) }}
     <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-4">
         <h1 class="text-xl font-semibold">{{ workflow.name }}</h1>
 

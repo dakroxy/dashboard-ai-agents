@@ -66,6 +66,7 @@
     <div class="min-w-0">
         <a href="/cases/" class="text-sm text-slate-500 hover:text-slate-900">&larr; Alle Fälle</a>
         <form action="/cases/{{ case.id }}/name" method="post" class="mt-1 flex items-center gap-2">
+            {{ csrf_input(request) }}
             <input type="text" name="name" value="{{ case.name or '' }}"
                    placeholder="Name des Falls, z. B. MV SBA9 · Senator-Braun-Allee 9"
                    class="flex-1 min-w-0 max-w-[42rem] px-3 py-2 rounded-md border border-slate-300 text-lg font-semibold bg-white">
@@ -108,6 +109,7 @@
                             </div>
                             <form action="/cases/{{ case.id }}/documents/{{ doc.id }}/type" method="post"
                                   class="mt-1.5 flex items-center gap-2 flex-wrap">
+            {{ csrf_input(request) }}
                                 <select name="doc_type" onchange="this.form.submit()"
                                         class="text-xs px-2 py-1 rounded border border-slate-300 bg-white">
                                     <option value="" {% if not doc.doc_type %}selected{% endif %}>— auto —</option>
@@ -131,12 +133,14 @@
                         <div class="flex flex-col items-end gap-1 shrink-0">
                             {% if has_permission(user, "documents:upload") and doc.doc_type %}
                             <form action="/cases/{{ case.id }}/documents/{{ doc.id }}/extract" method="post">
+            {{ csrf_input(request) }}
                                 <button type="submit" class="text-[11px] text-slate-500 hover:text-slate-900" title="PDF erneut extrahieren">neu extrahieren</button>
                             </form>
                             {% endif %}
                             {% if has_permission(user, "documents:delete") %}
                             <form action="/cases/{{ case.id }}/documents/{{ doc.id }}/delete" method="post"
-                                  onsubmit="return confirm('Dokument {{ doc.original_filename }} entfernen?');">
+                                  data-confirm="Dokument {{ doc.original_filename }} entfernen?">
+            {{ csrf_input(request) }}
                                 <button type="submit" class="text-[11px] text-slate-400 hover:text-red-600">entfernen</button>
                             </form>
                             {% endif %}
@@ -156,6 +160,7 @@
         <div class="rounded-lg bg-white border border-slate-200 p-4">
             <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Dokument hinzufügen</h3>
             <form action="/cases/{{ case.id }}/documents" method="post" enctype="multipart/form-data" class="space-y-2">
+            {{ csrf_input(request) }}
                 <input type="file" name="file" accept="application/pdf" required
                        class="block w-full text-xs text-slate-700 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-slate-900 file:text-white hover:file:bg-slate-800 file:cursor-pointer">
                 <select name="doc_type" class="w-full text-xs px-2 py-1.5 rounded-md border border-slate-300 bg-white">
@@ -220,12 +225,14 @@
                     {% if "property" in overrides %}
                     <form action="/cases/{{ case.id }}/state/reset/property" method="post"
                           onsubmit="return confirm('Manuelle Werte für Objekt zurücksetzen?');">
+            {{ csrf_input(request) }}
                         <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                     </form>
                     {% endif %}
                 </div>
             </header>
             <form action="/cases/{{ case.id }}/state/property" method="post" class="p-5 grid grid-cols-6 gap-4">
+            {{ csrf_input(request) }}
                 <div class="col-span-2">
                     <label class="block text-xs font-medium text-slate-600 mb-1">Objekt-Nr. *</label>
                     <input type="text" name="number" value="{{ prop.get('number') or '' }}"
@@ -306,12 +313,14 @@
                     {% if "management_contract" in overrides %}
                     <form action="/cases/{{ case.id }}/state/reset/management_contract" method="post"
                           onsubmit="return confirm('Manuelle Werte für Verwaltung zurücksetzen?');">
+            {{ csrf_input(request) }}
                         <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                     </form>
                     {% endif %}
                 </div>
             </header>
             <form action="/cases/{{ case.id }}/state/management" method="post" class="p-5 grid grid-cols-6 gap-4">
+            {{ csrf_input(request) }}
                 <div class="col-span-3">
                     <label class="block text-xs font-medium text-slate-600 mb-1">Verwaltungsunternehmen</label>
                     <input type="text" name="management_company_name" value="{{ mc.get('management_company_name') or '' }}"
@@ -366,11 +375,13 @@
                 </div>
                 {% if "billing_address" in overrides %}
                 <form action="/cases/{{ case.id }}/state/reset/billing_address" method="post">
+            {{ csrf_input(request) }}
                     <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                 </form>
                 {% endif %}
             </header>
             <form action="/cases/{{ case.id }}/state/billing" method="post" class="p-5 space-y-3">
+            {{ csrf_input(request) }}
                 {% set is_same = billing.get('is_same_as_owner') if billing else True %}
                 <label class="inline-flex items-center gap-2 text-sm text-slate-700">
                     <input type="checkbox" name="is_same_as_owner" value="1"
@@ -437,12 +448,14 @@
                     {{ section_status_pill(owner_counts) }}
                     {% if "owner" in overrides %}
                     <form action="/cases/{{ case.id }}/state/reset/owner" method="post">
+            {{ csrf_input(request) }}
                         <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                     </form>
                     {% endif %}
                 </div>
             </header>
             <form action="/cases/{{ case.id }}/state/owner" method="post" class="p-5 grid grid-cols-6 gap-4">
+            {{ csrf_input(request) }}
                 <div class="col-span-2">
                     <label class="block text-xs font-medium text-slate-600 mb-1">Typ *</label>
                     <select name="type" class="w-full px-3 py-2 rounded-md border border-slate-300 text-sm">
@@ -532,6 +545,7 @@
                 </div>
                 {% if "buildings" in overrides %}
                 <form action="/cases/{{ case.id }}/state/reset/buildings" method="post">
+            {{ csrf_input(request) }}
                     <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                 </form>
                 {% endif %}
@@ -550,7 +564,8 @@
                         </div>
                         {% if has_permission(user, "documents:upload") %}
                         <form action="/cases/{{ case.id }}/state/buildings/{{ loop.index0 }}/delete" method="post"
-                              onsubmit="return confirm('Gebäude {{ b.name }} entfernen?');">
+                              data-confirm="Gebäude {{ b.name }} entfernen?">
+            {{ csrf_input(request) }}
                             <button type="submit" class="text-xs text-slate-400 hover:text-red-600">entfernen</button>
                         </form>
                         {% endif %}
@@ -563,6 +578,7 @@
 
                 {% if has_permission(user, "documents:upload") %}
                 <form action="/cases/{{ case.id }}/state/buildings/add" method="post" class="flex items-center gap-2 pt-2 border-t border-slate-100">
+            {{ csrf_input(request) }}
                     <input type="text" name="name" placeholder="z. B. Block F, Haus 2"
                            class="flex-1 px-3 py-2 rounded-md border border-slate-300 text-sm">
                     <button type="submit" class="px-3 py-2 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-800">+ Gebäude</button>
@@ -580,6 +596,7 @@
                 </div>
                 {% if "units" in overrides %}
                 <form action="/cases/{{ case.id }}/state/reset/units" method="post">
+            {{ csrf_input(request) }}
                     <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                 </form>
                 {% endif %}
@@ -621,6 +638,7 @@
                         <tr class="bg-slate-50/40 hidden" data-edit-row="{{ loop.index0 }}">
                             <td colspan="10" class="p-3">
                                 <form action="/cases/{{ case.id }}/state/units/{{ loop.index0 }}" method="post" class="grid grid-cols-12 gap-2 text-xs">
+            {{ csrf_input(request) }}
                                     <input type="text" name="number" value="{{ u.number or '' }}" placeholder="Nr. *" class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
                                     <select name="unit_type" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
                                         <option value="" {% if not u.unit_type %}selected{% endif %}>Typ —</option>
@@ -665,6 +683,7 @@
                 <details>
                     <summary class="cursor-pointer text-xs text-slate-500 hover:text-slate-900">+ Einheit manuell hinzufügen</summary>
                     <form action="/cases/{{ case.id }}/state/units/add" method="post" class="mt-3 grid grid-cols-12 gap-2 text-xs">
+            {{ csrf_input(request) }}
                         <input type="text" name="number" placeholder="Nr. *" required class="col-span-1 px-2 py-1.5 rounded border border-slate-300">
                         <select name="unit_type" class="col-span-2 px-2 py-1.5 rounded border border-slate-300">
                             <option value="">Typ —</option>
@@ -696,6 +715,7 @@
                 </div>
                 {% if "tenant_contracts" in overrides %}
                 <form action="/cases/{{ case.id }}/state/reset/tenant_contracts" method="post">
+            {{ csrf_input(request) }}
                     <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-900">Override zurücksetzen</button>
                 </form>
                 {% endif %}
@@ -729,6 +749,7 @@
                     </summary>
                     <form action="/cases/{{ case.id }}/state/tenant_contracts/{{ loop.index0 }}" method="post"
                           class="border-t border-slate-200 p-4 grid grid-cols-6 gap-3 text-sm">
+            {{ csrf_input(request) }}
                         <div class="col-span-6">
                             <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Mieter</h4>
                             <div class="grid grid-cols-6 gap-3">
@@ -884,6 +905,7 @@
                 <details class="border-t border-slate-100 pt-3">
                     <summary class="cursor-pointer text-xs text-slate-500 hover:text-slate-900">+ Mietvertrag manuell hinzufügen</summary>
                     <form action="/cases/{{ case.id }}/state/tenant_contracts/add" method="post" class="mt-3 grid grid-cols-6 gap-3 text-sm">
+            {{ csrf_input(request) }}
                         <div class="col-span-2">
                             <label class="block text-[11px] font-medium text-slate-600 mb-1">Einheit Nr.</label>
                             <input type="text" name="unit_number" class="w-full px-3 py-2 rounded-md border border-slate-300">
@@ -983,6 +1005,7 @@
                 {% if writable and preflight_ok %}
                 <form action="/cases/{{ case.id }}/write" method="post"
                       onsubmit="return confirm('Jetzt in Impower anlegen? Alle Pflichtfelder werden übertragen.');">
+            {{ csrf_input(request) }}
                     <button type="submit"
                             class="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500">
                         {% if case.status in ("partial", "error") %}Erneut ausführen{% else %}Nach Impower übertragen{% endif %}

@@ -45,12 +45,25 @@ class TestUploadValidation:
         )
         assert resp.status_code == 413
 
-    def test_requires_auth(self, anon_client):
-        resp = anon_client.post(
+    def test_requires_auth(self, anon_client_with_csrf):
+        # Fixture mit CSRF-Token-Bypass, damit wir die Auth-Layer-Logik
+        # pruefen koennen (302/307 Redirect zur Login-Page) statt am
+        # CSRF-Reject (403) haengen zu bleiben.
+        resp = anon_client_with_csrf.post(
             "/documents/",
             files={"file": ("test.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")},
         )
         assert resp.status_code in (302, 307)
+
+    def test_csrf_blocks_anonymous_post_without_token(self, anon_client):
+        # Production-Realitaet: ein Drittangreifer ohne Session-Cookie und
+        # ohne X-CSRF-Token-Header bekommt 403 von der CSRFMiddleware,
+        # nicht 302/307 vom Auth-Layer. Auth-Schutz greift sekundaer.
+        resp = anon_client.post(
+            "/documents/",
+            files={"file": ("test.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")},
+        )
+        assert resp.status_code == 403
 
     @patch("app.routers.documents._run_extraction")
     def test_valid_pdf_returns_redirect(self, mock_run, auth_client, tmp_path, monkeypatch):

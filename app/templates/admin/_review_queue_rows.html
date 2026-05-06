@@ -4,7 +4,7 @@
         {% if item.entry.target_entity_type == "object" %}
         <a href="/objects/{{ item.entry.target_entity_id }}"
            class="text-sky-600 hover:underline font-mono">
-            {{ item.entry.target_entity_id | string | truncate(8, True, '') }}
+            object/{{ item.entry.target_entity_id | string | truncate(8, True, '') }}
         </a>
         {% else %}
         <span class="text-slate-500 font-mono">
@@ -14,10 +14,10 @@
     </td>
     <td class="px-4 py-3 font-mono text-xs">{{ item.entry.field_name }}</td>
     <td class="px-4 py-3 text-sm text-slate-700 max-w-xs truncate">{{ item.value_str }}</td>
-    <td class="px-4 py-3 text-xs text-slate-500 font-mono">{{ item.entry.agent_ref }}</td>
+    <td class="px-4 py-3 text-xs text-slate-500 font-mono max-w-[14rem] truncate" title="{{ item.entry.agent_ref }}">{{ item.entry.agent_ref }}</td>
     <td class="px-4 py-3 text-sm tabular-nums">
         <span class="{% if item.entry.confidence >= 0.8 %}text-green-700{% elif item.entry.confidence >= 0.5 %}text-yellow-700{% else %}text-red-700{% endif %}">
-            {{ (item.entry.confidence * 100) | round | int }} %
+            {{ item.confidence_pct }} %
         </span>
     </td>
     <td class="px-4 py-3 text-sm text-slate-500 tabular-nums">{{ item.age_days }} Tage</td>

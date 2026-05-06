@@ -112,6 +112,7 @@
             {% endif %}
 
             <form hx-post="/admin/sync-status/run" hx-swap="none" method="post" action="/admin/sync-status/run" class="mt-4">
+                {{ csrf_input(request) }}
                 <input type="hidden" name="job_name" value="{{ job.job_name }}">
                 <button type="submit"
                         class="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors">

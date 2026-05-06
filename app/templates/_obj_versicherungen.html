@@ -25,7 +25,7 @@
 
     {% if has_permission(user, "objects:edit") %}
     {# Neue Police — ausklappbares Formular #}
-    <div id="neue-police-form" class="hidden mb-6 border border-slate-200 rounded-lg p-4 bg-slate-50">
+    <div id="neue-police-form" class="{% if form_error is defined and form_error %}{% else %}hidden {% endif %}mb-6 border border-slate-200 rounded-lg p-4 bg-slate-50">
         <h3 class="text-sm font-semibold text-slate-700 mb-3">Neue Police anlegen</h3>
         <form hx-post="/objects/{{ obj.id }}/policen"
               hx-target="[data-section='versicherungen']"

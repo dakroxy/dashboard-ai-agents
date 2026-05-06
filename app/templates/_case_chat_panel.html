@@ -50,6 +50,7 @@
           hx-swap="outerHTML"
           hx-on::after-request="this.reset(); document.getElementById('case-chat-history')?.scrollTo(0, 1e9);"
           class="border-t border-slate-100 p-2 flex items-center gap-2 shrink-0 bg-white">
+        {{ csrf_input(request) }}
         <input type="text"
                name="message"
                required

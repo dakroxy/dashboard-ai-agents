@@ -1096,10 +1096,12 @@ def _prepare_entries(entries):
         value_str = str(raw_value)
         if len(value_str) > 100:
             value_str = value_str[:100] + "…"
+        clamped_conf = min(1.0, max(0.0, e.confidence or 0.0))
         result.append({
             "entry": e,
             "value_str": value_str,
-            "age_days": (now - _aware(e.created_at)).days,
+            "age_days": max(0, (now - _aware(e.created_at)).days),
+            "confidence_pct": round(clamped_conf * 100),
         })
     return result
 

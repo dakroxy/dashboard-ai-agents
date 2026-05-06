@@ -241,8 +241,26 @@ def test_detail_renders_stammdaten_and_eigentuemer(
 
     # Keine unerwarteten Review-Sektionen im Haupt-Content (Nav-Sidebar hat
     # jetzt "Review Queue" — nur Main-Content pruefen).
-    main_content = body.split("<main")[1].split("</main>")[0] if "<main" in body else body
+    m = re.search(r'<main[^>]*>(.*?)</main>', body, re.DOTALL)
+    main_content = m.group(1) if m else body
     assert "Review" not in main_content
+
+
+# ---------------------------------------------------------------------------
+# Story 5-5 AC9 #152 — HTML-ID-Eindeutigkeit auf Objekt-Detailseite
+# ---------------------------------------------------------------------------
+
+def test_object_detail_html_ids_unique(
+    db, steckbrief_admin_client, make_object
+):
+    """AC9 #152: Kein doppeltes id-Attribut auf der Objekt-Detailseite."""
+    obj = make_object("IDU1", "ID-Eindeutigkeit-Test")
+    resp = steckbrief_admin_client.get(f"/objects/{obj.id}")
+    assert resp.status_code == 200
+    body = resp.text
+    ids = re.findall(r'\bid="([^"]+)"', body)
+    dupes = [i for i in set(ids) if ids.count(i) > 1]
+    assert not dupes, f"Doppelte HTML-IDs gefunden: {sorted(set(dupes))}"
 
 
 # ---------------------------------------------------------------------------
@@ -796,7 +814,7 @@ def test_detail_heating_hotline_renders_tel_link(steckbrief_admin_client, db):
     db.commit()
     response = steckbrief_admin_client.get(f"/objects/{obj.id}")
     assert response.status_code == 200
-    assert 'href="tel:040 123456"' in response.text
+    assert 'href="tel:040123456"' in response.text
 
 
 def test_detail_heating_hotline_empty_shows_no_tel_link(steckbrief_admin_client, db):
@@ -830,7 +848,7 @@ def test_technik_field_save_heating_hotline_tel_kind_no_500(steckbrief_admin_cli
     assert response.status_code == 200, (
         "500 deutet auf fehlenden 'tel'-Zweig in parse_technik_value() hin — Task 1.1 pruefen"
     )
-    assert 'href="tel:040 99887766"' in response.text
+    assert 'href="tel:04099887766"' in response.text
 
 
 def test_list_desktop_table_still_rendered_after_mobile_addition(steckbrief_admin_client, db):

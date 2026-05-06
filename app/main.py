@@ -431,16 +431,26 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Dashboard KI-Agenten", lifespan=lifespan)
 
-# Middleware-Reihenfolge (Starlette: letzter add_middleware-Call = aeusserste Schicht):
+# Middleware-Reihenfolge — Starlette/FastAPI prepended jeden add_middleware-Call
+# auf den Stack. Die Reihenfolge in der Datei (top-to-bottom) bestimmt also die
+# Request-Verarbeitung in UMGEKEHRTER Reihenfolge.
 #
-#   1. @app.middleware SecurityHeaders  — Basis, innerste Schicht
-#   2. add_middleware(CSRFMiddleware)   — innen, laeuft NACH Session
-#   3. add_middleware(SessionMiddleware) — aeusserste Schicht, laeuft ZUERST
+# Registrierungs-Reihenfolge (top-to-bottom in dieser Datei):
+#   1. @app.middleware("http") set_default_security_headers
+#   2. app.add_middleware(CSRFMiddleware)
+#   3. app.add_middleware(SessionMiddleware)
 #
-# Request-Flow: Session → CSRF → SecurityHeaders → Router
-# Response-Flow: Router → SecurityHeaders (Headers setzen) → CSRF → Session
+# Daraus resultierende Request-Verarbeitung (outermost-first auf dem Way-In):
+#   SessionMiddleware -> CSRFMiddleware -> set_default_security_headers -> Router
 #
-# CSRF liest scope["session"]["csrf_token"] — Session muss dafuer zuerst laufen.
+# Response-Flow ist genau umgekehrt:
+#   Router -> SecurityHeaders (setzt Header) -> CSRF -> Session (setzt Cookie)
+#
+# WICHTIG: SessionMiddleware MUSS outermost sein, damit CSRFMiddleware
+# scope["session"]["csrf_token"] lesen kann. Wer hier umsortiert, bricht CSRF
+# komplett (CSRFMiddleware loggt dann einen ERROR und winkt durch). Wenn ein
+# neuer Middleware-Layer dazu kommt, immer NACH SessionMiddleware adden,
+# damit Session weiter outermost bleibt.
 
 
 @app.middleware("http")

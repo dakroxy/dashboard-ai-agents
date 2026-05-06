@@ -15,6 +15,7 @@
 <div class="rounded-lg bg-white border border-slate-200 p-6 mb-6">
     <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Upload</h2>
     <form action="/documents/" method="post" enctype="multipart/form-data" class="flex items-center gap-4">
+        {{ csrf_input(request) }}
         <input
             type="file"
             name="file"

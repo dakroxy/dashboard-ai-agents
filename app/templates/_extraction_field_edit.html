@@ -19,6 +19,7 @@
                type="{{ 'date' if key == 'sepa_date' else 'text' }}"
                value="{{ current_value }}"
                autofocus
+               {% if key == "iban" or key == "bic" %}autocapitalize="characters" autocorrect="off" autocomplete="off"{% endif %}
                class="block w-full rounded border {{ 'border-rose-300' if form_error else 'border-slate-300' }} px-2 py-1 text-sm font-mono">
         <div class="flex items-center justify-end gap-2">
             <button type="button"

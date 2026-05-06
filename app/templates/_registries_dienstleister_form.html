@@ -10,6 +10,9 @@
     {% if policy_id %}
     <input type="hidden" name="policy_id" value="{{ policy_id }}">
     {% endif %}
+    {% for pid in (other_policy_ids | default([])) %}
+    <input type="hidden" name="other_policy_ids" value="{{ pid }}">
+    {% endfor %}
     <div>
         <label class="block text-xs font-medium text-slate-600 mb-1">Name *</label>
         <input type="text" name="name" required

@@ -278,7 +278,15 @@ def steckbrief_admin_client(db):
 
 @pytest.fixture
 def anon_client():
-    """TestClient without any authenticated user."""
+    """TestClient without any authenticated user AND ohne CSRF-Token.
+
+    Reflektiert den realen Browser-Zustand eines Drittangreifers: kein
+    Session-Cookie, kein X-CSRF-Token-Header. POSTs sollen auf 403 enden
+    (CSRFMiddleware rejected vor der Route), GETs passen ohne Token durch.
+
+    Tests, die echte Auth-Layer-Behavior pruefen (302-Redirect zu /auth/...)
+    statt CSRF-403, nehmen `anon_client_with_csrf`.
+    """
     def override_db():
         session = _TestSessionLocal()
         try:
@@ -293,8 +301,32 @@ def anon_client():
     app.dependency_overrides[get_optional_user] = override_optional_user
 
     with TestClient(app, raise_server_exceptions=False, follow_redirects=False) as c:
-        # CSRF-Token setzen, damit anon-POST-Tests nicht schon an CSRF-403 scheitern.
-        # Auth-Fehler (302 redirect oder 403 forbidden) kommen danach aus der Route.
+        yield c
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anon_client_with_csrf():
+    """TestClient mit vorgesetztem CSRF-Token, ohne Auth.
+
+    Fuer Tests, die nach CSRF-Layer-Pass die Auth-Logik der Route pruefen
+    wollen (z. B. POST `/documents/` ohne User -> 302 zur Login-Page).
+    """
+    def override_db():
+        session = _TestSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    def override_optional_user():
+        return None
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_optional_user] = override_optional_user
+
+    with TestClient(app, raise_server_exceptions=False, follow_redirects=False) as c:
         c.cookies.set(
             "session",
             _make_session_cookie({"csrf_token": _TEST_CSRF_TOKEN}),

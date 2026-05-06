@@ -22,6 +22,7 @@
                 <span class="inline-block text-xs px-2 py-0.5 rounded bg-rose-50 text-rose-700 mb-2">deaktiviert</span>
                 {% if not is_self %}
                 <form action="/admin/users/{{ target.id }}/enable" method="post">
+                    {{ csrf_input(request) }}
                     <button class="text-sm text-emerald-700 hover:underline">Aktivieren</button>
                 </form>
                 {% endif %}
@@ -30,6 +31,7 @@
                 {% if not is_self %}
                 <form action="/admin/users/{{ target.id }}/disable" method="post"
                       onsubmit="return confirm('User wirklich deaktivieren?');">
+                    {{ csrf_input(request) }}
                     <button class="text-sm text-rose-700 hover:underline">Deaktivieren</button>
                 </form>
                 {% endif %}
@@ -39,6 +41,7 @@
 </div>
 
 <form action="/admin/users/{{ target.id }}" method="post" class="space-y-5 max-w-4xl">
+    {{ csrf_input(request) }}
     <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-4">
         <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide">Rolle</h2>
         <div>

@@ -480,7 +480,7 @@ TECHNIK_HEIZUNG: tuple[TechnikField, ...] = (
     TechnikField("heating_type", "Heizungs-Typ", "text"),
     TechnikField("year_heating", "Baujahr Heizung", "int_year"),
     TechnikField("heating_company", "Wartungsfirma", "text"),
-    TechnikField("heating_hotline", "Störungs-Hotline", "tel"),
+    TechnikField("heating_hotline", "Störungs-Hotline", "tel", max_len=30),
 )
 TECHNIK_HISTORIE: tuple[TechnikField, ...] = (
     TechnikField("year_built", "Baujahr Gebäude", "int_year"),

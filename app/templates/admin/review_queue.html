@@ -11,9 +11,9 @@
 
 <form id="filter-form"
       hx-get="/admin/review-queue/rows"
-      hx-trigger="change, submit"
+      hx-trigger="change, submit delay:100ms"
       hx-target="#queue-tbody"
-      hx-include="[name]"
+      hx-include="closest form"
       class="rounded-lg bg-white border border-slate-200 p-4 mb-5">
     <div class="flex gap-4 flex-wrap items-end">
         <div>

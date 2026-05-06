@@ -9,56 +9,92 @@
   <tr>
     <!-- Kuerzel -->
     <th class="text-left px-4 py-3 font-semibold cursor-pointer select-none hover:bg-slate-100"
+        tabindex="0"
+        role="button"
+        aria-sort="{{ 'ascending' if sort == 'short_code' and order == 'asc' else 'descending' if sort == 'short_code' and order == 'desc' else 'none' }}"
+        onkeydown="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}"
         onclick="document.getElementById('sort-state').value='short_code'; document.getElementById('order-state').value='{% if sort == 'short_code' and order == 'asc' %}desc{% else %}asc{% endif %}';"
         hx-get="/objects/rows?sort=short_code&order={% if sort == 'short_code' and order == 'asc' %}desc{% else %}asc{% endif %}"
         hx-target="#obj-rows"
         hx-swap="outerHTML"
-        hx-include="#filter-reserve-select">
+        hx-include="#filter-reserve-select"
+        hx-push-url="true"
+        hx-indicator="#objects-loading">
       Kürzel{% if sort == 'short_code' %} {{ '↑' if order == 'asc' else '↓' }}{% endif %}
     </th>
     <!-- Name -->
     <th class="text-left px-4 py-3 font-semibold cursor-pointer select-none hover:bg-slate-100"
+        tabindex="0"
+        role="button"
+        aria-sort="{{ 'ascending' if sort == 'name' and order == 'asc' else 'descending' if sort == 'name' and order == 'desc' else 'none' }}"
+        onkeydown="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}"
         onclick="document.getElementById('sort-state').value='name'; document.getElementById('order-state').value='{% if sort == 'name' and order == 'asc' %}desc{% else %}asc{% endif %}';"
         hx-get="/objects/rows?sort=name&order={% if sort == 'name' and order == 'asc' %}desc{% else %}asc{% endif %}"
         hx-target="#obj-rows"
         hx-swap="outerHTML"
-        hx-include="#filter-reserve-select">
+        hx-include="#filter-reserve-select"
+        hx-push-url="true"
+        hx-indicator="#objects-loading">
       Name{% if sort == 'name' %} {{ '↑' if order == 'asc' else '↓' }}{% endif %}
     </th>
     <!-- Saldo -->
     <th class="text-right px-4 py-3 font-semibold cursor-pointer select-none hover:bg-slate-100"
+        tabindex="0"
+        role="button"
+        aria-sort="{{ 'ascending' if sort == 'saldo' and order == 'asc' else 'descending' if sort == 'saldo' and order == 'desc' else 'none' }}"
+        onkeydown="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}"
         onclick="document.getElementById('sort-state').value='saldo'; document.getElementById('order-state').value='{% if sort == 'saldo' and order == 'desc' %}asc{% else %}desc{% endif %}';"
         hx-get="/objects/rows?sort=saldo&order={% if sort == 'saldo' and order == 'desc' %}asc{% else %}desc{% endif %}"
         hx-target="#obj-rows"
         hx-swap="outerHTML"
-        hx-include="#filter-reserve-select">
+        hx-include="#filter-reserve-select"
+        hx-push-url="true"
+        hx-indicator="#objects-loading">
       Saldo{% if sort == 'saldo' %} {{ '↑' if order == 'asc' else '↓' }}{% endif %}
     </th>
     <!-- Ruecklage -->
     <th class="text-right px-4 py-3 font-semibold cursor-pointer select-none hover:bg-slate-100"
+        tabindex="0"
+        role="button"
+        aria-sort="{{ 'ascending' if sort == 'reserve_current' and order == 'asc' else 'descending' if sort == 'reserve_current' and order == 'desc' else 'none' }}"
+        onkeydown="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}"
         onclick="document.getElementById('sort-state').value='reserve_current'; document.getElementById('order-state').value='{% if sort == 'reserve_current' and order == 'desc' %}asc{% else %}desc{% endif %}';"
         hx-get="/objects/rows?sort=reserve_current&order={% if sort == 'reserve_current' and order == 'desc' %}asc{% else %}desc{% endif %}"
         hx-target="#obj-rows"
         hx-swap="outerHTML"
-        hx-include="#filter-reserve-select">
+        hx-include="#filter-reserve-select"
+        hx-push-url="true"
+        hx-indicator="#objects-loading">
       Rücklage{% if sort == 'reserve_current' %} {{ '↑' if order == 'asc' else '↓' }}{% endif %}
     </th>
     <!-- Mandat -->
     <th class="text-left px-4 py-3 font-semibold cursor-pointer select-none hover:bg-slate-100"
+        tabindex="0"
+        role="button"
+        aria-sort="{{ 'ascending' if sort == 'mandat_status' and order == 'asc' else 'descending' if sort == 'mandat_status' and order == 'desc' else 'none' }}"
+        onkeydown="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}"
         onclick="document.getElementById('sort-state').value='mandat_status'; document.getElementById('order-state').value='{% if sort == 'mandat_status' and order == 'asc' %}desc{% else %}asc{% endif %}';"
         hx-get="/objects/rows?sort=mandat_status&order={% if sort == 'mandat_status' and order == 'asc' %}desc{% else %}asc{% endif %}"
         hx-target="#obj-rows"
         hx-swap="outerHTML"
-        hx-include="#filter-reserve-select">
+        hx-include="#filter-reserve-select"
+        hx-push-url="true"
+        hx-indicator="#objects-loading">
       Mandat{% if sort == 'mandat_status' %} {{ '↑' if order == 'asc' else '↓' }}{% endif %}
     </th>
     <!-- Pflegegrad -->
     <th class="text-right px-4 py-3 font-semibold cursor-pointer select-none hover:bg-slate-100"
+        tabindex="0"
+        role="button"
+        aria-sort="{{ 'ascending' if sort == 'pflegegrad' and order == 'asc' else 'descending' if sort == 'pflegegrad' and order == 'desc' else 'none' }}"
+        onkeydown="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}"
         onclick="document.getElementById('sort-state').value='pflegegrad'; document.getElementById('order-state').value='{% if sort == 'pflegegrad' and order == 'desc' %}asc{% else %}desc{% endif %}';"
         hx-get="/objects/rows?sort=pflegegrad&order={% if sort == 'pflegegrad' and order == 'desc' %}asc{% else %}desc{% endif %}"
         hx-target="#obj-rows"
         hx-swap="outerHTML"
-        hx-include="#filter-reserve-select">
+        hx-include="#filter-reserve-select"
+        hx-push-url="true"
+        hx-indicator="#objects-loading">
       Pflegegrad{% if sort == 'pflegegrad' %} {{ '↑' if order == 'asc' else '↓' }}{% endif %}
     </th>
   </tr>
