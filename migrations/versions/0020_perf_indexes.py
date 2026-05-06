@@ -1,7 +1,7 @@
 """0020 perf indexes: Composite-Index auf field_provenance fuer get_provenance_map_bulk.
 
 Revision ID: 0020_perf_indexes
-Revises: 0019_police_column_length_caps
+Revises: 0020
 Create Date: 2026-05-05
 """
 from __future__ import annotations
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0020_perf_indexes"
-down_revision = "0019_police_column_length_caps"
+down_revision = "0020"
 branch_labels = None
 depends_on = None
 
